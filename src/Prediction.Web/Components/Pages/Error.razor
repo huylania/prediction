@@ -1,0 +1,24 @@
+@page "/Error"
+@attribute [AllowAnonymous]
+@using System.Diagnostics
+
+<PageTitle>Lỗi</PageTitle>
+
+<h1 class="text-danger">Đã xảy ra lỗi.</h1>
+<p>Không xử lý được yêu cầu. Thử tải lại trang; nếu vẫn lỗi, xem log của ứng dụng.</p>
+
+@if (ShowRequestId)
+{
+    <p><strong>Mã yêu cầu:</strong> <code>@RequestId</code></p>
+}
+
+@code {
+    [CascadingParameter]
+    private HttpContext? HttpContext { get; set; }
+
+    private string? RequestId { get; set; }
+    private bool ShowRequestId => !string.IsNullOrEmpty(RequestId);
+
+    protected override void OnInitialized() =>
+        RequestId = Activity.Current?.Id ?? HttpContext?.TraceIdentifier;
+}

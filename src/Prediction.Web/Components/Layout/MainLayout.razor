@@ -1,0 +1,35 @@
+@inherits LayoutComponentBase
+
+<div class="page">
+    <div class="sidebar">
+        <NavMenu />
+    </div>
+
+    <main>
+        <div class="top-row px-4">
+            <AuthorizeView>
+                <Authorized>
+                    <span class="text-muted small me-3">@context.User.Identity?.Name</span>
+                    <form method="post" action="dang-xuat" class="d-inline">
+                        <AntiforgeryToken />
+                        <button type="submit" class="btn btn-sm btn-outline-secondary">Đăng xuất</button>
+                    </form>
+                </Authorized>
+            </AuthorizeView>
+        </div>
+
+        <article class="content px-4">
+            @Body
+        </article>
+
+        <footer class="px-4 py-3 small text-muted border-top mt-4">
+            Công cụ tham khảo, không đảm bảo lợi nhuận. Hãy cược có trách nhiệm.
+        </footer>
+    </main>
+</div>
+
+<div id="blazor-error-ui" data-nosnippet>
+    Đã xảy ra lỗi.
+    <a href="." class="reload">Tải lại</a>
+    <span class="dismiss">🗙</span>
+</div>

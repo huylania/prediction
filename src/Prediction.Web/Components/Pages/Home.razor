@@ -1,0 +1,198 @@
+@page "/"
+@rendermode InteractiveServer
+@using Microsoft.Extensions.Options
+@using Prediction.Web.ApiFootball
+@inject InsightService Insights
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject TimeDisplay Time
+@inject IOptions<ApiFootballOptions> ApiOptions
+
+<PageTitle>Tổng quan</PageTitle>
+
+<h1 class="h3 mb-3">Tổng quan</h1>
+
+@if (string.IsNullOrWhiteSpace(ApiOptions.Value.ApiKey))
+{
+    <div class="alert alert-warning">
+        Chưa cấu hình <strong>API key của API-Football</strong> nên website chưa lấy được lịch, kèo và tư vấn.
+        Xem hướng dẫn trong README (<code>dotnet user-secrets set ApiFootball:ApiKey ...</code>) hoặc tạo dữ liệu demo ở <a href="cai-dat">Cài đặt</a>.
+    </div>
+}
+
+@if (_loading)
+{
+    <p class="text-muted">Đang tải…</p>
+}
+else
+{
+    <div class="row g-3 mb-4">
+        <div class="col-6 col-lg-3">
+            <div class="card stat-card"><div class="card-body">
+                <div class="label">Quy tắc đang bật</div>
+                <div class="value">@_activeRules</div>
+                <a href="quy-tac" class="small">Quản lý quy tắc</a>
+            </div></div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="card stat-card"><div class="card-body">
+                <div class="label">Trận có gợi ý (3 ngày)</div>
+                <div class="value">@_picks.Count</div>
+                <span class="small text-muted">@_picks.Count(p => p.Advice.Picks.Any(x => x.HasConflict)) trận có tín hiệu ngược</span>
+            </div></div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="card stat-card"><div class="card-body">
+                <div class="label">Thành tích gợi ý</div>
+                <div class="value @Fmt.Sign(_total.Profit)">@Fmt.Profit(_total.Profit) <small class="fs-6">đv</small></div>
+                <span class="small text-muted">@_total.Settled kèo · ROI @Fmt.Roi(_total.Roi)</span>
+            </div></div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="card stat-card"><div class="card-body">
+                <div class="label">Đồng bộ gần nhất</div>
+                @if (_lastSync is null)
+                {
+                    <div class="value fs-6 mt-2">Chưa có</div>
+                }
+                else
+                {
+                    <div class="value fs-6 mt-2 @(_lastSync.Ok ? "" : "text-danger")">@Time.Short(_lastSync.FinishedAtUtc) · @SyncJobs.Label(_lastSync.Job)</div>
+                }
+                <a href="cai-dat" class="small">Nhật ký & đồng bộ ngay</a>
+            </div></div>
+        </div>
+    </div>
+
+    <h2 class="h5">Gợi ý cho 3 ngày tới</h2>
+    @if (_picks.Count == 0)
+    {
+        <p class="text-muted">Chưa có trận nào khớp quy tắc trong 3 ngày tới.</p>
+    }
+    else
+    {
+        <div class="row g-3 mb-4">
+            @foreach (var m in _picks)
+            {
+                <div class="col-md-6 col-xl-4">
+                    <div class="card match-card h-100">
+                        <div class="card-body">
+                            <div class="small text-muted mb-1">@Time.Kickoff(m.Fixture.KickoffUtc) · @m.League?.Name</div>
+                            <div class="teams mb-2">
+                                <a href="tran-dau/@m.Fixture.Id" class="text-decoration-none text-dark">
+                                    <span class="rank">@RankText(m.Context.Home)</span>@m.Home
+                                    <span class="text-muted fw-normal">vs</span>
+                                    <span class="rank">@RankText(m.Context.Away)</span>@m.Away
+                                </a>
+                            </div>
+                            <AdviceView Advice="m.Advice" Compact="true" />
+                            <a href="tran-dau/@m.Fixture.Id" class="small">Xem tư vấn chi tiết →</a>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+
+    <div class="row g-4">
+        <div class="col-xl-6">
+            <h2 class="h5">Kèo biến động mạnh (3 ngày tới)</h2>
+            @if (_movers.Count == 0)
+            {
+                <p class="text-muted">Chưa có biến động đáng kể.</p>
+            }
+            else
+            {
+                <table class="table table-sm bg-white">
+                    <thead><tr><th>Trận</th><th>Chấp</th><th>Tài xỉu</th></tr></thead>
+                    <tbody>
+                        @foreach (var m in _movers)
+                        {
+                            <tr>
+                                <td><a href="tran-dau/@m.Fixture.Id">@m.Home – @m.Away</a><div class="small text-muted">@Time.Kickoff(m.Fixture.KickoffUtc)</div></td>
+                                <td class="small">@MoveText(m.Context.Handicap, true)</td>
+                                <td class="small">@MoveText(m.Context.Totals, false)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+                <a href="bien-dong-keo" class="small">Xem tất cả →</a>
+            }
+        </div>
+        <div class="col-xl-6">
+            <h2 class="h5">Thành tích quy tắc</h2>
+            @if (_rules.Count == 0)
+            {
+                <p class="text-muted">Chưa có quy tắc.</p>
+            }
+            else
+            {
+                <table class="table table-sm bg-white">
+                    <thead><tr><th>Quy tắc</th><th class="text-end">Kèo</th><th class="text-end">T-H-B</th><th class="text-end">Lãi/lỗ</th><th class="text-end">ROI</th></tr></thead>
+                    <tbody>
+                        @foreach (var (rule, record) in _rules)
+                        {
+                            <tr>
+                                <td><a href="quy-tac/@rule.Id">@rule.Name</a> @if (!rule.IsActive) { <span class="badge bg-light text-muted border">tắt</span> }</td>
+                                <td class="text-end">@record.Settled</td>
+                                <td class="text-end">@(record.Wins + record.HalfWins)-@record.Pushes-@(record.Losses + record.HalfLosses)</td>
+                                <td class="text-end @Fmt.Sign(record.Profit)">@Fmt.Profit(record.Profit)</td>
+                                <td class="text-end">@Fmt.Roi(record.Roi)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private bool _loading = true;
+    private int _activeRules;
+    private List<MatchInsight> _picks = [];
+    private List<MatchInsight> _movers = [];
+    private List<(Rule Rule, RuleRecord Record)> _rules = [];
+    private RuleRecord _total = RuleRecord.Empty;
+    private SyncLog? _lastSync;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var now = Insights.UtcNow;
+        var matches = (await Insights.ForWindowAsync(now, now.AddDays(3), null))
+            .Where(m => FixtureStatus.IsUpcoming(m.Fixture.Status))
+            .ToList();
+        _picks = matches.Where(m => m.HasPicks).ToList();
+        _movers = matches
+            .Select(m => (m, Score: (m.Context.Handicap?.Magnitude ?? 0) + (m.Context.Totals?.Magnitude ?? 0)))
+            .Where(x => x.Score > 0)
+            .OrderByDescending(x => x.Score)
+            .Take(8)
+            .Select(x => x.m)
+            .ToList();
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var rules = await db.Rules.AsNoTracking().OrderByDescending(r => r.IsActive).ThenBy(r => r.Name).ToListAsync();
+        var records = await ContextLoader.LoadRecordsAsync(db, default);
+        _activeRules = rules.Count(r => r.IsActive);
+        _rules = rules.Select(r => (r, records.GetValueOrDefault(r.Id) ?? RuleRecord.Empty)).ToList();
+        _total = records.Values.Aggregate(RuleRecord.Empty, (a, b) => new RuleRecord(
+            a.Settled + b.Settled, a.Wins + b.Wins, a.HalfWins + b.HalfWins, a.Pushes + b.Pushes,
+            a.HalfLosses + b.HalfLosses, a.Losses + b.Losses, a.Profit + b.Profit));
+        _lastSync = await db.SyncLogs.AsNoTracking().OrderByDescending(l => l.StartedAtUtc).FirstOrDefaultAsync();
+        _loading = false;
+    }
+
+    private static string RankText(TeamSnapshot? s) => s?.Rank is { } r ? $"#{r}" : "";
+
+    private static string MoveText(MarketMovement? m, bool handicap)
+    {
+        if (m is null)
+        {
+            return "—";
+        }
+
+        var open = handicap ? LineText.Signed(m.Open.Line) : LineText.Number(m.Open.Line);
+        var current = handicap ? LineText.Signed(m.Current.Line) : LineText.Number(m.Current.Line);
+        return $"{open} ({LineText.Odds(m.Open.PriceA)}/{LineText.Odds(m.Open.PriceB)}) → {current} ({LineText.Odds(m.Current.PriceA)}/{LineText.Odds(m.Current.PriceB)})";
+    }
+}

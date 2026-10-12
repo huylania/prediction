@@ -1,0 +1,431 @@
+@page "/quy-tac/moi"
+@page "/quy-tac/{Id:int}"
+@rendermode InteractiveServer
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject InsightService Insights
+@inject SuggestionService Suggestions
+@inject NavigationManager Navigation
+@inject TimeDisplay Time
+
+<PageTitle>@(Id is null ? "Tạo quy tắc" : "Sửa quy tắc")</PageTitle>
+
+<div class="d-flex align-items-center mb-3">
+    <h1 class="h3 mb-0">@(Id is null ? "Tạo quy tắc" : "Sửa quy tắc")</h1>
+    @if (Id is not null)
+    {
+        <a href="quy-tac/@Id/kiem-chung" class="btn btn-outline-success ms-auto">Kiểm chứng quy tắc này</a>
+    }
+</div>
+
+@if (_rule is null)
+{
+    <p class="text-muted">Đang tải…</p>
+}
+else
+{
+    <p class="text-muted small">
+        <strong>Đội A</strong> là đội bạn đang xét (vd MU), <strong>Đội B</strong> là đối thủ. Mỗi trận được xét từ cả hai phía.
+        Ô để trống = không áp dụng điều kiện đó. Mức chấp ghi theo phía đội A: âm = A chấp (−1 = A chấp 1 trái), dương = A được chấp.
+    </p>
+
+    <div class="row g-3">
+        <div class="col-xl-8">
+            <div class="form-section">
+                <h2>Thông tin chung</h2>
+                <div class="row g-2">
+                    <div class="col-md-8">
+                        <label class="form-label small">Tên quy tắc</label>
+                        <input class="form-control" @bind="_rule.Name" placeholder="vd: MU gặp đội xếp dưới → chọn MU" />
+                    </div>
+                    <div class="col-md-4 d-flex align-items-end">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="active" @bind="_rule.IsActive" />
+                            <label class="form-check-label" for="active">Đang bật (sinh gợi ý)</label>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small">Loại kèo</label>
+                        <select class="form-select" value="@_rule.Market" @onchange="MarketChanged">
+                            <option value="@Market.AsianHandicap">Kèo chấp châu Á</option>
+                            <option value="@Market.OverUnder">Tài xỉu</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small">Lựa chọn</label>
+                        <select class="form-select" @bind="_rule.Selection">
+                            @if (_rule.Market == Market.AsianHandicap)
+                            {
+                                <option value="@RuleSelection.Subject">Chọn đội A</option>
+                                <option value="@RuleSelection.Opponent">Chọn đội B</option>
+                            }
+                            else
+                            {
+                                <option value="@RuleSelection.Over">Tài</option>
+                                <option value="@RuleSelection.Under">Xỉu</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small">Giải</label>
+                        <select class="form-select" value="@_rule.LeagueId" @onchange="LeagueChanged">
+                            <option value="">Mọi giải</option>
+                            @foreach (var l in _leagues)
+                            {
+                                <option value="@l.Id">@l.Name</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label small">Ghi chú</label>
+                        <textarea class="form-control" rows="2" @bind="_rule.Notes"></textarea>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-section">
+                <h2>Đội, BXH & phong độ</h2>
+                <div class="row g-2">
+                    <div class="col-md-6">
+                        <label class="form-label small">Đội A cụ thể</label>
+                        <input class="form-control form-control-sm mb-1" placeholder="Lọc tên đội…" @bind="_teamFilter" @bind:event="oninput" />
+                        <select class="form-select" @bind="_rule.SubjectTeamId">
+                            <option value="">Bất kỳ đội nào</option>
+                            @foreach (var t in FilteredTeams)
+                            {
+                                <option value="@t.Id">@t.Name</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small">Sân của đội A</label>
+                        <select class="form-select" @bind="_rule.SubjectVenue">
+                            <option value="@VenueFilter.Any">Bất kỳ</option>
+                            <option value="@VenueFilter.Home">Sân nhà</option>
+                            <option value="@VenueFilter.Away">Sân khách</option>
+                        </select>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <label class="form-label small">A xếp trên B ít nhất (bậc)</label>
+                        <input type="number" class="form-control" @bind="_rule.MinRankGap" />
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <label class="form-label small">A xếp trên B nhiều nhất (bậc)</label>
+                        <input type="number" class="form-control" @bind="_rule.MaxRankGap" />
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <label class="form-label small">A trong top</label>
+                        <input type="number" min="1" class="form-control" @bind="_rule.SubjectMaxRank" />
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <label class="form-label small">B xếp từ hạng</label>
+                        <input type="number" min="1" class="form-control" @bind="_rule.OpponentMinRank" />
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <label class="form-label small">A hơn B ít nhất (điểm)</label>
+                        <input type="number" class="form-control" @bind="_rule.MinPointsGap" />
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <label class="form-label small">Đã đá tối thiểu (trận)</label>
+                        <input type="number" min="0" class="form-control" @bind="_rule.MinMatchesPlayed" />
+                        <div class="hint">Chỉ áp dụng khi có điều kiện BXH.</div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <label class="form-label small">A ≥ điểm/5 trận</label>
+                        <input type="number" min="0" max="15" class="form-control" @bind="_rule.SubjectMinFormPoints" />
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <label class="form-label small">B ≤ điểm/5 trận</label>
+                        <input type="number" min="0" max="15" class="form-control" @bind="_rule.OpponentMaxFormPoints" />
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <label class="form-label small">TB tổng bàn 2 đội từ</label>
+                        <input type="number" step="0.1" class="form-control" @bind="_rule.MinAvgTotalGoals" />
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <label class="form-label small">TB tổng bàn 2 đội đến</label>
+                        <input type="number" step="0.1" class="form-control" @bind="_rule.MaxAvgTotalGoals" />
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-section">
+                <h2>Kèo hiện tại</h2>
+                <div class="row g-2">
+                    <div class="col-6 col-md-3">
+                        <label class="form-label small">Mức chấp của A từ</label>
+                        <input type="number" step="0.25" class="form-control" @bind="_rule.AhLineMin" />
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <label class="form-label small">đến</label>
+                        <input type="number" step="0.25" class="form-control" @bind="_rule.AhLineMax" />
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <label class="form-label small">Mức tài xỉu từ</label>
+                        <input type="number" step="0.25" class="form-control" @bind="_rule.OuLineMin" />
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <label class="form-label small">đến</label>
+                        <input type="number" step="0.25" class="form-control" @bind="_rule.OuLineMax" />
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <label class="form-label small">Odds cửa chọn tối thiểu</label>
+                        <input type="number" step="0.01" class="form-control" @bind="_rule.MinOdds" />
+                    </div>
+                    <div class="col-12 hint">Ví dụ "MU chấp từ 1/4 đến 1 trái": từ −1 đến −0.25.</div>
+                </div>
+            </div>
+
+            <div class="form-section">
+                <h2>Biến động kèo (từ kèo mở đến hiện tại/kèo đóng)</h2>
+                <div class="row g-2">
+                    <div class="col-md-6">
+                        <label class="form-label small">Kèo chấp</label>
+                        <select class="form-select" @bind="_rule.AhMovement">
+                            <option value="@AhMovementFilter.Any">Không xét</option>
+                            <option value="@AhMovementFilter.TowardSubject">Nghiêng về A (kèo tăng cho A hoặc tiền A giảm)</option>
+                            <option value="@AhMovementFilter.TowardOpponent">Nghiêng về B</option>
+                            <option value="@AhMovementFilter.Unchanged">Đứng yên</option>
+                        </select>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <label class="form-label small">Mức chấp dịch ≥</label>
+                        <input type="number" step="0.25" min="0.25" class="form-control" placeholder="0.25" @bind="_rule.MinAhLineMove" />
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <label class="form-label small">Tiền kèo giảm ≥</label>
+                        <input type="number" step="0.01" min="0.01" class="form-control" placeholder="0.05" @bind="_rule.MinPriceDrop" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small">Tài xỉu</label>
+                        <select class="form-select" @bind="_rule.OuMovement">
+                            <option value="@OuMovementFilter.Any">Không xét</option>
+                            <option value="@OuMovementFilter.TowardOver">Nghiêng về Tài (mức tăng hoặc tiền Tài giảm)</option>
+                            <option value="@OuMovementFilter.TowardUnder">Nghiêng về Xỉu</option>
+                            <option value="@OuMovementFilter.Unchanged">Đứng yên</option>
+                        </select>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <label class="form-label small">Mức tài xỉu dịch ≥</label>
+                        <input type="number" step="0.25" min="0.25" class="form-control" placeholder="0.25" @bind="_rule.MinOuLineMove" />
+                    </div>
+                    <div class="col-12 hint">Mức kèo đứng yên nhưng tiền một cửa giảm ≥ ngưỡng cũng tính là nghiêng về cửa đó.</div>
+                </div>
+            </div>
+
+            <div class="form-section">
+                <h2>Tư vấn của API-Football</h2>
+                <div class="row g-2 align-items-end">
+                    <div class="col-md-4">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="apiWinner" @bind="_rule.RequireApiWinnerSubject" />
+                            <label class="form-check-label" for="apiWinner">API dự đoán A thắng</label>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small">API cho A thắng ≥ (%)</label>
+                        <input type="number" min="0" max="100" class="form-control" @bind="_rule.MinApiWinPercentSubject" />
+                    </div>
+                    @if (_rule.Market == Market.OverUnder)
+                    {
+                        <div class="col-md-4">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="apiOu" @bind="_rule.RequireApiUnderOverAgree" />
+                                <label class="form-check-label" for="apiOu">API dự đoán tài/xỉu cùng hướng</label>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            @if (_errors.Count > 0)
+            {
+                <div class="alert alert-danger">
+                    @foreach (var e in _errors)
+                    {
+                        <div>@e</div>
+                    }
+                </div>
+            }
+
+            <div class="d-flex flex-wrap gap-2 mb-4">
+                <button class="btn btn-success" @onclick="SaveAsync">Lưu quy tắc</button>
+                <button class="btn btn-outline-primary" @onclick="PreviewAsync">Xem trước trận khớp</button>
+                <a href="quy-tac" class="btn btn-link">Quay lại</a>
+                @if (Id is not null)
+                {
+                    @if (_confirmReset)
+                    {
+                        <button class="btn btn-danger ms-auto" @onclick="ResetHistoryAsync">Xác nhận xóa thành tích</button>
+                    }
+                    else
+                    {
+                        <button class="btn btn-outline-danger ms-auto" @onclick="() => _confirmReset = true">Xóa thành tích cũ</button>
+                    }
+                }
+            </div>
+            @if (_message is not null)
+            {
+                <div class="alert alert-success">@_message</div>
+            }
+        </div>
+
+        <div class="col-xl-4">
+            <div class="card mb-3">
+                <div class="card-header">Diễn giải</div>
+                <div class="card-body">
+                    <div class="mb-1"><strong>@RuleText.Selection(_rule)</strong> khi:</div>
+                    <ul class="small mb-0 cond-list">
+                        @foreach (var c in RuleText.Conditions(_rule, _leagues.FirstOrDefault(l => l.Id == _rule.LeagueId)?.Name, _teams.FirstOrDefault(t => t.Id == _rule.SubjectTeamId)?.Name))
+                        {
+                            <li>@c</li>
+                        }
+                    </ul>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-header">Trận sắp tới khớp (7 ngày)</div>
+                <div class="card-body">
+                    @if (_preview is null)
+                    {
+                        <span class="text-muted small">Bấm "Xem trước trận khớp".</span>
+                    }
+                    else if (_preview.Count == 0)
+                    {
+                        <span class="text-muted small">Không có trận nào khớp.</span>
+                    }
+                    else
+                    {
+                        <ul class="list-unstyled small mb-0">
+                            @foreach (var (m, p) in _preview)
+                            {
+                                <li class="mb-2">
+                                    <a href="tran-dau/@m.Fixture.Id">@m.Home – @m.Away</a>
+                                    <div class="text-muted">@Time.Kickoff(m.Fixture.KickoffUtc) · <strong>@LineText.Pick(p.Side, p.Line, p.Odds, m.Home, m.Away)</strong></div>
+                                </li>
+                            }
+                        </ul>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public int? Id { get; set; }
+
+    private Rule? _rule;
+    private List<League> _leagues = [];
+    private List<Team> _teams = [];
+    private string _teamFilter = "";
+    private List<string> _errors = [];
+    private string? _message;
+    private bool _confirmReset;
+    private List<(MatchInsight, Pick)>? _preview;
+
+    private IEnumerable<Team> FilteredTeams => _teams.Where(t =>
+        t.Id == _rule?.SubjectTeamId || string.IsNullOrWhiteSpace(_teamFilter) || t.Name.Contains(_teamFilter, StringComparison.OrdinalIgnoreCase));
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _leagues = await db.Leagues.AsNoTracking().OrderBy(l => l.Name).ToListAsync();
+        _rule = Id is null
+            ? new Rule { MinMatchesPlayed = 5, IsActive = true }
+            : await db.Rules.AsNoTracking().FirstOrDefaultAsync(r => r.Id == Id);
+        if (_rule is null)
+        {
+            Navigation.NavigateTo("quy-tac");
+            return;
+        }
+
+        await LoadTeamsAsync();
+    }
+
+    private async Task LoadTeamsAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var leagueId = _rule!.LeagueId;
+        var query = db.Teams.AsNoTracking();
+        if (leagueId is not null)
+        {
+            var ids = db.Fixtures.Where(f => f.LeagueId == leagueId).Select(f => f.HomeTeamId)
+                .Union(db.Fixtures.Where(f => f.LeagueId == leagueId).Select(f => f.AwayTeamId));
+            query = query.Where(t => ids.Contains(t.Id) || t.Id == _rule.SubjectTeamId);
+        }
+
+        _teams = await query.OrderBy(t => t.Name).ToListAsync();
+    }
+
+    private async Task LeagueChanged(ChangeEventArgs e)
+    {
+        _rule!.LeagueId = int.TryParse(e.Value?.ToString(), out var id) ? id : null;
+        await LoadTeamsAsync();
+    }
+
+    private void MarketChanged(ChangeEventArgs e)
+    {
+        _rule!.Market = Enum.Parse<Market>(e.Value!.ToString()!);
+        _rule.Selection = _rule.Market == Market.AsianHandicap ? RuleSelection.Subject : RuleSelection.Over;
+        if (_rule.Market == Market.AsianHandicap)
+        {
+            _rule.RequireApiUnderOverAgree = false;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        _message = null;
+        _errors = _rule!.Validate().ToList();
+        if (_errors.Count > 0)
+        {
+            return;
+        }
+
+        await using (var db = await DbFactory.CreateDbContextAsync())
+        {
+            _rule.League = null;
+            _rule.SubjectTeam = null;
+            if (_rule.Id == 0)
+            {
+                _rule.CreatedAtUtc = DateTime.UtcNow;
+                db.Rules.Add(_rule);
+            }
+            else
+            {
+                db.Rules.Update(_rule);
+            }
+
+            await db.SaveChangesAsync();
+        }
+
+        await Suggestions.RefreshAsync(default);
+        if (Id is null)
+        {
+            Navigation.NavigateTo($"quy-tac/{_rule.Id}");
+            return;
+        }
+
+        _message = "Đã lưu. Gợi ý cho các trận sắp tới đã được cập nhật.";
+    }
+
+    private async Task PreviewAsync()
+    {
+        _errors = _rule!.Validate().Where(e => !e.StartsWith("Cần đặt tên")).ToList();
+        if (_errors.Count == 0)
+        {
+            _preview = await Insights.PreviewAsync(_rule);
+        }
+    }
+
+    private async Task ResetHistoryAsync()
+    {
+        await using (var db = await DbFactory.CreateDbContextAsync())
+        {
+            await db.Suggestions.Where(s => s.RuleId == Id && s.IsFrozen).ExecuteDeleteAsync();
+        }
+
+        _confirmReset = false;
+        _message = "Đã xóa thành tích cũ của quy tắc.";
+    }
+}

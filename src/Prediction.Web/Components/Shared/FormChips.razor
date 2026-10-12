@@ -1,0 +1,18 @@
+@if (string.IsNullOrEmpty(Form))
+{
+    <span class="text-muted small">—</span>
+}
+else
+{
+    <span class="form-chips">
+        @foreach (var c in Form)
+        {
+            <span class="form-chip form-@c">@(c switch { 'W' => "T", 'D' => "H", _ => "B" })</span>
+        }
+    </span>
+}
+
+@code {
+    /// <summary>Chuỗi W/D/L, cũ → mới.</summary>
+    [Parameter] public string? Form { get; set; }
+}

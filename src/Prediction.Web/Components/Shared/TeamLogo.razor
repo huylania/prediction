@@ -1,0 +1,8 @@
+@if (!string.IsNullOrEmpty(Url))
+{
+    <img src="@Url" alt="" class="team-logo" loading="lazy" />
+}
+
+@code {
+    [Parameter] public string? Url { get; set; }
+}

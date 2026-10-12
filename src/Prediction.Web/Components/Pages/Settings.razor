@@ -1,0 +1,313 @@
+@page "/cai-dat"
+@rendermode InteractiveServer
+@implements IDisposable
+@using Microsoft.Extensions.Options
+@using Prediction.Web.ApiFootball
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject SyncCoordinator Sync
+@inject ApiFootballClient Api
+@inject IOptions<ApiFootballOptions> ApiOptions
+@inject IOptions<SyncOptions> SyncOpts
+@inject DemoDataSeeder Demo
+@inject AdminAccountService Accounts
+@inject TimeDisplay Time
+
+<PageTitle>Cài đặt</PageTitle>
+
+<h1 class="h3 mb-3">Cài đặt</h1>
+
+@if (_message is not null)
+{
+    <div class="alert @(_ok ? "alert-success" : "alert-danger") alert-dismissible">
+        @_message
+        <button type="button" class="btn-close" @onclick="() => _message = null"></button>
+    </div>
+}
+
+<div class="row g-3">
+    <div class="col-xl-6">
+        <div class="card mb-3">
+            <div class="card-header">API-Football</div>
+            <div class="card-body">
+                @if (Api.IsConfigured)
+                {
+                    <p class="mb-2">API key: <code>@MaskedKey</code> · Nhà cái: id @ApiOptions.Value.BookmakerId</p>
+                    <button class="btn btn-sm btn-outline-primary" @onclick="CheckQuotaAsync">Kiểm tra gói & quota</button>
+                    @if (_status is not null)
+                    {
+                        <div class="small mt-2">
+                            Gói: <strong>@(_status.Subscription?.Plan ?? "?")</strong>
+                            @if (_status.Subscription?.End is { } end)
+                            {
+                                <span> · hết hạn @end.ToString("dd/MM/yyyy")</span>
+                            }
+                            · Đã dùng hôm nay: <strong>@_status.Requests?.Current / @_status.Requests?.LimitDay</strong> request
+                        </div>
+                    }
+                }
+                else
+                {
+                    <p class="mb-1">Chưa cấu hình API key. Chạy trong thư mục <code>src/Prediction.Web</code>:</p>
+                    <pre class="small bg-light p-2 mb-1">dotnet user-secrets set ApiFootball:ApiKey "KEY_CUA_BAN"</pre>
+                    <p class="small text-muted mb-0">hoặc đặt biến môi trường <code>ApiFootball__ApiKey</code>, rồi khởi động lại website.</p>
+                }
+                <div class="small text-muted mt-2">
+                    Chu kỳ: lịch/kết quả @SyncOpts.Value.FixturesIntervalMinutes phút · kèo theo giải @SyncOpts.Value.OddsIntervalMinutes phút ·
+                    kèo sát giờ @SyncOpts.Value.ClosingOddsIntervalMinutes phút (trong @SyncOpts.Value.ClosingWindowMinutes phút trước trận) ·
+                    tư vấn API @SyncOpts.Value.AdviceIntervalMinutes phút. Sửa trong <code>appsettings.json</code> mục <code>Sync</code>.
+                </div>
+            </div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-header">Đồng bộ ngay</div>
+            <div class="card-body">
+                @if (Sync.CurrentJob is { } job)
+                {
+                    <div class="alert alert-info py-2 small">Đang chạy: @SyncJobs.Label(job)…</div>
+                }
+                <div class="d-flex flex-wrap gap-2">
+                    @foreach (var j in new[] { SyncJobs.Leagues, SyncJobs.Fixtures, SyncJobs.Odds, SyncJobs.ClosingOdds, SyncJobs.Advice })
+                    {
+                        <button class="btn btn-sm btn-outline-primary" disabled="@(Sync.CurrentJob is not null || !Api.IsConfigured)" @onclick="() => RunJobAsync(j)">@SyncJobs.Label(j)</button>
+                    }
+                    <button class="btn btn-sm btn-outline-secondary" disabled="@(Sync.CurrentJob is not null)" @onclick="() => RunJobAsync(SyncJobs.Suggestions)">Cập nhật gợi ý</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-header">Dữ liệu demo</div>
+            <div class="card-body">
+                <p class="small text-muted">"Giải Demo" gồm 12 đội giả, 2 mùa kết quả, kèo biến động và tư vấn <strong>giả lập</strong> để xem thử các tính năng. Không phải dữ liệu thật.</p>
+                <button class="btn btn-sm btn-outline-success" @onclick="SeedDemoAsync">Tạo dữ liệu demo</button>
+                <button class="btn btn-sm btn-outline-danger" @onclick="DeleteDemoAsync">Xóa dữ liệu demo</button>
+            </div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-header">Đổi mật khẩu</div>
+            <div class="card-body">
+                <div class="row g-2">
+                    <div class="col-md-6"><input type="password" class="form-control form-control-sm" placeholder="Mật khẩu hiện tại" @bind="_currentPassword" /></div>
+                    <div class="col-md-6"><input type="password" class="form-control form-control-sm" placeholder="Mật khẩu mới (≥ 8 ký tự)" @bind="_newPassword" /></div>
+                </div>
+                <button class="btn btn-sm btn-outline-primary mt-2" @onclick="ChangePasswordAsync">Đổi mật khẩu</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-6">
+        <div class="card mb-3">
+            <div class="card-header">Giải đấu theo dõi</div>
+            <div class="card-body p-0">
+                <table class="table table-sm mb-0">
+                    <thead><tr><th>Theo dõi</th><th>Id</th><th>Giải</th><th>Mùa</th><th>Tải mùa cũ</th></tr></thead>
+                    <tbody>
+                        @foreach (var l in _leagues)
+                        {
+                            <tr>
+                                <td><input type="checkbox" class="form-check-input" checked="@l.IsTracked" @onchange="e => SetTrackedAsync(l, (bool)e.Value!)" /></td>
+                                <td class="small text-muted">@l.Id</td>
+                                <td>@l.Name <span class="small text-muted">@l.Country</span> @if (l.IsDemo) { <span class="badge bg-warning text-dark">demo</span> }</td>
+                                <td class="small">@Standings.SeasonLabel(l.CurrentSeason)</td>
+                                <td>
+                                    @if (!l.IsDemo)
+                                    {
+                                        <div class="input-group input-group-sm" style="max-width: 11rem">
+                                            <input type="number" class="form-control" @bind="_backfillSeason[l.Id]" />
+                                            <button class="btn btn-outline-secondary" disabled="@(Sync.CurrentJob is not null || !Api.IsConfigured)" @onclick="() => BackfillAsync(l)">Tải</button>
+                                        </div>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <div class="card-body border-top">
+                <div class="small text-muted mb-1">Mùa ghi theo năm bắt đầu (2025 = mùa 2025/26). Mỗi lần tải tốn 1 request. Nên tải 3–5 mùa gần nhất để kiểm chứng quy tắc.</div>
+                <label class="form-label small mb-0">Tìm và thêm giải (tên giải hoặc quốc gia, vd "Vietnam")</label>
+                <div class="input-group input-group-sm">
+                    <input class="form-control" @bind="_search" />
+                    <button class="btn btn-outline-primary" disabled="@(!Api.IsConfigured)" @onclick="SearchAsync">Tìm</button>
+                </div>
+                @if (_found.Count > 0)
+                {
+                    <table class="table table-sm small mt-2 mb-0">
+                        <tbody>
+                            @foreach (var item in _found)
+                            {
+                                <tr>
+                                    <td>@item.League.Id</td>
+                                    <td>@item.League.Name <span class="text-muted">@item.Country?.Name · @item.League.Type</span></td>
+                                    <td class="text-end"><button class="btn btn-sm btn-link p-0" @onclick="() => AddLeagueAsync(item.League.Id)">Thêm</button></td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-header">Nhật ký đồng bộ</div>
+            <div class="card-body p-0">
+                @if (_logs.Count == 0)
+                {
+                    <div class="p-3 text-muted small">Chưa có.</div>
+                }
+                else
+                {
+                    <table class="table table-sm small mb-0">
+                        <thead><tr><th>Lúc</th><th>Tác vụ</th><th>Req</th><th>Kết quả</th></tr></thead>
+                        <tbody>
+                            @foreach (var log in _logs)
+                            {
+                                <tr class="@(log.Ok ? "" : "table-danger")">
+                                    <td class="text-nowrap">@Time.Short(log.StartedAtUtc)</td>
+                                    <td class="text-nowrap">@SyncJobs.Label(log.Job)</td>
+                                    <td>@log.Requests</td>
+                                    <td>@log.Message</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    private List<League> _leagues = [];
+    private List<SyncLog> _logs = [];
+    private readonly Dictionary<int, int> _backfillSeason = [];
+    private StatusResponse? _status;
+    private string _search = "";
+    private List<LeagueItem> _found = [];
+    private string? _message;
+    private bool _ok;
+    private string _currentPassword = "";
+    private string _newPassword = "";
+
+    private string MaskedKey
+    {
+        get
+        {
+            var key = ApiOptions.Value.ApiKey ?? "";
+            return key.Length <= 6 ? "••••" : $"{key[..3]}••••{key[^3..]}";
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        Sync.Changed += OnSyncChanged;
+        await LoadAsync();
+    }
+
+    public void Dispose() => Sync.Changed -= OnSyncChanged;
+
+    private void OnSyncChanged() => _ = InvokeAsync(StateHasChanged);
+
+    private async Task LoadAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _leagues = await db.Leagues.AsNoTracking().OrderByDescending(l => l.IsTracked).ThenBy(l => l.Name).ToListAsync();
+        foreach (var l in _leagues)
+        {
+            _backfillSeason.TryAdd(l.Id, l.CurrentSeason - 1);
+        }
+
+        _logs = await db.SyncLogs.AsNoTracking().OrderByDescending(l => l.StartedAtUtc).Take(40).ToListAsync();
+    }
+
+    private void Show(bool ok, string? message) => (_ok, _message) = (ok, message);
+
+    private async Task RunJobAsync(string job)
+    {
+        var log = await Sync.RunNamedAsync(job, default);
+        Show(log?.Ok ?? true, log?.Message ?? $"{SyncJobs.Label(job)}: không có gì cần cập nhật.");
+        await LoadAsync();
+    }
+
+    private async Task BackfillAsync(League league)
+    {
+        var season = _backfillSeason[league.Id];
+        var log = await Sync.RunAsync(SyncJobs.Backfill,
+            async (s, c) => $"{league.Name} {Standings.SeasonLabel(season)}: {await s.SyncFixturesAsync(league.Id, season, c)} trận.", default);
+        Show(log?.Ok ?? false, log?.Message);
+        await LoadAsync();
+    }
+
+    private async Task CheckQuotaAsync()
+    {
+        try
+        {
+            _status = await Api.GetStatusAsync(default);
+        }
+        catch (Exception ex)
+        {
+            Show(false, ex.Message);
+        }
+    }
+
+    private async Task SearchAsync()
+    {
+        if (_search.Trim().Length < 3)
+        {
+            Show(false, "Nhập ít nhất 3 ký tự.");
+            return;
+        }
+
+        try
+        {
+            _found = await Api.SearchLeaguesAsync(_search.Trim(), default);
+            if (_found.Count == 0)
+            {
+                Show(false, "Không tìm thấy giải nào.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Show(false, ex.Message);
+        }
+    }
+
+    private async Task AddLeagueAsync(int leagueId)
+    {
+        var log = await Sync.RunAsync(SyncJobs.Leagues, async (s, c) => await s.AddLeagueAsync(leagueId, c), default);
+        Show(log?.Ok ?? false, log?.Message);
+        _found.Clear();
+        await LoadAsync();
+    }
+
+    private async Task SetTrackedAsync(League league, bool tracked)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        await db.Leagues.Where(l => l.Id == league.Id).ExecuteUpdateAsync(s => s.SetProperty(l => l.IsTracked, tracked));
+        league.IsTracked = tracked;
+    }
+
+    private async Task SeedDemoAsync()
+    {
+        Show(true, await Demo.SeedAsync(default));
+        await LoadAsync();
+    }
+
+    private async Task DeleteDemoAsync()
+    {
+        Show(true, await Demo.DeleteAsync(default));
+        await LoadAsync();
+    }
+
+    private async Task ChangePasswordAsync()
+    {
+        var name = (await AuthState!).User.Identity?.Name ?? "";
+        var error = await Accounts.ChangePasswordAsync(name, _currentPassword, _newPassword);
+        Show(error is null, error ?? "Đã đổi mật khẩu.");
+        _currentPassword = _newPassword = "";
+    }
+}

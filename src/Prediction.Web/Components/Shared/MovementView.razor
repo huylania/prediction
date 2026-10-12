@@ -1,0 +1,69 @@
+@inject TimeDisplay Time
+
+@if (Movement is null)
+{
+    <div class="text-muted small">Chưa có kèo @(Market == Market.AsianHandicap ? "chấp" : "tài xỉu").</div>
+}
+else
+{
+    <p class="mb-2">@Movement.Describe(Home, Away, Kickoff <= DateTime.UtcNow ? "kèo đóng" : "hiện tại")</p>
+    <div class="row g-3">
+        <div class="col-12">
+            <div class="small fw-semibold mb-1">@(Market == Market.AsianHandicap ? $"Mức chấp của {Home}" : "Mức tài xỉu")</div>
+            <LineChart Data="LineSeries" Marker="Kickoff" MarkerLabel="Bóng lăn" ExtendTo="End" MinYSpan="0.5m" TickStep="0.25m"
+                       XFormat="d => Time.Short(d)" YFormat="v => Market == Market.AsianHandicap ? LineText.Signed(v) : LineText.Number(v)" />
+        </div>
+        <div class="col-12">
+            <div class="small fw-semibold mb-1">Tiền kèo (odds)</div>
+            <LineChart Data="PriceSeries" Marker="Kickoff" MarkerLabel="Bóng lăn" MinYSpan="0.1m" TickStep="0.05m"
+                       XFormat="d => Time.Short(d)" YFormat="v => LineText.Odds(v)" />
+        </div>
+    </div>
+    <details class="mt-2">
+        <summary class="small">Các lần thay đổi (@Movement.Points.Count)</summary>
+        <table class="table table-sm small mt-2 mb-0">
+            <thead>
+                <tr>
+                    <th>Thời điểm</th>
+                    <th>@(Market == Market.AsianHandicap ? $"Chấp ({Home})" : "Mức")</th>
+                    <th>@(Market == Market.AsianHandicap ? Home : "Tài")</th>
+                    <th>@(Market == Market.AsianHandicap ? Away : "Xỉu")</th>
+                    <th>Nguồn</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var p in Movement.Points)
+                {
+                    <tr>
+                        <td>@Time.Full(p.AtUtc)</td>
+                        <td>@(Market == Market.AsianHandicap ? LineText.Signed(p.Line) : LineText.Number(p.Line))</td>
+                        <td>@LineText.Odds(p.PriceA)</td>
+                        <td>@LineText.Odds(p.PriceB)</td>
+                        <td>@(p.Source switch { OddsSource.Api => "API", OddsSource.Manual => "Nhập tay", _ => "Demo" })</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </details>
+}
+
+@code {
+    [Parameter] public MarketMovement? Movement { get; set; }
+    [Parameter] public Market Market { get; set; }
+    [Parameter] public string Home { get; set; } = "";
+    [Parameter] public string Away { get; set; } = "";
+    [Parameter] public DateTime Kickoff { get; set; }
+
+    private DateTime End => Kickoff < DateTime.UtcNow ? Kickoff : DateTime.UtcNow;
+
+    private IReadOnlyList<LineChart.Series> LineSeries => Movement is null ? [] :
+    [
+        new("Mức kèo", "#0d6efd", Movement.Points.Select(p => (p.AtUtc, p.Line)).ToList(), Step: true),
+    ];
+
+    private IReadOnlyList<LineChart.Series> PriceSeries => Movement is null ? [] :
+    [
+        new(Market == Market.AsianHandicap ? Home : "Tài", "#198754", Movement.Points.Select(p => (p.AtUtc, p.PriceA)).ToList()),
+        new(Market == Market.AsianHandicap ? Away : "Xỉu", "#dc3545", Movement.Points.Select(p => (p.AtUtc, p.PriceB)).ToList()),
+    ];
+}

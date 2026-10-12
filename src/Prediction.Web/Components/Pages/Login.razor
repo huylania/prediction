@@ -1,0 +1,114 @@
+@page "/dang-nhap"
+@attribute [AllowAnonymous]
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Authentication
+@using Microsoft.AspNetCore.Authentication.Cookies
+@inject AdminAccountService Accounts
+@inject NavigationManager Navigation
+
+<PageTitle>Đăng nhập</PageTitle>
+
+<div class="row justify-content-center mt-4">
+    <div class="col-md-5 col-lg-4">
+        <div class="card shadow-sm">
+            <div class="card-body p-4">
+                @if (_hasAdmin)
+                {
+                    <h1 class="h4 mb-3">Đăng nhập</h1>
+                }
+                else
+                {
+                    <h1 class="h4 mb-1">Tạo tài khoản quản trị</h1>
+                    <p class="text-muted small">Lần đầu sử dụng: tạo tài khoản duy nhất của website.</p>
+                }
+
+                @if (_error is not null)
+                {
+                    <div class="alert alert-danger py-2">@_error</div>
+                }
+
+                <EditForm Model="Input" method="post" OnValidSubmit="SubmitAsync" FormName="login">
+                    <div class="mb-3">
+                        <label class="form-label">Tên đăng nhập</label>
+                        <InputText @bind-Value="Input!.Username" class="form-control" autocomplete="username" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Mật khẩu</label>
+                        <InputText type="password" @bind-Value="Input!.Password" class="form-control" autocomplete="@(_hasAdmin ? "current-password" : "new-password")" />
+                    </div>
+                    @if (!_hasAdmin)
+                    {
+                        <div class="mb-3">
+                            <label class="form-label">Nhập lại mật khẩu</label>
+                            <InputText type="password" @bind-Value="Input!.Confirm" class="form-control" autocomplete="new-password" />
+                        </div>
+                    }
+                    <button type="submit" class="btn btn-success w-100">@(_hasAdmin ? "Đăng nhập" : "Tạo tài khoản")</button>
+                </EditForm>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm]
+    private LoginInput? Input { get; set; }
+
+    [SupplyParameterFromQuery]
+    private string? ReturnUrl { get; set; }
+
+    private bool _hasAdmin = true;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Input ??= new();
+        _hasAdmin = await Accounts.HasAdminAsync();
+    }
+
+    private async Task SubmitAsync()
+    {
+        if (!_hasAdmin)
+        {
+            if (Input!.Password != Input!.Confirm)
+            {
+                _error = "Hai lần nhập mật khẩu không khớp.";
+                return;
+            }
+
+            _error = await Accounts.CreateFirstAsync(Input!.Username, Input!.Password);
+            if (_error is not null)
+            {
+                return;
+            }
+        }
+
+        var user = await Accounts.ValidateAsync(Input!.Username, Input!.Password);
+        if (user is null)
+        {
+            _error = "Sai tên đăng nhập hoặc mật khẩu.";
+            return;
+        }
+
+        var identity = new ClaimsIdentity(
+            [new Claim(ClaimTypes.Name, user.Username), new Claim(ClaimTypes.NameIdentifier, user.Id.ToString())],
+            CookieAuthenticationDefaults.AuthenticationScheme);
+        await HttpContext.SignInAsync(
+            CookieAuthenticationDefaults.AuthenticationScheme,
+            new ClaimsPrincipal(identity),
+            new AuthenticationProperties { IsPersistent = true });
+
+        var target = !string.IsNullOrEmpty(ReturnUrl) && ReturnUrl.StartsWith('/') && !ReturnUrl.StartsWith("//") ? ReturnUrl : "/";
+        Navigation.NavigateTo(target);
+    }
+
+    private sealed class LoginInput
+    {
+        public string Username { get; set; } = "";
+        public string Password { get; set; } = "";
+        public string Confirm { get; set; } = "";
+    }
+}

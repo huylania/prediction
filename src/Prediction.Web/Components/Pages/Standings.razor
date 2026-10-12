@@ -1,0 +1,120 @@
+@page "/bang-xep-hang"
+@rendermode InteractiveServer
+@inject IDbContextFactory<AppDbContext> DbFactory
+
+<PageTitle>Bảng xếp hạng</PageTitle>
+
+<h1 class="h3 mb-1">Bảng xếp hạng</h1>
+<p class="text-muted small">Tính từ kết quả các trận đã đá (điểm → hiệu số → bàn thắng). Không tính trừ điểm hành chính và các tiêu chí đối đầu riêng của từng giải.</p>
+
+<div class="d-flex flex-wrap gap-2 align-items-end mb-3">
+    <div>
+        <label class="form-label small mb-0">Giải</label>
+        <select class="form-select form-select-sm" value="@_leagueId" @onchange="LeagueChanged">
+            @foreach (var l in _leagues)
+            {
+                <option value="@l.Id">@l.Name</option>
+            }
+        </select>
+    </div>
+    <div>
+        <label class="form-label small mb-0">Mùa</label>
+        <select class="form-select form-select-sm" value="@_season" @onchange="SeasonChanged">
+            @foreach (var s in _seasons)
+            {
+                <option value="@s">@SeasonLabel(s)</option>
+            }
+        </select>
+    </div>
+</div>
+
+@if (_rows.Count == 0)
+{
+    <p class="text-muted">Chưa có dữ liệu cho giải/mùa này. Đồng bộ dữ liệu hoặc "Tải mùa cũ" trong Cài đặt.</p>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table table-sm table-hover bg-white">
+            <thead>
+                <tr><th>#</th><th>Đội</th><th class="text-end">Trận</th><th class="text-end">T</th><th class="text-end">H</th><th class="text-end">B</th><th class="text-end">BT</th><th class="text-end">BB</th><th class="text-end">HS</th><th class="text-end">Điểm</th><th>5 trận gần nhất</th></tr>
+            </thead>
+            <tbody>
+                @foreach (var r in _rows)
+                {
+                    <tr>
+                        <td>@r.Rank</td>
+                        <td><TeamLogo Url="@_teams.GetValueOrDefault(r.TeamId)?.LogoUrl" />@(_teams.GetValueOrDefault(r.TeamId)?.Name ?? $"#{r.TeamId}")</td>
+                        <td class="text-end">@r.Played</td>
+                        <td class="text-end">@r.Won</td>
+                        <td class="text-end">@r.Drawn</td>
+                        <td class="text-end">@r.Lost</td>
+                        <td class="text-end">@r.GoalsFor</td>
+                        <td class="text-end">@r.GoalsAgainst</td>
+                        <td class="text-end">@r.GoalDiff</td>
+                        <td class="text-end fw-bold">@r.Points</td>
+                        <td><FormChips Form="@_form.GetValueOrDefault(r.TeamId)" /></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    private List<League> _leagues = [];
+    private List<int> _seasons = [];
+    private int? _leagueId;
+    private int _season;
+    private IReadOnlyList<StandingRow> _rows = [];
+    private Dictionary<int, Team> _teams = [];
+    private Dictionary<int, string> _form = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _leagues = await db.Leagues.AsNoTracking().Where(l => l.IsTracked).OrderBy(l => l.Name).ToListAsync();
+        _leagueId = _leagues.FirstOrDefault()?.Id;
+        await LoadSeasonsAsync();
+    }
+
+    private async Task LoadSeasonsAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _seasons = await db.Fixtures.AsNoTracking().Where(f => f.LeagueId == _leagueId).Select(f => f.Season).Distinct().OrderByDescending(s => s).ToListAsync();
+        var current = _leagues.FirstOrDefault(l => l.Id == _leagueId)?.CurrentSeason;
+        _season = current is { } c && _seasons.Contains(c) ? c : _seasons.FirstOrDefault();
+        await LoadTableAsync();
+    }
+
+    private async Task LoadTableAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var fixtures = await db.Fixtures.AsNoTracking().Where(f => f.LeagueId == _leagueId && f.Season == _season).ToListAsync();
+        _rows = StandingsTimeline.CurrentTable(fixtures);
+        var ids = _rows.Select(r => r.TeamId).ToList();
+        _teams = await db.Teams.AsNoTracking().Where(t => ids.Contains(t.Id)).ToDictionaryAsync(t => t.Id);
+        _form = fixtures.Where(f => f.IsFinished)
+            .SelectMany(f => new[]
+            {
+                (Team: f.HomeTeamId, f.KickoffUtc, R: f.HomeGoals > f.AwayGoals ? 'W' : f.HomeGoals == f.AwayGoals ? 'D' : 'L'),
+                (Team: f.AwayTeamId, f.KickoffUtc, R: f.AwayGoals > f.HomeGoals ? 'W' : f.HomeGoals == f.AwayGoals ? 'D' : 'L'),
+            })
+            .GroupBy(x => x.Team)
+            .ToDictionary(g => g.Key, g => new string(g.OrderBy(x => x.KickoffUtc).TakeLast(5).Select(x => x.R).ToArray()));
+    }
+
+    private async Task LeagueChanged(ChangeEventArgs e)
+    {
+        _leagueId = int.TryParse(e.Value?.ToString(), out var id) ? id : null;
+        await LoadSeasonsAsync();
+    }
+
+    private async Task SeasonChanged(ChangeEventArgs e)
+    {
+        _season = int.TryParse(e.Value?.ToString(), out var s) ? s : _season;
+        await LoadTableAsync();
+    }
+
+    public static string SeasonLabel(int season) => $"{season}/{(season + 1) % 100:00}";
+}

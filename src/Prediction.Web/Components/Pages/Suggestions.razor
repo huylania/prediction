@@ -1,0 +1,138 @@
+@page "/goi-y"
+@rendermode InteractiveServer
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject TimeDisplay Time
+
+<PageTitle>Gợi ý & thành tích</PageTitle>
+
+<h1 class="h3 mb-1">Gợi ý & thành tích</h1>
+<p class="text-muted small">Mỗi gợi ý được cập nhật theo kèo đến giờ bóng lăn rồi chốt theo kèo đóng. Gợi ý không còn khớp lúc đóng kèo bị "Hủy" và không tính vào thành tích. Lãi/lỗ tính theo 1 đơn vị/kèo.</p>
+
+<div class="d-flex flex-wrap gap-2 align-items-end mb-3">
+    <div>
+        <label class="form-label small mb-0">Quy tắc</label>
+        <select class="form-select form-select-sm" value="@Rule" @onchange="RuleChanged">
+            <option value="">Tất cả quy tắc</option>
+            @foreach (var r in _rules)
+            {
+                <option value="@r.Id">@r.Name</option>
+            }
+        </select>
+    </div>
+    <div>
+        <label class="form-label small mb-0">Trạng thái</label>
+        <select class="form-select form-select-sm" value="@_status" @onchange="StatusChanged">
+            <option value="all">Tất cả</option>
+            <option value="open">Sắp đá / chờ kết quả</option>
+            <option value="settled">Đã chấm</option>
+            <option value="void">Hủy</option>
+        </select>
+    </div>
+</div>
+
+@if (_settled.Count > 0)
+{
+    var profit = _settled.Sum(s => s.Profit ?? 0);
+    var won = _settled.Count(s => s.Outcome is BetOutcome.Win) + _settled.Count(s => s.Outcome is BetOutcome.HalfWin) * 0.5m;
+    var lost = _settled.Count(s => s.Outcome is BetOutcome.Loss) + _settled.Count(s => s.Outcome is BetOutcome.HalfLoss) * 0.5m;
+    <div class="alert alert-light border">
+        Đã chấm <strong>@_settled.Count</strong> kèo · tỉ lệ thắng <strong>@Fmt.Pct(won + lost == 0 ? null : won / (won + lost))</strong>
+        · lãi/lỗ <strong class="@Fmt.Sign(profit)">@Fmt.Profit(profit) đv</strong> · ROI <strong>@Fmt.Roi(profit / _settled.Count)</strong>
+    </div>
+}
+
+@if (_items.Count == 0)
+{
+    <p class="text-muted">Chưa có gợi ý.</p>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table table-sm bg-white">
+            <thead>
+                <tr><th>Giờ</th><th>Trận</th><th>Quy tắc</th><th>Lúc gợi ý</th><th>Kèo chốt / hiện tại</th><th>Hạng A–B</th><th>Kết quả</th><th class="text-end">Lãi/lỗ</th></tr>
+            </thead>
+            <tbody>
+                @foreach (var s in _items)
+                {
+                    var f = s.Fixture!;
+                    var home = f.HomeTeam?.Name ?? "";
+                    var away = f.AwayTeam?.Name ?? "";
+                    <tr class="@(s.IsFrozen || s.CurrentlyMatches ? "" : "text-muted")">
+                        <td class="text-nowrap small">@Time.Kickoff(f.KickoffUtc)</td>
+                        <td><a href="tran-dau/@f.Id">@home @(f.HomeGoals.HasValue ? $"{f.HomeGoals}-{f.AwayGoals}" : "–") @away</a></td>
+                        <td class="small">@s.Rule?.Name</td>
+                        <td class="small">@LineText.Pick(s.Side, s.FirstLine, s.FirstOdds, home, away)</td>
+                        <td class="small">
+                            @LineText.Pick(s.Side, s.Line, s.Odds, home, away)
+                            @if (!s.IsFrozen && !s.CurrentlyMatches)
+                            {
+                                <span class="badge bg-light text-muted border">không còn khớp</span>
+                            }
+                        </td>
+                        <td class="small">@(s.SubjectRank?.ToString() ?? "—")–@(s.OpponentRank?.ToString() ?? "—")</td>
+                        <td><OutcomeBadge Outcome="s.Outcome" /></td>
+                        <td class="text-end @Fmt.Sign(s.Profit ?? 0)">@(s.Profit is { } p && s.Outcome != BetOutcome.Void ? Fmt.Profit(p) : "")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    @if (_items.Count >= Limit)
+    {
+        <p class="small text-muted">Hiển thị @Limit gợi ý gần nhất.</p>
+    }
+}
+
+@code {
+    private const int Limit = 300;
+
+    [SupplyParameterFromQuery(Name = "rule")] public int? Rule { get; set; }
+
+    private string _status = "all";
+    private List<Rule> _rules = [];
+    private List<Suggestion> _items = [];
+    private List<Suggestion> _settled = [];
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _rules = await db.Rules.AsNoTracking().OrderBy(r => r.Name).ToListAsync();
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var query = db.Suggestions.AsNoTracking()
+            .Include(s => s.Rule)
+            .Include(s => s.Fixture).ThenInclude(f => f!.HomeTeam)
+            .Include(s => s.Fixture).ThenInclude(f => f!.AwayTeam)
+            .Where(s => Rule == null || s.RuleId == Rule);
+
+        query = _status switch
+        {
+            "open" => query.Where(s => s.Outcome == BetOutcome.Pending),
+            "settled" => query.Where(s => s.Outcome != BetOutcome.Pending && s.Outcome != BetOutcome.Void),
+            "void" => query.Where(s => s.Outcome == BetOutcome.Void),
+            _ => query,
+        };
+
+        _items = await query.OrderByDescending(s => s.Fixture!.KickoffUtc).Take(Limit).ToListAsync();
+        _settled = await db.Suggestions.AsNoTracking()
+            .Where(s => (Rule == null || s.RuleId == Rule) && s.Outcome != BetOutcome.Pending && s.Outcome != BetOutcome.Void)
+            .ToListAsync();
+    }
+
+    private async Task RuleChanged(ChangeEventArgs e)
+    {
+        Rule = int.TryParse(e.Value?.ToString(), out var id) ? id : null;
+        await LoadAsync();
+    }
+
+    private async Task StatusChanged(ChangeEventArgs e)
+    {
+        _status = e.Value?.ToString() ?? "all";
+        await LoadAsync();
+    }
+}

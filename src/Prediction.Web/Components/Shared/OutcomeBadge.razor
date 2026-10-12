@@ -1,0 +1,5 @@
+<span class="badge @Fmt.OutcomeCss(Outcome)">@LineText.Outcome(Outcome)</span>
+
+@code {
+    [Parameter, EditorRequired] public BetOutcome Outcome { get; set; }
+}

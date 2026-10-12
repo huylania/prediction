@@ -1,0 +1,299 @@
+@page "/tran-dau/{Id:int}"
+@rendermode InteractiveServer
+@using System.Globalization
+@inject InsightService Insights
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject SuggestionService Suggestions
+@inject TimeDisplay Time
+
+<PageTitle>@(_m is null ? "Trận đấu" : $"{_m.Home} – {_m.Away}")</PageTitle>
+
+@if (_loading)
+{
+    <p class="text-muted">Đang tải…</p>
+}
+else if (_m is null)
+{
+    <p>Không tìm thấy trận. <a href="tran-dau">Danh sách trận</a></p>
+}
+else
+{
+    var f = _m.Fixture;
+    <div class="small text-muted mb-1">@_m.League?.Name · @f.Round · @Time.Full(f.KickoffUtc)</div>
+    <h1 class="h3 mb-3">
+        <TeamLogo Url="@_m.HomeTeam?.LogoUrl" />@_m.Home
+        @if (f.HomeGoals.HasValue)
+        {
+            <span class="mx-2">@f.HomeGoals – @f.AwayGoals</span>
+        }
+        else
+        {
+            <span class="text-muted mx-2">vs</span>
+        }
+        <TeamLogo Url="@_m.AwayTeam?.LogoUrl" />@_m.Away
+        <span class="badge bg-light text-dark border fs-6 align-middle">@FixtureStatus.Label(f.Status)</span>
+    </h1>
+
+    <div class="row g-3">
+        <div class="col-lg-5">
+            <div class="card mb-3">
+                <div class="card-header">Tư vấn tổng hợp</div>
+                <div class="card-body"><AdviceView Advice="_m.Advice" /></div>
+            </div>
+
+            <div class="card mb-3">
+                <div class="card-header">Trước trận @(f.HasTable ? "" : "(không thuộc giai đoạn có BXH)")</div>
+                <div class="card-body p-0">
+                    <table class="table table-sm mb-0">
+                        <thead><tr><th></th><th>@_m.Home</th><th>@_m.Away</th></tr></thead>
+                        <tbody>
+                            <tr><td>Hạng</td><td>@(_m.Context.Home?.Rank?.ToString() ?? "—")</td><td>@(_m.Context.Away?.Rank?.ToString() ?? "—")</td></tr>
+                            <tr><td>Điểm (trận)</td><td>@_m.Context.Home?.Points (@_m.Context.Home?.Played)</td><td>@_m.Context.Away?.Points (@_m.Context.Away?.Played)</td></tr>
+                            <tr><td>T-H-B</td><td>@Whl(_m.Context.Home)</td><td>@Whl(_m.Context.Away)</td></tr>
+                            <tr><td>Hiệu số</td><td>@_m.Context.Home?.GoalDiff</td><td>@_m.Context.Away?.GoalDiff</td></tr>
+                            <tr><td>Phong độ 5 trận</td><td><FormChips Form="@_m.Context.Home?.Form" /></td><td><FormChips Form="@_m.Context.Away?.Form" /></td></tr>
+                            <tr><td>TB tổng bàn/trận</td><td>@Fmt.Num(_m.Context.Home?.AvgTotalGoals)</td><td>@Fmt.Num(_m.Context.Away?.AvgTotalGoals)</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="card mb-3">
+                <div class="card-header">Tư vấn API-Football</div>
+                <div class="card-body">
+                    @if (_m.Context.Advice is not { } a)
+                    {
+                        <span class="text-muted small">Chưa có dữ liệu tư vấn cho trận này.</span>
+                    }
+                    else
+                    {
+                        @if (!string.IsNullOrWhiteSpace(a.Advice))
+                        {
+                            <p class="mb-2">“@a.Advice”</p>
+                        }
+                        <div class="progress mb-1" style="height: 22px;">
+                            <div class="progress-bar bg-success" style="width:@(a.PercentHome ?? 0)%">@a.PercentHome%</div>
+                            <div class="progress-bar bg-secondary" style="width:@(a.PercentDraw ?? 0)%">@a.PercentDraw%</div>
+                            <div class="progress-bar bg-danger" style="width:@(a.PercentAway ?? 0)%">@a.PercentAway%</div>
+                        </div>
+                        <div class="d-flex justify-content-between small text-muted mb-2"><span>@_m.Home</span><span>Hòa</span><span>@_m.Away</span></div>
+                        <table class="table table-sm small mb-1">
+                            <thead><tr><th>So sánh</th><th>@_m.Home</th><th>@_m.Away</th></tr></thead>
+                            <tbody>
+                                <tr><td>Phong độ</td><td>@P(a.FormHome)</td><td>@P(a.FormAway)</td></tr>
+                                <tr><td>Tấn công</td><td>@P(a.AttackHome)</td><td>@P(a.AttackAway)</td></tr>
+                                <tr><td>Phòng ngự</td><td>@P(a.DefenceHome)</td><td>@P(a.DefenceAway)</td></tr>
+                                <tr><td>Đối đầu</td><td>@P(a.H2HHome)</td><td>@P(a.H2HAway)</td></tr>
+                                <tr><td>Tổng</td><td>@P(a.TotalHome)</td><td>@P(a.TotalAway)</td></tr>
+                            </tbody>
+                        </table>
+                        <div class="small text-muted">
+                            Dự đoán tài/xỉu: @(a.UnderOverSide switch { PickSide.Over => "Tài " + a.UnderOver!.TrimStart('+'), PickSide.Under => "Xỉu " + a.UnderOver!.TrimStart('-'), _ => "—" })
+                            · Lấy lúc @Time.Short(a.FetchedAtUtc)
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-7">
+            <div class="card mb-3">
+                <div class="card-header">Biến động kèo chấp</div>
+                <div class="card-body">
+                    <MovementView Movement="_m.Context.Handicap" Market="Market.AsianHandicap" Home="@_m.Home" Away="@_m.Away" Kickoff="f.KickoffUtc" />
+                </div>
+            </div>
+            <div class="card mb-3">
+                <div class="card-header">Biến động tài xỉu</div>
+                <div class="card-body">
+                    <MovementView Movement="_m.Context.Totals" Market="Market.OverUnder" Home="@_m.Home" Away="@_m.Away" Kickoff="f.KickoffUtc" />
+                </div>
+            </div>
+
+            <div class="card mb-3">
+                <div class="card-header">Gợi ý đã ghi nhận cho trận này</div>
+                <div class="card-body p-0">
+                    @if (_suggestions.Count == 0)
+                    {
+                        <div class="p-3 text-muted small">Chưa có.</div>
+                    }
+                    else
+                    {
+                        <table class="table table-sm mb-0 small">
+                            <thead><tr><th>Quy tắc</th><th>Lúc gợi ý</th><th>Kèo chốt</th><th>Kết quả</th><th class="text-end">Lãi/lỗ</th></tr></thead>
+                            <tbody>
+                                @foreach (var s in _suggestions)
+                                {
+                                    <tr>
+                                        <td>@s.Rule?.Name</td>
+                                        <td>@LineText.Pick(s.Side, s.FirstLine, s.FirstOdds, _m.Home, _m.Away)</td>
+                                        <td>@LineText.Pick(s.Side, s.Line, s.Odds, _m.Home, _m.Away) @if (!s.IsFrozen && !s.CurrentlyMatches) { <span class="badge bg-light text-muted border">không còn khớp</span> }</td>
+                                        <td><OutcomeBadge Outcome="s.Outcome" /></td>
+                                        <td class="text-end @Fmt.Sign(s.Profit ?? 0)">@(s.Profit is { } p ? Fmt.Profit(p) : "")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+                </div>
+            </div>
+
+            <div class="card mb-3">
+                <div class="card-header">Nhập kèo tay</div>
+                <div class="card-body">
+                    <p class="hint">
+                        Dùng khi API chưa có kèo hoặc để bổ sung kèo cho trận cũ (phục vụ kiểm chứng). Kèo chấp ghi theo <strong>đội nhà</strong>:
+                        âm = đội nhà chấp (vd −0.75 = @_m.Home chấp 3/4 trái), dương = đội nhà được chấp. Kèo có thời điểm trước giờ bóng lăn mới được dùng để chấm.
+                    </p>
+                    <div class="row g-2 align-items-end">
+                        <div class="col-sm-3">
+                            <label class="form-label small mb-0">Loại kèo</label>
+                            <select class="form-select form-select-sm" @bind="_manual.Market">
+                                <option value="@Market.AsianHandicap">Chấp châu Á</option>
+                                <option value="@Market.OverUnder">Tài xỉu</option>
+                            </select>
+                        </div>
+                        <div class="col-sm-2">
+                            <label class="form-label small mb-0">Mức</label>
+                            <input type="number" step="0.25" class="form-control form-control-sm" @bind="_manual.Line" />
+                        </div>
+                        <div class="col-sm-2">
+                            <label class="form-label small mb-0">@(_manual.Market == Market.AsianHandicap ? "Odds nhà" : "Odds tài")</label>
+                            <input type="number" step="0.01" class="form-control form-control-sm" @bind="_manual.PriceA" />
+                        </div>
+                        <div class="col-sm-2">
+                            <label class="form-label small mb-0">@(_manual.Market == Market.AsianHandicap ? "Odds khách" : "Odds xỉu")</label>
+                            <input type="number" step="0.01" class="form-control form-control-sm" @bind="_manual.PriceB" />
+                        </div>
+                        <div class="col-sm-3">
+                            <label class="form-label small mb-0">Thời điểm</label>
+                            <input type="datetime-local" class="form-control form-control-sm" @bind="_manual.AtLocal" />
+                        </div>
+                    </div>
+                    <div class="mt-2 d-flex gap-2 align-items-center">
+                        <button class="btn btn-sm btn-primary" @onclick="AddManualAsync">Lưu kèo</button>
+                        @if (_manualMessage is not null)
+                        {
+                            <span class="small @(_manualOk ? "text-success" : "text-danger")">@_manualMessage</span>
+                        }
+                    </div>
+                    @if (_m.Snapshots.Any(s => s.Source == OddsSource.Manual))
+                    {
+                        <table class="table table-sm small mt-3 mb-0">
+                            <thead><tr><th>Kèo nhập tay</th><th>Mức</th><th>Odds</th><th>Thời điểm</th><th></th></tr></thead>
+                            <tbody>
+                                @foreach (var s in _m.Snapshots.Where(s => s.Source == OddsSource.Manual))
+                                {
+                                    <tr>
+                                        <td>@(s.Market == Market.AsianHandicap ? "Chấp" : "Tài xỉu")</td>
+                                        <td>@(s.Market == Market.AsianHandicap ? LineText.Signed(s.Line) : LineText.Number(s.Line))</td>
+                                        <td>@LineText.Odds(s.PriceA) / @LineText.Odds(s.PriceB)</td>
+                                        <td>@Time.Full(s.FetchedAtUtc)</td>
+                                        <td><button class="btn btn-sm btn-link text-danger p-0" @onclick="() => DeleteManualAsync(s.Id)">Xóa</button></td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private bool _loading = true;
+    private MatchInsight? _m;
+    private List<Suggestion> _suggestions = [];
+    private readonly ManualOdds _manual = new();
+    private string? _manualMessage;
+    private bool _manualOk;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await LoadAsync();
+        if (_m is not null)
+        {
+            var at = _m.Fixture.KickoffUtc > Insights.UtcNow ? Insights.UtcNow : _m.Fixture.KickoffUtc.AddMinutes(-5);
+            _manual.AtLocal = Time.ToLocal(at);
+            _manual.Line = Math.Round(_m.Context.Handicap?.Current.Line ?? 0, 2);
+            _manual.PriceA = Math.Round(_m.Context.Handicap?.Current.PriceA ?? 1.9m, 2);
+            _manual.PriceB = Math.Round(_m.Context.Handicap?.Current.PriceB ?? 1.9m, 2);
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _m = await Insights.ForFixtureAsync(Id);
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _suggestions = await db.Suggestions.AsNoTracking().Include(s => s.Rule).Where(s => s.FixtureId == Id).OrderBy(s => s.Rule!.Name).ToListAsync();
+        _loading = false;
+    }
+
+    private async Task AddManualAsync()
+    {
+        if (_m is null)
+        {
+            return;
+        }
+
+        if (_manual.Line * 4 != decimal.Truncate(_manual.Line * 4) || _manual.PriceA <= 1 || _manual.PriceB <= 1)
+        {
+            (_manualOk, _manualMessage) = (false, "Mức kèo phải là bội số của 0.25 và odds phải lớn hơn 1.");
+            return;
+        }
+
+        if (_manual.Market == Market.OverUnder && _manual.Line <= 0)
+        {
+            (_manualOk, _manualMessage) = (false, "Mức tài xỉu phải lớn hơn 0.");
+            return;
+        }
+
+        await using (var db = await DbFactory.CreateDbContextAsync())
+        {
+            db.OddsSnapshots.Add(new OddsSnapshot
+            {
+                FixtureId = _m.Fixture.Id,
+                Market = _manual.Market,
+                Line = _manual.Line,
+                PriceA = _manual.PriceA,
+                PriceB = _manual.PriceB,
+                BookmakerId = 0,
+                FetchedAtUtc = Time.ToUtc(_manual.AtLocal),
+                Source = OddsSource.Manual,
+            });
+            await db.SaveChangesAsync();
+        }
+
+        await Suggestions.RefreshAsync(default);
+        (_manualOk, _manualMessage) = (true, "Đã lưu kèo.");
+        await LoadAsync();
+    }
+
+    private async Task DeleteManualAsync(long id)
+    {
+        await using (var db = await DbFactory.CreateDbContextAsync())
+        {
+            await db.OddsSnapshots.Where(s => s.Id == id && s.Source == OddsSource.Manual).ExecuteDeleteAsync();
+        }
+
+        await Suggestions.RefreshAsync(default);
+        await LoadAsync();
+    }
+
+    private static string Whl(TeamSnapshot? s) => s is null ? "—" : $"{s.Won}-{s.Drawn}-{s.Lost}";
+
+    private static string P(int? value) => value is null ? "—" : $"{value}%";
+
+    private sealed class ManualOdds
+    {
+        public Market Market { get; set; } = Market.AsianHandicap;
+        public decimal Line { get; set; }
+        public decimal PriceA { get; set; } = 1.9m;
+        public decimal PriceB { get; set; } = 1.9m;
+        public DateTime AtLocal { get; set; }
+    }
+}

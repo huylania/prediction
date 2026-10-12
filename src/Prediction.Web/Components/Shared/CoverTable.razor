@@ -1,0 +1,35 @@
+<table class="table table-sm small mb-1">
+    <thead>
+        <tr>
+            <th>Mức</th>
+            <th class="text-end">Thắng</th>
+            <th class="text-end">½T</th>
+            <th class="text-end">Hòa</th>
+            <th class="text-end">½B</th>
+            <th class="text-end">Thua</th>
+            <th class="text-end">Tỉ lệ thắng</th>
+            <th class="text-end">Odds hòa vốn</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var row in Rows)
+        {
+            var c = row.Counts;
+            <tr class="@(c.BreakEvenOdds is { } be && be < 1.90m ? "cover-good" : "")">
+                <td>@(Signed ? LineText.Signed(row.Line) : LineText.Number(row.Line))</td>
+                <td class="text-end">@Fmt.Pct(c.Share(c.Win))</td>
+                <td class="text-end">@Fmt.Pct(c.Share(c.HalfWin))</td>
+                <td class="text-end">@Fmt.Pct(c.Share(c.Push))</td>
+                <td class="text-end">@Fmt.Pct(c.Share(c.HalfLoss))</td>
+                <td class="text-end">@Fmt.Pct(c.Share(c.Loss))</td>
+                <td class="text-end fw-semibold">@Fmt.Pct(c.WinRate)</td>
+                <td class="text-end">@Fmt.Odds(c.BreakEvenOdds)</td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<LineCoverRow> Rows { get; set; } = [];
+    [Parameter] public bool Signed { get; set; }
+}

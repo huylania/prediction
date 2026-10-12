@@ -1,0 +1,102 @@
+@page "/quy-tac"
+@rendermode InteractiveServer
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject SuggestionService Suggestions
+
+<PageTitle>Quy tắc</PageTitle>
+
+<div class="d-flex align-items-center mb-3">
+    <h1 class="h3 mb-0">Quy tắc của tôi</h1>
+    <a href="quy-tac/moi" class="btn btn-success ms-auto">+ Tạo quy tắc</a>
+</div>
+<p class="text-muted small">
+    Mỗi quy tắc là một "kinh nghiệm bet": các điều kiện về đội, BXH, phong độ, kèo, biến động kèo và tư vấn API.
+    Trận nào khớp sẽ thành gợi ý; gợi ý được chốt theo kèo đóng và chấm khi có kết quả để ra thành tích thực tế.
+</p>
+
+@if (_rows.Count == 0)
+{
+    <p class="text-muted">Chưa có quy tắc nào.</p>
+}
+
+@foreach (var (rule, record) in _rows)
+{
+    <div class="card mb-3 @(rule.IsActive ? "" : "opacity-75")">
+        <div class="card-body">
+            <div class="d-flex flex-wrap align-items-start gap-2">
+                <div>
+                    <h2 class="h5 mb-1"><a href="quy-tac/@rule.Id" class="text-decoration-none">@rule.Name</a></h2>
+                    <span class="badge bg-primary">@(rule.Market == Market.AsianHandicap ? "Kèo chấp" : "Tài xỉu")</span>
+                    <span class="badge bg-dark">@RuleText.Selection(rule)</span>
+                    @if (!rule.IsActive)
+                    {
+                        <span class="badge bg-light text-muted border">Đang tắt</span>
+                    }
+                </div>
+                <div class="ms-auto text-end small">
+                    <div>@record.Settled kèo đã chấm · <span class="@Fmt.Sign(record.Profit)">@Fmt.Profit(record.Profit) đv</span> · ROI @Fmt.Roi(record.Roi)</div>
+                    <div class="text-muted">@(record.Wins)T @(record.HalfWins)T½ @(record.Pushes)H @(record.HalfLosses)B½ @(record.Losses)B</div>
+                </div>
+            </div>
+            <ul class="small mt-2 mb-2 cond-list">
+                @foreach (var c in RuleText.Conditions(rule, rule.League?.Name, rule.SubjectTeam?.Name))
+                {
+                    <li>@c</li>
+                }
+            </ul>
+            <div class="d-flex flex-wrap gap-2">
+                <a class="btn btn-sm btn-outline-primary" href="quy-tac/@rule.Id">Sửa</a>
+                <a class="btn btn-sm btn-outline-success" href="quy-tac/@rule.Id/kiem-chung">Kiểm chứng</a>
+                <a class="btn btn-sm btn-outline-secondary" href="goi-y?rule=@rule.Id">Lịch sử gợi ý</a>
+                <button class="btn btn-sm btn-outline-secondary" @onclick="() => ToggleAsync(rule)">@(rule.IsActive ? "Tắt" : "Bật")</button>
+                @if (_confirmDelete == rule.Id)
+                {
+                    <button class="btn btn-sm btn-danger" @onclick="() => DeleteAsync(rule.Id)">Xác nhận xóa (mất cả lịch sử gợi ý)</button>
+                    <button class="btn btn-sm btn-link" @onclick="() => _confirmDelete = null">Hủy</button>
+                }
+                else
+                {
+                    <button class="btn btn-sm btn-outline-danger" @onclick="() => _confirmDelete = rule.Id">Xóa</button>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<(Rule Rule, RuleRecord Record)> _rows = [];
+    private int? _confirmDelete;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var rules = await db.Rules.AsNoTracking().Include(r => r.League).Include(r => r.SubjectTeam)
+            .OrderByDescending(r => r.IsActive).ThenBy(r => r.Name).ToListAsync();
+        var records = await ContextLoader.LoadRecordsAsync(db, default);
+        _rows = rules.Select(r => (r, records.GetValueOrDefault(r.Id) ?? RuleRecord.Empty)).ToList();
+    }
+
+    private async Task ToggleAsync(Rule rule)
+    {
+        await using (var db = await DbFactory.CreateDbContextAsync())
+        {
+            await db.Rules.Where(r => r.Id == rule.Id).ExecuteUpdateAsync(s => s.SetProperty(r => r.IsActive, !rule.IsActive));
+        }
+
+        await Suggestions.RefreshAsync(default);
+        await LoadAsync();
+    }
+
+    private async Task DeleteAsync(int id)
+    {
+        await using (var db = await DbFactory.CreateDbContextAsync())
+        {
+            await db.Rules.Where(r => r.Id == id).ExecuteDeleteAsync();
+        }
+
+        _confirmDelete = null;
+        await LoadAsync();
+    }
+}

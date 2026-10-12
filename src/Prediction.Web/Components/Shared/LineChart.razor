@@ -1,0 +1,158 @@
+@using System.Globalization
+
+@if (Data.All(s => s.Points.Count == 0))
+{
+    <div class="text-muted small">Chưa có dữ liệu.</div>
+}
+else
+{
+    <svg viewBox="0 0 @W @Height" class="line-chart" role="img" aria-label="@Title">
+        @foreach (var (value, y) in YTicks())
+        {
+            <g>
+                <line x1="@F(PadL)" x2="@F(W - PadR)" y1="@F(y)" y2="@F(y)" class="grid" />
+                <text x="@F(PadL - 6)" y="@F(y + 4)" text-anchor="end" class="tick">@YFormat(value)</text>
+            </g>
+        }
+        <text x="@F(PadL)" y="@F(Height - 6)" class="tick">@XFormat(_minX)</text>
+        <text x="@F(W - PadR)" y="@F(Height - 6)" text-anchor="end" class="tick">@XFormat(_maxX)</text>
+        @if (Marker is { } marker && marker >= _minX && marker <= _maxX)
+        {
+            <g>
+                <line x1="@F(X(marker))" x2="@F(X(marker))" y1="@F(PadT)" y2="@F(Height - PadB)" class="marker" />
+                <text x="@F(X(marker) - 4)" y="@F(PadT + 10)" text-anchor="end" class="tick">@MarkerLabel</text>
+            </g>
+        }
+        @foreach (var s in Data.Where(s => s.Points.Count > 0))
+        {
+            <path d="@PathFor(s)" fill="none" stroke="@s.Color" stroke-width="2" />
+            @foreach (var p in s.Points)
+            {
+                <circle cx="@F(X(p.X))" cy="@F(Y(p.Y))" r="2.5" fill="@s.Color">
+                    <title>@s.Name: @YFormat(p.Y) — @XFormat(p.X)</title>
+                </circle>
+            }
+        }
+    </svg>
+    @if (Data.Count > 1 || ShowLegend)
+    {
+        <div class="chart-legend small">
+            @foreach (var s in Data)
+            {
+                <span class="me-3"><span class="legend-swatch" style="background:@s.Color"></span>@s.Name</span>
+            }
+        </div>
+    }
+}
+
+@code {
+    public sealed record Series(string Name, string Color, IReadOnlyList<(DateTime X, decimal Y)> Points, bool Step = false);
+
+    private const double W = 600;
+    private const double PadL = 48, PadR = 12, PadT = 10, PadB = 24;
+
+    [Parameter] public IReadOnlyList<Series> Data { get; set; } = [];
+    [Parameter] public int Height { get; set; } = 170;
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public Func<decimal, string> YFormat { get; set; } = v => v.ToString("0.##", CultureInfo.InvariantCulture);
+    [Parameter] public Func<DateTime, string> XFormat { get; set; } = d => d.ToString("dd/MM HH:mm", CultureInfo.InvariantCulture);
+    [Parameter] public decimal MinYSpan { get; set; } = 0.1m;
+    [Parameter] public DateTime? Marker { get; set; }
+    [Parameter] public string MarkerLabel { get; set; } = "";
+    [Parameter] public DateTime? ExtendTo { get; set; }
+    [Parameter] public bool ShowLegend { get; set; }
+    [Parameter] public bool IncludeZero { get; set; }
+
+    /// <summary>Đặt vạch trục tung theo bội số của bước này (vd 0.25 cho mức kèo).</summary>
+    [Parameter] public decimal? TickStep { get; set; }
+
+    private DateTime _minX, _maxX;
+    private decimal _minY, _maxY;
+
+    protected override void OnParametersSet()
+    {
+        var points = Data.SelectMany(s => s.Points).ToList();
+        if (points.Count == 0)
+        {
+            return;
+        }
+
+        _minX = points.Min(p => p.X);
+        _maxX = new[] { points.Max(p => p.X), ExtendTo ?? DateTime.MinValue, Marker ?? DateTime.MinValue }.Max();
+        if (_maxX <= _minX)
+        {
+            _maxX = _minX.AddHours(1);
+        }
+
+        _minY = points.Min(p => p.Y);
+        _maxY = points.Max(p => p.Y);
+        if (IncludeZero)
+        {
+            _minY = Math.Min(_minY, 0);
+            _maxY = Math.Max(_maxY, 0);
+        }
+
+        if (_maxY - _minY < MinYSpan)
+        {
+            var mid = (_maxY + _minY) / 2;
+            _minY = mid - MinYSpan / 2;
+            _maxY = mid + MinYSpan / 2;
+        }
+    }
+
+    private double X(DateTime x) => PadL + (x - _minX).TotalSeconds / (_maxX - _minX).TotalSeconds * (W - PadL - PadR);
+
+    private double Y(decimal y) => Height - PadB - (double)((y - _minY) / (_maxY - _minY)) * (Height - PadT - PadB);
+
+    private IEnumerable<(decimal Value, double Y)> YTicks()
+    {
+        if (TickStep is { } step && step > 0)
+        {
+            while ((_maxY - _minY) / step > 6)
+            {
+                step *= 2;
+            }
+
+            for (var v = Math.Ceiling(_minY / step) * step; v <= _maxY; v += step)
+            {
+                yield return (v, Y(v));
+            }
+
+            yield break;
+        }
+
+        for (var i = 0; i <= 3; i++)
+        {
+            var value = _minY + (_maxY - _minY) * i / 3;
+            yield return (value, Y(value));
+        }
+    }
+
+    private string PathFor(Series s)
+    {
+        var sb = new System.Text.StringBuilder();
+        var points = s.Points.OrderBy(p => p.X).ToList();
+        sb.Append($"M{F(X(points[0].X))},{F(Y(points[0].Y))}");
+        for (var i = 1; i < points.Count; i++)
+        {
+            if (s.Step)
+            {
+                sb.Append($" H{F(X(points[i].X))} V{F(Y(points[i].Y))}");
+            }
+            else
+            {
+                sb.Append($" L{F(X(points[i].X))},{F(Y(points[i].Y))}");
+            }
+        }
+
+        var end = ExtendTo is { } extend && extend > points[^1].X ? extend : (DateTime?)null;
+        if (end is { } e && s.Step)
+        {
+            sb.Append($" H{F(X(e < _maxX ? e : _maxX))}");
+        }
+
+        return sb.ToString();
+    }
+
+    private static string F(double v) => v.ToString("0.#", CultureInfo.InvariantCulture);
+}

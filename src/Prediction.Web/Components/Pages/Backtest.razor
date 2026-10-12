@@ -1,0 +1,216 @@
+@page "/quy-tac/{Id:int}/kiem-chung"
+@rendermode InteractiveServer
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject BacktestService Backtests
+@inject TimeDisplay Time
+
+<PageTitle>Kiểm chứng quy tắc</PageTitle>
+
+@if (_rule is null)
+{
+    <p class="text-muted">Đang tải…</p>
+}
+else
+{
+    <div class="small text-muted"><a href="quy-tac">Quy tắc</a> / <a href="quy-tac/@_rule.Id">@_rule.Name</a></div>
+    <h1 class="h3 mb-1">Kiểm chứng: @_rule.Name</h1>
+    <p class="small mb-3"><strong>@RuleText.Selection(_rule)</strong> khi @string.Join("; ", RuleText.Conditions(_rule, _rule.League?.Name, _rule.SubjectTeam?.Name)).</p>
+
+    <div class="form-section">
+        <h2>Phạm vi dữ liệu</h2>
+        @if (_seasons.Count == 0)
+        {
+            <p class="text-muted small mb-0">Chưa có trận đã đá nào trong CSDL cho giải của quy tắc. Vào Cài đặt → "Tải mùa cũ" để nạp kết quả các mùa trước.</p>
+        }
+        else
+        {
+            <div class="d-flex flex-wrap gap-3 mb-2">
+                @foreach (var s in _seasons)
+                {
+                    var key = (s.LeagueId, s.Season);
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="s-@s.LeagueId-@s.Season" checked="@_selected.Contains(key)"
+                               @onchange="e => Toggle(key, (bool)e.Value!)" />
+                        <label class="form-check-label small" for="s-@s.LeagueId-@s.Season">@s.LeagueName @Standings.SeasonLabel(s.Season) <span class="text-muted">(@s.Finished trận)</span></label>
+                    </div>
+                }
+            </div>
+            <button class="btn btn-success" disabled="@(_running || _selected.Count == 0)" @onclick="RunAsync">@(_running ? "Đang chạy…" : "Chạy kiểm chứng")</button>
+        }
+    </div>
+
+    @if (_result is { } result)
+    {
+        var r = result.Report;
+        <div class="row g-3">
+            <div class="col-xl-6">
+                <div class="card h-100">
+                    <div class="card-header">1. Thống kê kết quả (không cần kèo)</div>
+                    <div class="card-body">
+                        @if (r.ResultStatsUnavailable)
+                        {
+                            <p class="text-muted small mb-0">Quy tắc chỉ dựa vào kèo (không có điều kiện phân biệt đội A), nên không có thống kê không cần kèo. Xem phần 2.</p>
+                        }
+                        else if (r.ResultMatches == 0)
+                        {
+                            <p class="text-muted small mb-0">Không có trận nào khớp các điều kiện đội/BXH/phong độ.</p>
+                        }
+                        else
+                        {
+                            <p class="small text-muted">Chỉ xét điều kiện đội, BXH, phong độ (BXH tính tại thời điểm trước mỗi trận). Bỏ qua điều kiện kèo, biến động và API.</p>
+                            <div class="mb-2"><strong>@r.ResultMatches</strong> trận khớp.</div>
+                            @if (_rule.Market == Market.AsianHandicap)
+                            {
+                                <div class="mb-3">
+                                    Cửa chọn: thắng <strong>@Fmt.Pct((decimal)r.SideWins / r.ResultMatches)</strong> ·
+                                    hòa <strong>@Fmt.Pct((decimal)r.SideDraws / r.ResultMatches)</strong> ·
+                                    thua <strong>@Fmt.Pct((decimal)r.SideLosses / r.ResultMatches)</strong>
+                                </div>
+                                <div class="small fw-semibold">Hiệu số của cửa chọn</div>
+                            }
+                            else
+                            {
+                                <div class="small fw-semibold">Tổng số bàn</div>
+                            }
+                            <table class="table table-sm small mb-3">
+                                <tbody>
+                                    @foreach (var (bucket, count) in r.Distribution)
+                                    {
+                                        <tr>
+                                            <td style="width: 4rem">@BucketLabel(bucket)</td>
+                                            <td><div class="dist-bar" style="width:@(Bar(count, r.Distribution.Values.Max()))%"></div></td>
+                                            <td class="text-end" style="width: 6rem">@count (@Fmt.Pct((decimal)count / r.ResultMatches))</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+
+                            @if (r.HandicapRows.Count > 0)
+                            {
+                                <div class="small fw-semibold">Nếu chọn cửa này ở từng mức chấp</div>
+                                <CoverTable Rows="r.HandicapRows" Signed="true" />
+                            }
+                            <div class="small fw-semibold mt-2">@(r.TotalsSide == PickSide.Over ? "Nếu chọn Tài" : "Nếu chọn Xỉu") ở từng mức</div>
+                            <CoverTable Rows="r.TotalsRows" Signed="false" />
+                            <div class="hint">
+                                Odds hòa vốn: odds tối thiểu để không lỗ nếu luôn đánh cửa này ở đúng mức đó. Dòng xanh = hòa vốn dưới 1.90.
+                                Hãy so với mức kèo nhà cái thật sự ra cho những trận này: đội mạnh thường phải chấp sâu hơn, nên chỉ mức chấp gần với kèo thật mới có ý nghĩa.
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+            <div class="col-xl-6">
+                <div class="card h-100">
+                    <div class="card-header">2. Lợi nhuận theo kèo thật (mỗi kèo 1 đơn vị)</div>
+                    <div class="card-body">
+                        <p class="small text-muted">
+                            Xét đủ mọi điều kiện, dùng kèo đóng (bản cuối trước giờ bóng lăn). Có @r.FixturesWithOdds trận đã đá có kèo @(_rule.Market == Market.AsianHandicap ? "chấp" : "tài xỉu") trong phạm vi.
+                        </p>
+                        @if (r.Bets.Count == 0)
+                        {
+                            <p class="text-muted small mb-0">Chưa có kèo nào khớp. Dữ liệu kèo tích lũy dần từ lúc website bắt đầu đồng bộ, hoặc nhập tay cho trận cũ.</p>
+                        }
+                        else
+                        {
+                            <div class="row text-center mb-3">
+                                <div class="col"><div class="label small text-muted">Số kèo</div><div class="fs-5 fw-bold">@r.Bets.Count</div></div>
+                                <div class="col"><div class="label small text-muted">Tỉ lệ thắng</div><div class="fs-5 fw-bold">@Fmt.Pct(r.BetCounts.WinRate)</div></div>
+                                <div class="col"><div class="label small text-muted">Lãi/lỗ</div><div class="fs-5 fw-bold @Fmt.Sign(r.Profit)">@Fmt.Profit(r.Profit)</div></div>
+                                <div class="col"><div class="label small text-muted">ROI</div><div class="fs-5 fw-bold">@Fmt.Roi(r.Roi)</div></div>
+                            </div>
+                            <div class="small mb-2">
+                                @r.BetCounts.Win thắng · @r.BetCounts.HalfWin thắng nửa · @r.BetCounts.Push hòa · @r.BetCounts.HalfLoss thua nửa · @r.BetCounts.Loss thua
+                                · Chuỗi thua dài nhất: @r.LongestLosingStreak · Sụt giảm lớn nhất: @Fmt.Num(r.MaxDrawdown, "0.00") đv
+                            </div>
+                            <LineChart Data="ProfitSeries(r)" IncludeZero="true" MinYSpan="1m" XFormat="d => Time.Short(d)" YFormat="v => Fmt.Profit(v)" />
+                            <details class="mt-2">
+                                <summary class="small">Chi tiết từng kèo</summary>
+                                <table class="table table-sm small mt-2">
+                                    <thead><tr><th>Ngày</th><th>Trận</th><th>Lựa chọn</th><th>Kết quả</th><th class="text-end">Lãi/lỗ</th></tr></thead>
+                                    <tbody>
+                                        @foreach (var b in r.Bets.AsEnumerable().Reverse())
+                                        {
+                                            var home = result.Contexts.TeamName(b.Fixture.HomeTeamId);
+                                            var away = result.Contexts.TeamName(b.Fixture.AwayTeamId);
+                                            <tr>
+                                                <td class="text-nowrap">@Time.Short(b.Fixture.KickoffUtc)</td>
+                                                <td><a href="tran-dau/@b.Fixture.Id">@home @b.Fixture.HomeGoals-@b.Fixture.AwayGoals @away</a></td>
+                                                <td>@LineText.Pick(b.Pick.Side, b.Pick.Line, b.Pick.Odds, home, away)</td>
+                                                <td><OutcomeBadge Outcome="b.Result.Outcome" /></td>
+                                                <td class="text-end @Fmt.Sign(b.Result.Profit)">@Fmt.Profit(b.Result.Profit)</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </details>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private Rule? _rule;
+    private List<SeasonOption> _seasons = [];
+    private readonly HashSet<(int, int)> _selected = [];
+    private BacktestResult? _result;
+    private bool _running;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _rule = await db.Rules.AsNoTracking().Include(r => r.League).Include(r => r.SubjectTeam).FirstOrDefaultAsync(r => r.Id == Id);
+        if (_rule is null)
+        {
+            return;
+        }
+
+        _seasons = await Backtests.SeasonsAsync(_rule.LeagueId);
+        _selected.Clear();
+        foreach (var s in _seasons)
+        {
+            _selected.Add((s.LeagueId, s.Season));
+        }
+
+        if (_selected.Count > 0)
+        {
+            await RunAsync();
+        }
+    }
+
+    private void Toggle((int, int) key, bool on)
+    {
+        if (on)
+        {
+            _selected.Add(key);
+        }
+        else
+        {
+            _selected.Remove(key);
+        }
+    }
+
+    private async Task RunAsync()
+    {
+        _running = true;
+        StateHasChanged();
+        _result = await Backtests.RunAsync(_rule!, _selected.ToList());
+        _running = false;
+    }
+
+    private string BucketLabel(int bucket) => _rule!.Market == Market.AsianHandicap
+        ? bucket switch { -4 => "≤ −4", 4 => "≥ +4", 0 => "0", _ => bucket.ToString("+0;−0") }
+        : bucket >= 7 ? "≥ 7" : bucket.ToString();
+
+    private static int Bar(int count, int max) => max == 0 ? 0 : Math.Max(1, count * 100 / max);
+
+    private static IReadOnlyList<LineChart.Series> ProfitSeries(BacktestReport r) =>
+    [
+        new("Lãi/lỗ lũy kế", "#198754", r.Bets.Select(b => (b.Fixture.KickoffUtc, b.Cumulative)).ToList()),
+    ];
+}

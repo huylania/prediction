@@ -1,0 +1,156 @@
+@page "/tran-dau"
+@rendermode InteractiveServer
+@inject InsightService Insights
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject TimeDisplay Time
+
+<PageTitle>Trận đấu</PageTitle>
+
+<h1 class="h3 mb-3">Trận đấu</h1>
+
+<div class="d-flex flex-wrap gap-2 align-items-end mb-3">
+    <div>
+        <label class="form-label small mb-0">Giải</label>
+        <select class="form-select form-select-sm" value="@_leagueId" @onchange="LeagueChanged">
+            <option value="">Tất cả giải</option>
+            @foreach (var l in _leagues)
+            {
+                <option value="@l.Id">@l.Name</option>
+            }
+        </select>
+    </div>
+    <div>
+        <label class="form-label small mb-0">Ngày</label>
+        <div class="input-group input-group-sm">
+            <button class="btn btn-outline-secondary" @onclick="() => ShiftDay(-1)">‹</button>
+            <input type="date" class="form-control" value="@_date.ToString("yyyy-MM-dd")" @onchange="DateChanged" />
+            <button class="btn btn-outline-secondary" @onclick="() => ShiftDay(1)">›</button>
+            <button class="btn btn-outline-secondary" @onclick="Today">Hôm nay</button>
+        </div>
+    </div>
+    <div class="form-check ms-2">
+        <input class="form-check-input" type="checkbox" id="onlyPicks" checked="@_onlyPicks" @onchange="e => { _onlyPicks = (bool)e.Value!; }" />
+        <label class="form-check-label small" for="onlyPicks">Chỉ trận có gợi ý</label>
+    </div>
+</div>
+
+@if (_loading)
+{
+    <p class="text-muted">Đang tải…</p>
+}
+else if (Visible.Count == 0)
+{
+    <p class="text-muted">Không có trận nào.</p>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table table-sm table-hover bg-white">
+            <thead>
+                <tr>
+                    <th>Giờ</th>
+                    <th>Giải</th>
+                    <th>Trận</th>
+                    <th class="text-center">Tỉ số</th>
+                    <th>Chấp (đội nhà)</th>
+                    <th>Tài xỉu</th>
+                    <th>Gợi ý</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var m in Visible)
+                {
+                    <tr>
+                        <td class="text-nowrap small">@Time.Kickoff(m.Fixture.KickoffUtc)</td>
+                        <td class="small">@m.League?.Name</td>
+                        <td>
+                            <a href="tran-dau/@m.Fixture.Id" class="text-decoration-none">
+                                <span class="rank">@Rank(m.Context.Home)</span><TeamLogo Url="@m.HomeTeam?.LogoUrl" />@m.Home
+                                <span class="text-muted">–</span>
+                                <span class="rank">@Rank(m.Context.Away)</span><TeamLogo Url="@m.AwayTeam?.LogoUrl" />@m.Away
+                            </a>
+                        </td>
+                        <td class="text-center text-nowrap">
+                            @if (m.Fixture.HomeGoals.HasValue)
+                            {
+                                <strong>@m.Fixture.HomeGoals - @m.Fixture.AwayGoals</strong>
+                            }
+                            else
+                            {
+                                <span class="small text-muted">@FixtureStatus.Label(m.Fixture.Status)</span>
+                            }
+                        </td>
+                        <td class="small text-nowrap">@Quote(m.Context.Handicap, true)</td>
+                        <td class="small text-nowrap">@Quote(m.Context.Totals, false)</td>
+                        <td class="small">
+                            @foreach (var p in m.Advice.Picks)
+                            {
+                                <div><span class="badge @(p.HasConflict ? "bg-warning text-dark" : "bg-success")">@p.Label</span></div>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    private List<League> _leagues = [];
+    private List<MatchInsight> _matches = [];
+    private int? _leagueId;
+    private DateTime _date;
+    private bool _onlyPicks;
+    private bool _loading = true;
+
+    private List<MatchInsight> Visible => _onlyPicks ? _matches.Where(m => m.HasPicks).ToList() : _matches;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _leagues = await db.Leagues.AsNoTracking().Where(l => l.IsTracked).OrderBy(l => l.Name).ToListAsync();
+        _date = Time.TodayLocal;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        var from = Time.ToUtc(_date);
+        _matches = await Insights.ForWindowAsync(from, from.AddDays(1), _leagueId);
+        _loading = false;
+    }
+
+    private async Task LeagueChanged(ChangeEventArgs e)
+    {
+        _leagueId = int.TryParse(e.Value?.ToString(), out var id) ? id : null;
+        await LoadAsync();
+    }
+
+    private async Task DateChanged(ChangeEventArgs e)
+    {
+        if (DateTime.TryParse(e.Value?.ToString(), out var d))
+        {
+            _date = d.Date;
+            await LoadAsync();
+        }
+    }
+
+    private async Task ShiftDay(int days)
+    {
+        _date = _date.AddDays(days);
+        await LoadAsync();
+    }
+
+    private async Task Today()
+    {
+        _date = Time.TodayLocal;
+        await LoadAsync();
+    }
+
+    private static string Rank(TeamSnapshot? s) => s?.Rank is { } r ? $"#{r}" : "";
+
+    private static string Quote(MarketMovement? m, bool handicap) => m is null
+        ? "—"
+        : $"{(handicap ? LineText.Signed(m.Current.Line) : LineText.Number(m.Current.Line))} ({LineText.Odds(m.Current.PriceA)}/{LineText.Odds(m.Current.PriceB)})" + (m.LineDelta != 0 ? " ⇅" : "");
+}

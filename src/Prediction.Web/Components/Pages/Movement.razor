@@ -1,0 +1,183 @@
+@page "/bien-dong-keo"
+@rendermode InteractiveServer
+@inject InsightService Insights
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject TimeDisplay Time
+
+<PageTitle>Biến động kèo</PageTitle>
+
+<h1 class="h3 mb-1">Biến động kèo</h1>
+<p class="text-muted small">
+    So sánh kèo mở (lần đầu hệ thống thấy) với kèo hiện tại. "Nghiêng về" = mức chấp dịch về phía đội đó (đội đó phải chấp nhiều hơn / được chấp ít hơn),
+    hoặc mức đứng yên nhưng tiền kèo đội đó giảm ≥ 0.05.
+</p>
+
+<div class="d-flex flex-wrap gap-2 align-items-end mb-3">
+    <div>
+        <label class="form-label small mb-0">Giải</label>
+        <select class="form-select form-select-sm" @onchange="LeagueChanged">
+            <option value="">Tất cả giải</option>
+            @foreach (var l in _leagues)
+            {
+                <option value="@l.Id">@l.Name</option>
+            }
+        </select>
+    </div>
+    <div>
+        <label class="form-label small mb-0">Khoảng</label>
+        <select class="form-select form-select-sm" @onchange="DaysChanged">
+            <option value="1">24 giờ tới</option>
+            <option value="3" selected>3 ngày tới</option>
+            <option value="7">7 ngày tới</option>
+        </select>
+    </div>
+    <div>
+        <label class="form-label small mb-0">Loại kèo</label>
+        <select class="form-select form-select-sm" @bind="_market">
+            <option value="all">Cả hai</option>
+            <option value="ah">Chấp</option>
+            <option value="ou">Tài xỉu</option>
+        </select>
+    </div>
+    <div class="form-check ms-2">
+        <input class="form-check-input" type="checkbox" id="onlyMoved" @bind="_onlyMoved" />
+        <label class="form-check-label small" for="onlyMoved">Chỉ trận có biến động</label>
+    </div>
+</div>
+
+@if (_loading)
+{
+    <p class="text-muted">Đang tải…</p>
+}
+else
+{
+    var rows = Rows();
+    if (rows.Count == 0)
+    {
+        <p class="text-muted">Không có trận phù hợp.</p>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-sm bg-white">
+                <thead>
+                    <tr>
+                        <th>Giờ</th>
+                        <th>Trận</th>
+                        @if (_market != "ou")
+                        {
+                            <th>Chấp: mở → hiện tại</th>
+                            <th>Nghiêng về</th>
+                        }
+                        @if (_market != "ah")
+                        {
+                            <th>Tài xỉu: mở → hiện tại</th>
+                            <th>Nghiêng về</th>
+                        }
+                        <th class="text-end">Số lần đổi</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var m in rows)
+                    {
+                        var ah = m.Context.Handicap;
+                        var ou = m.Context.Totals;
+                        <tr>
+                            <td class="small text-nowrap">@Time.Kickoff(m.Fixture.KickoffUtc)</td>
+                            <td><a href="tran-dau/@m.Fixture.Id">@m.Home – @m.Away</a><div class="small text-muted">@m.League?.Name</div></td>
+                            @if (_market != "ou")
+                            {
+                                <td class="small text-nowrap">@Change(ah, true)</td>
+                                <td class="small">@LeanText(ah, PickSide.Home, m.Home, m.Away)</td>
+                            }
+                            @if (_market != "ah")
+                            {
+                                <td class="small text-nowrap">@Change(ou, false)</td>
+                                <td class="small">@LeanText(ou, PickSide.Over, "Tài", "Xỉu")</td>
+                            }
+                            <td class="text-end small">@((ah?.Changes ?? 0) + (ou?.Changes ?? 0))</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+}
+
+@code {
+    private List<League> _leagues = [];
+    private List<MatchInsight> _matches = [];
+    private int? _leagueId;
+    private int _days = 3;
+    private string _market = "all";
+    private bool _onlyMoved = true;
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _leagues = await db.Leagues.AsNoTracking().Where(l => l.IsTracked).OrderBy(l => l.Name).ToListAsync();
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        var now = Insights.UtcNow;
+        _matches = (await Insights.ForWindowAsync(now, now.AddDays(_days), _leagueId))
+            .Where(m => FixtureStatus.IsUpcoming(m.Fixture.Status))
+            .ToList();
+        _loading = false;
+    }
+
+    private List<MatchInsight> Rows()
+    {
+        decimal Score(MatchInsight m) =>
+            (_market == "ou" ? 0 : m.Context.Handicap?.Magnitude ?? 0) + (_market == "ah" ? 0 : m.Context.Totals?.Magnitude ?? 0);
+
+        return _matches
+            .Where(m => (_market == "ou" ? m.Context.Totals : _market == "ah" ? m.Context.Handicap : m.Context.Handicap ?? m.Context.Totals) is not null)
+            .Where(m => !_onlyMoved || Score(m) > 0)
+            .OrderByDescending(Score)
+            .ThenBy(m => m.Fixture.KickoffUtc)
+            .ToList();
+    }
+
+    private async Task LeagueChanged(ChangeEventArgs e)
+    {
+        _leagueId = int.TryParse(e.Value?.ToString(), out var id) ? id : null;
+        await LoadAsync();
+    }
+
+    private async Task DaysChanged(ChangeEventArgs e)
+    {
+        _days = int.TryParse(e.Value?.ToString(), out var d) ? d : 3;
+        await LoadAsync();
+    }
+
+    private static string Change(MarketMovement? m, bool handicap)
+    {
+        if (m is null)
+        {
+            return "—";
+        }
+
+        string L(decimal v) => handicap ? LineText.Signed(v) : LineText.Number(v);
+        return $"{L(m.Open.Line)} ({LineText.Odds(m.Open.PriceA)}/{LineText.Odds(m.Open.PriceB)}) → {L(m.Current.Line)} ({LineText.Odds(m.Current.PriceA)}/{LineText.Odds(m.Current.PriceB)})";
+    }
+
+    private static RenderFragment LeanText(MarketMovement? m, PickSide side, string a, string b) => builder =>
+    {
+        var lean = m?.LeanFor(side) ?? Lean.Neutral;
+        var (text, css) = lean switch
+        {
+            Lean.Toward => (a, "text-success fw-semibold"),
+            Lean.Against => (b, "text-danger fw-semibold"),
+            _ => ("—", "text-muted"),
+        };
+        builder.OpenElement(0, "span");
+        builder.AddAttribute(1, "class", css);
+        builder.AddContent(2, text);
+        builder.CloseElement();
+    };
+}

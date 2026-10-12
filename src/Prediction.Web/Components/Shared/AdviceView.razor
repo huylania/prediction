@@ -1,0 +1,49 @@
+@if (Advice.Picks.Count == 0)
+{
+    <div class="text-muted small">Chưa có quy tắc nào khớp trận này.</div>
+}
+@foreach (var pick in Advice.Picks)
+{
+    <div class="advice-pick @(pick.HasConflict ? "conflict" : "agree") mb-2">
+        <div class="d-flex flex-wrap align-items-center gap-2">
+            <span class="fw-bold">@pick.Label</span>
+            <span class="badge @(pick.HasConflict ? "bg-warning text-dark" : "bg-success")">@pick.Consensus</span>
+        </div>
+        @if (!Compact || pick.HasConflict)
+        {
+            <ul class="list-unstyled small mb-0 mt-1">
+                @if (!Compact)
+                {
+                    @foreach (var s in pick.For)
+                    {
+                        <li class="text-success">✓ @s</li>
+                    }
+                }
+                @foreach (var s in pick.Against)
+                {
+                    <li class="text-danger">✗ @s</li>
+                }
+            </ul>
+        }
+    </div>
+}
+@if (!Compact)
+{
+    @if (Advice.HandicapMovement is not null)
+    {
+        <div class="small text-muted mt-2"><strong>Kèo chấp:</strong> @Advice.HandicapMovement</div>
+    }
+    @if (Advice.TotalsMovement is not null)
+    {
+        <div class="small text-muted"><strong>Tài xỉu:</strong> @Advice.TotalsMovement</div>
+    }
+    @if (Advice.ApiSummary is not null)
+    {
+        <div class="small text-muted"><strong>API-Football:</strong> @Advice.ApiSummary</div>
+    }
+}
+
+@code {
+    [Parameter, EditorRequired] public MatchAdvice Advice { get; set; } = default!;
+    [Parameter] public bool Compact { get; set; }
+}
