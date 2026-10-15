@@ -2473,6 +2473,29 @@ namespace Prediction.Web.Data.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Prediction.Core.Entities.TeamDnaLeague", b =>
+                {
+                    b.Property<int>("TeamId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("LeagueId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("LeagueName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int?>("Matches")
+                        .HasColumnType("int");
+
+                    b.HasKey("TeamId", "LeagueId");
+
+                    b.HasIndex("LeagueId");
+
+                    b.ToTable("TeamDnaLeagues");
+                });
+
             modelBuilder.Entity("Prediction.Core.Entities.Venue", b =>
                 {
                     b.Property<int>("Id")
@@ -2748,6 +2771,20 @@ namespace Prediction.Web.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("Team");
+                });
+
+            modelBuilder.Entity("Prediction.Core.Entities.TeamDnaLeague", b =>
+                {
+                    b.HasOne("Prediction.Core.Entities.TeamDna", null)
+                        .WithMany("Leagues")
+                        .HasForeignKey("TeamId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Prediction.Core.Entities.TeamDna", b =>
+                {
+                    b.Navigation("Leagues");
                 });
 #pragma warning restore 612, 618
         }

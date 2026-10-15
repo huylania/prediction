@@ -166,16 +166,21 @@ Cách website tính (các ngưỡng lấy nguyên từ file kỹ năng):
 
 Trang **DNA & nhân sự** cho sửa nhãn DNA của giải/đội (đã nhập sẵn theo file kỹ năng) và nhập tay HLV mới / tân binh trụ cột. HLV mới được lấy tự động từ API nhưng dữ liệu API có thể thiếu, nên hãy kiểm tra lại.
 
-**DNA đội bóng 22 giải (số liệu 1 năm, 431 đội)** — `scripts/dna/`:
+**DNA đội bóng 30 giải (số liệu 1 năm, 548 đội)** — `scripts/dna/`:
 - **11 đặc điểm** (cột tích trên trang DNA): Nổ Tài, Mạnh nhà, Yếu khách, Cày góc, Thực dụng, Bắt nạt đội yếu / chấp sâu, BTTS, Xả góc, Đánh phủ đầu H1, Bùng nổ H2, Đá rát thẻ. Mỗi đội có thêm hồ sơ 1 năm (số trận, TB bàn, % Tài 2.5, % BTTS, góc, thẻ…) và lý do chọn từng đặc điểm.
 - **Cách nạp vào CSDL:**
-  1. Cập nhật và chạy website bản mới ít nhất 1 lần (migration `TeamDnaProfile` thêm cột).
-  2. Chạy `scripts/dna/team_dna_22_giai.sql` bằng SSMS, hoặc `sqlcmd -S <máy> -d <CSDL> -U <user> -P <mật khẩu> -f 65001 -i scripts/dna/team_dna_22_giai.sql`.
+  1. Cập nhật và chạy website bản mới ít nhất 1 lần (migration `DnaLeagues` thêm bảng giải của đội và bật theo dõi các giải mới).
+  2. Chạy `scripts/dna/team_dna_30_giai.sql` bằng SSMS, hoặc `sqlcmd -S <máy> -d <CSDL> -U <user> -P <mật khẩu> -f 65001 -i scripts/dna/team_dna_30_giai.sql`.
   - Đội đã có DNA giữ tích cũ và ghi chú, chỉ cộng thêm tích từ file. Chạy lại nhiều lần không bị nhân đôi.
-- **Đội đá 2 giải** (quốc nội + cúp châu lục): lấy dòng nhiều trận nhất.
-- 22 giải: 19 giải trước + Liga MX, Liga de Expansión MX, Liga 1 Indonesia (3 giải này chưa có trong danh sách theo dõi; thêm bằng id 262 / 263 / 274 trong Cài đặt nếu cần).
+- **Đội đá 2 giải** (quốc nội + cúp châu lục): hồ sơ 1 năm lấy dòng nhiều trận nhất, nhưng đội vẫn được ghi vào mọi giải trong file (bảng `TeamDnaLeagues`).
+- **Lọc theo giải** ở trang DNA: đủ mọi giải trong file (kể cả C1 châu Âu, C1/C2 châu Á) và cả giải đội đã đá trên website trong 1 năm qua. Hồ sơ ghi thêm "cũng đá …" khi đội có số liệu ở giải khác.
+- 30 giải: 22 giải trước + J1, J2 (Nhật), K League 1, 2 (Hàn), Saudi Pro League, Primera A, B (Colombia), Primera División (Costa Rica).
+  - Migration `DnaLeagues` thêm và **bật theo dõi** 11 giải chưa có sẵn: 8 giải trên + Liga MX, Liga de Expansión MX, Liga 1 Indonesia (id 98, 99, 162, 239, 240, 262, 263, 274, 292, 293, 307). Tắt giải nào không cần ở Cài đặt.
+  - API-Football không có thống kê trận (góc, sút, xG) cho J2, Costa Rica, Colombia B, Liga de Expansión, Indonesia, K League 2: các giải này không có kèo góc/thẻ.
+  - Theo dõi thêm giải tốn thêm request (lịch, kèo theo giải mỗi giờ…). Website tự dừng khi quota còn dưới `Sync:QuotaReserve`.
+  - Tên đội lệch với API đã ghi trong `ALIASES`; nên kiểm tra lại: Boca Juniors de Cali = "Popayan" và Atlético FC = "Depor FC" trên API (Colombia B).
 - **Sinh lại script** khi có file CSV mới:
-  - Thay file `dna_doi_bong_22_giai_1nam.csv` (sửa tên trong 2 script nếu đổi tên file), rồi chạy `python3 scripts/dna/resolve_team_ids.py` (cần `APIFOOTBALL_KEY`, 3 request mỗi giải) tìm id API-Football theo tên và ghi `team-ids.csv`. Tên lệch thì thêm vào `ALIASES` trong script.
+  - Thay file `dna_doi_bong_30_giai_1nam.csv` (sửa tên trong 2 script nếu đổi tên file), rồi chạy `python3 scripts/dna/resolve_team_ids.py` (cần `APIFOOTBALL_KEY`, 3 request mỗi giải) tìm id API-Football theo tên và ghi `team-ids.csv`. Tên lệch thì thêm vào `ALIASES` trong script.
   - `python3 scripts/dna/gen_team_dna_sql.py` sinh lại file `.sql`.
 - **Ảnh hưởng chấm điểm** (tổng DNA vẫn kẹp ±1):
   - BTTS: Tài bàn ±0.25.

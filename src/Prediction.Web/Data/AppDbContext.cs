@@ -19,6 +19,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<TeamChange> TeamChanges => Set<TeamChange>();
     public DbSet<LeagueDna> LeagueDnas => Set<LeagueDna>();
     public DbSet<TeamDna> TeamDnas => Set<TeamDna>();
+    public DbSet<TeamDnaLeague> TeamDnaLeagues => Set<TeamDnaLeague>();
     public DbSet<AnalysisPick> AnalysisPicks => Set<AnalysisPick>();
     public DbSet<AiReport> AiReports => Set<AiReport>();
     public DbSet<OddsCheckpoint> OddsCheckpoints => Set<OddsCheckpoint>();
@@ -183,6 +184,14 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             {
                 e.Property<decimal?>(p).HasPrecision(5, 1);
             }
+        });
+
+        b.Entity<TeamDnaLeague>(e =>
+        {
+            e.HasKey(x => new { x.TeamId, x.LeagueId });
+            e.Property(x => x.LeagueName).HasMaxLength(100);
+            e.HasIndex(x => x.LeagueId);
+            e.HasOne<TeamDna>().WithMany(d => d.Leagues).HasForeignKey(x => x.TeamId).OnDelete(DeleteBehavior.Cascade);
         });
 
         b.Entity<AnalysisPick>(e =>

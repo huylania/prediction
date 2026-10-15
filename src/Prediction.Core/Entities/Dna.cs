@@ -155,6 +155,25 @@ public class TeamDna
 
     public DateTime? ProfileUpdatedAtUtc { get; set; }
 
+    /// <summary>Các giải đội có số liệu trong file DNA (quốc nội + cúp châu lục), để lọc theo giải.</summary>
+    public List<TeamDnaLeague> Leagues { get; set; } = [];
+
     /// <summary>"Khôn nhà dại chợ": mạnh sân nhà, yếu sân khách.</summary>
     public bool IsHomeStrongAwayWeak => Tags.HasFlag(DnaTag.HomeFortress) && Tags.HasFlag(DnaTag.AwayFragile);
+}
+
+/// <summary>
+/// Một giải mà đội có dòng số liệu trong file DNA. Hồ sơ 1 năm chỉ lấy 1 giải (nhiều trận nhất),
+/// nhưng đội vẫn thuộc mọi giải trong file — vd Arsenal: Ngoại hạng Anh + Champions League.
+/// </summary>
+public class TeamDnaLeague
+{
+    public int TeamId { get; set; }
+
+    public int LeagueId { get; set; }
+
+    public string LeagueName { get; set; } = "";
+
+    /// <summary>Số trận của đội ở giải này trong file (1 năm).</summary>
+    public int? Matches { get; set; }
 }

@@ -1,10 +1,11 @@
-"""Sinh script SQL nạp DNA đội bóng (file 22 giải, 1 năm) vào bảng dbo.TeamDnas.
+"""Sinh script SQL nạp DNA đội bóng (file 30 giải, 1 năm) vào bảng dbo.TeamDnas.
 
     python3 scripts/dna/gen_team_dna_sql.py
 
-Đọc dna_doi_bong_22_giai_1nam.csv + team-ids.csv (id API-Football, tạo bằng resolve_team_ids.py)
-và ghi team_dna_22_giai.sql. Mỗi đội 1 dòng: đội có nhiều dòng (vd giải quốc nội + cúp châu lục)
-lấy dòng nhiều trận nhất, bằng nhau thì ưu tiên giải quốc nội.
+Đọc dna_doi_bong_30_giai_1nam.csv + team-ids.csv (id API-Football, tạo bằng resolve_team_ids.py)
+và ghi team_dna_30_giai.sql. Mỗi đội 1 hồ sơ: đội có nhiều dòng (vd giải quốc nội + cúp châu lục)
+lấy dòng nhiều trận nhất, bằng nhau thì ưu tiên giải quốc nội. Mọi giải của đội trong file vẫn được ghi
+vào dbo.TeamDnaLeagues để trang DNA lọc được theo từng giải (kể cả cúp châu lục).
 """
 import csv
 import datetime
@@ -12,9 +13,9 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-SOURCE = HERE / "dna_doi_bong_22_giai_1nam.csv"
+SOURCE = HERE / "dna_doi_bong_30_giai_1nam.csv"
 IDS = HERE / "team-ids.csv"
-OUTPUT = HERE / "team_dna_22_giai.sql"
+OUTPUT = HERE / "team_dna_30_giai.sql"
 
 # Cột tích trong CSV → giá trị cờ DnaTag (src/Prediction.Core/Entities/Dna.cs).
 TAGS = {
@@ -74,6 +75,7 @@ def main() -> None:
 
     best: dict[int, dict] = {}
     names: dict[int, str] = {}
+    memberships: dict[tuple[int, int], dict] = {}
     skipped = []
     for r in rows:
         m = ids.get((r["League_Id"], r["Doi_Bong"]))
@@ -82,6 +84,7 @@ def main() -> None:
             continue
         team_id = int(m["TeamId"])
         names.setdefault(team_id, m["Api_Name"] or r["Doi_Bong"])
+        memberships[(team_id, int(r["League_Id"]))] = r
         key = (int(r["So_Tran_1_Nam"]), int(r["League_Id"]) not in CUPS)
         current = best.get(team_id)
         if current is None or key > (int(current["So_Tran_1_Nam"]), int(current["League_Id"]) not in CUPS):
@@ -98,9 +101,9 @@ def main() -> None:
     stat_cols = ", ".join(c for _, c in STATS)
     today = datetime.date.today().isoformat()
     lines = [
-        f"-- DNA đội bóng {len({r['League_Id'] for r in rows})} giải (số liệu 1 năm) → dbo.TeamDnas",
+        f"-- DNA đội bóng {len({r['League_Id'] for r in rows})} giải (số liệu 1 năm) → dbo.TeamDnas + dbo.TeamDnaLeagues",
         f"-- Sinh tự động bởi scripts/dna/gen_team_dna_sql.py ngày {today}: {len(values)} đội từ {len(rows)} dòng CSV.",
-        "-- CHẠY SAU KHI website bản mới đã khởi động ít nhất 1 lần (migration TeamDnaProfile thêm các cột hồ sơ).",
+        "-- CHẠY SAU KHI website bản mới đã khởi động ít nhất 1 lần (migration DnaLeagues thêm bảng giải của đội, bật theo dõi 11 giải mới).",
         "-- Đội đã có DNA: giữ các tích cũ + cộng thêm tích từ file (phép OR), giữ Tên và Ghi chú; ghi đè số liệu 1 năm.",
         "-- Đội chưa có: thêm mới. Chạy lại nhiều lần vẫn cho cùng kết quả.",
         f"-- Cách chạy: mở bằng SSMS / Azure Data Studio rồi Execute, hoặc: sqlcmd -S <máy> -d <CSDL> -U <user> -P <mật khẩu> -f 65001 -i {OUTPUT.name}",
@@ -108,9 +111,9 @@ def main() -> None:
         "SET XACT_ABORT ON;",
         "",
         "-- Kiểm tra cột mới; thiếu thì dừng (MERGE chạy bằng sp_executesql nên không báo lỗi tên cột lẫn vào).",
-        "IF COL_LENGTH('dbo.TeamDnas', 'Analysis') IS NULL",
+        "IF COL_LENGTH('dbo.TeamDnas', 'Analysis') IS NULL OR OBJECT_ID('dbo.TeamDnaLeagues') IS NULL",
         "BEGIN",
-        "    RAISERROR(N'Bảng TeamDnas chưa có cột hồ sơ 1 năm. Hãy cập nhật và chạy website bản mới trước (migration TeamDnaProfile), rồi chạy lại script này.', 16, 1);",
+        "    RAISERROR(N'CSDL chưa có cột hồ sơ 1 năm / bảng TeamDnaLeagues. Hãy cập nhật và chạy website bản mới trước (migration DnaLeagues), rồi chạy lại script này.', 16, 1);",
         "    RETURN;",
         "END;",
         "",
@@ -124,11 +127,23 @@ def main() -> None:
         "    AvgSecondHalfGoals decimal(5,2) NULL, AvgCards decimal(5,2) NULL,",
         "    Summary nvarchar(500) NULL, Analysis nvarchar(2000) NULL);",
         "",
+        "IF OBJECT_ID('tempdb..#lg') IS NOT NULL DROP TABLE #lg;",
+        "CREATE TABLE #lg (TeamId int NOT NULL, LeagueId int NOT NULL, LeagueName nvarchar(100) NOT NULL, Matches int NULL, PRIMARY KEY (TeamId, LeagueId));",
+        "",
     ]
     # INSERT ... VALUES tối đa 1000 dòng mỗi lệnh.
     for i in range(0, len(values), 200):
         lines.append(f"INSERT INTO #src (TeamId, TeamName, Tags, SourceLeagueId, SourceLeagueName, Matches, {stat_cols}, Summary, Analysis) VALUES")
         lines.append(",\n".join(values[i:i + 200]) + ";")
+        lines.append("")
+
+    league_values = [
+        f"({team_id}, {league_id}, {sql_str(league_name(r['Giai_Dau']), 100)}, {int(r['So_Tran_1_Nam'])})"
+        for (team_id, league_id), r in sorted(memberships.items())
+    ]
+    for i in range(0, len(league_values), 500):
+        lines.append("INSERT INTO #lg (TeamId, LeagueId, LeagueName, Matches) VALUES")
+        lines.append(",\n".join(league_values[i:i + 500]) + ";")
         lines.append("")
 
     set_stats = ",\n        ".join(f"t.{c} = s.{c}" for _, c in STATS)
@@ -150,9 +165,17 @@ def main() -> None:
         f"    INSERT (TeamId, TeamName, Tags, Notes, SourceLeagueId, SourceLeagueName, Matches, {stat_cols}, Summary, Analysis, ProfileUpdatedAtUtc)",
         f"    VALUES (s.TeamId, s.TeamName, s.Tags, NULL, s.SourceLeagueId, s.SourceLeagueName, s.Matches, {', '.join('s.' + c for _, c in STATS)}, s.Summary, s.Analysis, @now)",
         "OUTPUT $action INTO @result;",
+        "",
+        "-- Giải của từng đội (lọc theo giải ở trang DNA). Chạy sau MERGE đội vì có khóa ngoại tới TeamDnas.",
+        "MERGE dbo.TeamDnaLeagues AS t",
+        "USING #lg AS s ON t.TeamId = s.TeamId AND t.LeagueId = s.LeagueId",
+        "WHEN MATCHED THEN UPDATE SET t.LeagueName = s.LeagueName, t.Matches = s.Matches",
+        "WHEN NOT MATCHED BY TARGET THEN INSERT (TeamId, LeagueId, LeagueName, Matches) VALUES (s.TeamId, s.LeagueId, s.LeagueName, s.Matches);",
+        "",
         "SELECT",
         "    SUM(CASE WHEN Action = 'INSERT' THEN 1 ELSE 0 END) AS DoiThemMoi,",
-        "    SUM(CASE WHEN Action = 'UPDATE' THEN 1 ELSE 0 END) AS DoiCapNhat",
+        "    SUM(CASE WHEN Action = 'UPDATE' THEN 1 ELSE 0 END) AS DoiCapNhat,",
+        "    (SELECT COUNT(*) FROM #lg) AS SoDongDoiGiai",
         "FROM @result;",
     ]
     lines += [
@@ -162,12 +185,13 @@ def main() -> None:
         "COMMIT TRANSACTION;",
         "",
         "DROP TABLE #src;",
+        "DROP TABLE #lg;",
     ]
     if skipped:
         lines += ["", "-- Các dòng CSV chưa có id đội (sửa team-ids.csv rồi sinh lại):"] + [f"--   {s}" for s in skipped]
 
     OUTPUT.write_text("\n".join(lines) + "\n", encoding="utf-8-sig")
-    print(f"Đã ghi {OUTPUT.name}: {len(values)} đội ({len(rows)} dòng CSV, {len(skipped)} dòng thiếu id).")
+    print(f"Đã ghi {OUTPUT.name}: {len(values)} đội, {len(league_values)} dòng đội–giải ({len(rows)} dòng CSV, {len(skipped)} dòng thiếu id).")
 
 
 if __name__ == "__main__":

@@ -131,15 +131,16 @@ else
             </div>
             <div class="col-md-2"><button class="btn btn-sm btn-primary" @onclick="AddTeamAsync">Thêm vào danh sách</button></div>
             <div class="col-md-3 ms-auto">
-                <label class="form-label small mb-0">Giải (hồ sơ 1 năm)</label>
+                <label class="form-label small mb-0">Giải</label>
                 <select class="form-select form-select-sm" @bind="_leagueFilter">
                     <option value="">Tất cả (@_teams.Count đội)</option>
-                    @foreach (var g in _teams.Where(t => t.SourceLeagueName is not null).GroupBy(t => t.SourceLeagueName!).OrderBy(g => g.Key))
+                    @foreach (var o in _leagueOptions)
                     {
-                        <option value="@g.Key">@g.Key (@g.Count())</option>
+                        <option value="@o.LeagueId">@o.Name (@o.Count)</option>
                     }
-                    <option value="@NoProfile">Chưa có hồ sơ (@_teams.Count(t => t.SourceLeagueName is null))</option>
+                    <option value="@NoProfile">Chưa có hồ sơ 1 năm (@_teams.Count(t => t.SourceLeagueName is null))</option>
                 </select>
+                <div class="hint">Đội thuộc mọi giải có trong file DNA (quốc nội + cúp châu lục) và giải đã đá trong 1 năm qua trên website.</div>
             </div>
             <div class="col-md-3">
                 <label class="form-label small mb-0">Lọc</label>
@@ -165,7 +166,7 @@ else
                             @if (d.Matches is { } n)
                             {
                                 <div class="dna-profile">
-                                    @d.SourceLeagueName · @n trận · @Num(d.AvgTotalGoals) bàn/trận (ghi @Num(d.AvgGoalsFor) – thủng @Num(d.AvgGoalsAgainst))
+                                    @d.SourceLeagueName · @n trận@(OtherLeagues(d) is { Length: > 0 } other ? $" (cũng đá {other})" : "") · @Num(d.AvgTotalGoals) bàn/trận (ghi @Num(d.AvgGoalsFor) – thủng @Num(d.AvgGoalsAgainst))
                                     · Tài 2.5 @Num(d.Over25Pct)% · BTTS @Num(d.BttsPct)% · thắng nhà @Num(d.HomeWinPct)% · thua khách @Num(d.AwayLossPct)%
                                     · góc @Num(d.AvgCornersFor)/@Num(d.AvgCornersAgainst) · có bàn H1 @Num(d.FirstHalfGoalPct)% · bàn H2 @Num(d.AvgSecondHalfGoals) · thẻ @Num(d.AvgCards)
                                 </div>
@@ -229,10 +230,25 @@ else
     private const string NoProfile = "__none__";
     private const int PageSize = 150;
 
+    /// <summary>Đội → các giải (từ file DNA và từ lịch thi đấu 1 năm qua).</summary>
+    private Dictionary<int, HashSet<int>> _teamLeagues = [];
+    private Dictionary<int, List<TeamDnaLeague>> _fileLeagues = [];
+    private List<LeagueOption> _leagueOptions = [];
+
+    private sealed record LeagueOption(int LeagueId, string Name, int Count);
+
     private List<TeamDna> VisibleTeams => _teams
         .Where(d => string.IsNullOrWhiteSpace(_filter) || d.TeamName.Contains(_filter.Trim(), StringComparison.OrdinalIgnoreCase))
-        .Where(d => _leagueFilter == "" || (_leagueFilter == NoProfile ? d.SourceLeagueName is null : d.SourceLeagueName == _leagueFilter))
+        .Where(d => _leagueFilter == ""
+            || (_leagueFilter == NoProfile
+                ? d.SourceLeagueName is null
+                : int.TryParse(_leagueFilter, out var id) && _teamLeagues.TryGetValue(d.TeamId, out var set) && set.Contains(id)))
         .ToList();
+
+    /// <summary>Giải khác (ngoài giải lấy hồ sơ) mà đội có số liệu trong file DNA.</summary>
+    private string OtherLeagues(TeamDna d) => string.Join(", ", _fileLeagues.GetValueOrDefault(d.TeamId, [])
+        .Where(l => l.LeagueId != d.SourceLeagueId)
+        .Select(l => l.Matches is { } m ? $"{l.LeagueName} {m} trận" : l.LeagueName));
 
     private void ToggleExpanded(int teamId)
     {
@@ -272,6 +288,33 @@ else
             .OrderByDescending(l => l.Tracked).ThenBy(l => l.LeagueName)
             .ToList();
         _teams = await db.TeamDnas.AsNoTracking().OrderBy(d => d.TeamName).ToListAsync();
+
+        // Bộ lọc giải: mọi giải của đội trong file DNA + giải đội đã đá trên website trong 1 năm qua (đội thêm tay, đội lên/xuống hạng).
+        var fileLeagues = await db.TeamDnaLeagues.AsNoTracking().ToListAsync();
+        _fileLeagues = fileLeagues.GroupBy(l => l.TeamId).ToDictionary(g => g.Key, g => g.OrderByDescending(l => l.Matches).ToList());
+        var dnaIds = _teams.Select(t => t.TeamId).ToHashSet();
+        var since = Clock.GetUtcNow().UtcDateTime.AddDays(-365);
+        var recent = db.Fixtures.AsNoTracking().Where(f => f.KickoffUtc >= since && !f.League!.IsDemo);
+        var played = await recent.Select(f => new { f.LeagueId, TeamId = f.HomeTeamId })
+            .Union(recent.Select(f => new { f.LeagueId, TeamId = f.AwayTeamId }))
+            .ToListAsync();
+        _teamLeagues = fileLeagues.Select(l => (l.TeamId, l.LeagueId))
+            .Concat(played.Where(p => dnaIds.Contains(p.TeamId)).Select(p => (p.TeamId, p.LeagueId)))
+            .Concat(_teams.Where(t => t.SourceLeagueId is not null).Select(t => (t.TeamId, t.SourceLeagueId!.Value)))
+            .GroupBy(x => x.Item1)
+            .ToDictionary(g => g.Key, g => g.Select(x => x.Item2).ToHashSet());
+
+        var names = await db.Leagues.AsNoTracking().ToDictionaryAsync(l => l.Id, l => string.IsNullOrEmpty(l.Country) ? l.Name : $"{l.Name} ({l.Country})");
+        foreach (var l in fileLeagues.Where(l => l.LeagueName != ""))
+        {
+            names[l.LeagueId] = l.LeagueName;
+        }
+
+        _leagueOptions = _teamLeagues.SelectMany(kv => kv.Value.Select(leagueId => (TeamId: kv.Key, LeagueId: leagueId)))
+            .GroupBy(x => x.LeagueId)
+            .Select(g => new LeagueOption(g.Key, names.GetValueOrDefault(g.Key) ?? $"Giải #{g.Key}", g.Count()))
+            .OrderBy(o => o.Name)
+            .ToList();
     }
 
     private static DnaTag Toggle(DnaTag tags, DnaTag tag, bool on) => on ? tags | tag : tags & ~tag;
