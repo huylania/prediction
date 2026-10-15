@@ -3,6 +3,7 @@
 Website biến **kinh nghiệm bet của bạn thành quy tắc**, ví dụ *"MU gặp đội xếp dưới trên BXH → chọn MU"*. Website sẽ:
 
 - **Gợi ý** các trận sắp đá khớp quy tắc, với mức kèo và odds hiện tại.
+- **Trang Trận đấu** kiểu tỉ số trực tiếp (Đang đá / Sắp đá / Kết quả): dưới mỗi trận có ô gợi ý **kèo chấp châu Á** và **tài xỉu**, trận đang đá cập nhật phút và tỉ số mỗi phút.
 - **Tư vấn** từng trận: gộp các quy tắc khớp (kèm thành tích của từng quy tắc), **biến động kèo** chấp và tài xỉu, cùng dự đoán của API-Football. Website đếm tín hiệu ủng hộ/ngược lại và cảnh báo khi chúng mâu thuẫn.
 - **Kiểm chứng** quy tắc trên dữ liệu cũ: tỉ lệ thắng kèo ở từng mức chấp hoặc tài xỉu, và lãi/lỗ theo kèo thật.
 - **Chấm thành tích thực tế**: mỗi gợi ý được chốt theo kèo đóng lúc bóng lăn, rồi chấm thắng, thắng nửa, hòa, thua nửa hoặc thua khi có kết quả.
@@ -55,20 +56,19 @@ Lệnh này tạo **"Giải Demo"** gồm 12 đội giả, 2 mùa kết quả, c
 
 ## Việc cần làm sau lần chạy đầu
 
-1. **Cài đặt → Đồng bộ ngay → "Giải đấu"**: xác minh id các giải với API.
-   - Id đã có sẵn: Premier League 39, La Liga 140, Serie A 135, Bundesliga 78, Ligue 1 61, Champions League 2, V.League 1 340.
-   - Nếu nhật ký báo "Không tìm thấy" (nhất là V-League), tìm giải bằng ô **"Tìm và thêm giải"** (vd gõ `Vietnam`), thêm giải đúng và bỏ theo dõi giải sai.
+1. Website tự đồng bộ ngay khi khởi động. Id các giải đã được kiểm tra với API thật: Premier League 39, La Liga 140, Serie A 135, Bundesliga 78, Ligue 1 61, Champions League 2, V.League 1 340. Muốn theo dõi thêm giải khác, dùng ô **"Tìm và thêm giải"** trong Cài đặt.
 2. **"Tải mùa cũ"** 3–5 mùa gần nhất cho mỗi giải (mỗi mùa tốn 1 request). Phần kiểm chứng không cần kèo dùng các kết quả này.
-3. Mở trang chi tiết một trận sắp đá và **đối chiếu kèo website đọc được** với kèo trên trang của nhà cái.
-   - Cách API-Football ghi mức chấp ("Home -0.75 / Away +0.75" hay "Home -0.75 / Away -0.75") chưa được kiểm tra với API thật lúc viết phần mềm.
-   - Bộ đọc kèo xử lý được cả hai kiểu, nhưng bạn nên kiểm tra một lần.
-4. Sửa quy tắc mẫu *"MU gặp đội xếp dưới → chọn MU"* cho đúng thói quen của bạn, rồi bấm **Kiểm chứng**.
+   - Số mùa nhập theo cách API đánh số: phần lớn giải ghi theo năm bắt đầu (2025 = mùa 2025/26), riêng **V-League ghi theo năm kết thúc** (2026 = mùa 2025/26). Website tự hiện nhãn mùa đúng.
+3. Sửa quy tắc mẫu *"MU gặp đội xếp dưới → chọn MU"* cho đúng thói quen của bạn, rồi bấm **Kiểm chứng**.
 
-Sau đó website tự đồng bộ ở chế độ nền:
+Về dữ liệu kèo: API-Football ghi kèo chấp kiểu "cùng số" (`Home -0.75 @1.95` / `Away -0.75 @1.90` là một cặp, con số là mức chấp của đội nhà). Website lấy **mức chính** là cặp có hai odds gần nhau nhất, giống mức nhà cái hiển thị đầu tiên. Cách đọc này đã kiểm tra với dữ liệu Bet365 thật.
+
+Website tự đồng bộ ở chế độ nền theo chu kỳ:
 
 | Dữ liệu | Chu kỳ mặc định | Ghi chú |
 |---|---|---|
 | Lịch & kết quả | 2 giờ | 1 request/giải |
+| Tỉ số trực tiếp | 1 phút | chỉ khi có trận đang đá; 1–2 request/lần |
 | Kèo theo giải | 1 giờ | bắt kèo mở và biến động trong ngày |
 | Kèo sát giờ | 15 phút | từng trận, trong 3 giờ trước giờ bóng lăn → kèo đóng |
 | Tư vấn API | 6 giờ + 1 lần ~1 giờ trước trận | các trận trong 3 ngày tới |

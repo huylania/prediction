@@ -53,6 +53,67 @@ public class ApiParsingTests
     }
 
     [Fact]
+    public void Real_bet365_handicap_uses_same_number_notation()
+    {
+        // Dữ liệu thật từ /odds?league=39&season=2026&bookmaker=8, trận 1557417 (15/10/2026).
+        var quote = OddsParser.MainHandicap(Values(
+            ("Home -1.25", "2.00"), ("Away -1.25", "1.85"), ("Home -1", "1.65"), ("Away -1", "2.20"),
+            ("Home -0.75", "1.50"), ("Away -0.75", "2.50"), ("Home -0.5", "1.40"), ("Away -0.5", "2.85"),
+            ("Home -0.25", "1.27"), ("Away -0.25", "3.55"), ("Home +0", "1.14"), ("Away +0", "5.75"),
+            ("Home +0.25", "1.12"), ("Away +0.25", "6.25"), ("Home +0.5", "1.10"), ("Away +0.5", "6.80"),
+            ("Home -2", "3.30"), ("Away -2", "1.32"), ("Home -1.75", "2.50"), ("Away -1.75", "1.50"),
+            ("Home -1.5", "2.15"), ("Away -1.5", "1.68"), ("Home -2.5", "3.90"), ("Away -2.5", "1.24"),
+            ("Home -2.25", "3.55"), ("Away -2.25", "1.27"), ("Home -2.75", "5.00"), ("Away -2.75", "1.17")));
+
+        Assert.NotNull(quote);
+        Assert.Equal(-1.25m, quote.Line);
+        Assert.Equal(2.00m, quote.PriceA);
+        Assert.Equal(1.85m, quote.PriceB);
+    }
+
+    [Fact]
+    public void Real_bet365_handicap_level_ball()
+    {
+        // Trận 1557418: đội khách được đánh giá cao hơn một chút, mức chính đồng banh.
+        var quote = OddsParser.MainHandicap(Values(
+            ("Home -1.25", "5.00"), ("Away -1.25", "1.17"), ("Home -1", "4.40"), ("Away -1", "1.20"),
+            ("Home -0.75", "3.30"), ("Away -0.75", "1.32"), ("Home -0.5", "2.68"), ("Away -0.5", "1.45"),
+            ("Home -0.25", "2.35"), ("Away -0.25", "1.58"), ("Home +0", "1.95"), ("Away +0", "1.90"),
+            ("Home +0.25", "1.72"), ("Away +0.25", "2.08"), ("Home +0.5", "1.55"), ("Away +0.5", "2.38"),
+            ("Home +0.75", "1.40"), ("Away +0.75", "2.85"), ("Home +1", "1.26"), ("Away +1", "3.70")));
+
+        Assert.NotNull(quote);
+        Assert.Equal(0m, quote.Line);
+        Assert.Equal(1.95m, quote.PriceA);
+        Assert.Equal(1.90m, quote.PriceB);
+    }
+
+    [Fact]
+    public void Same_number_wins_ties()
+    {
+        // Mỗi kiểu ghép cho đúng 1 cặp hợp lệ: "cùng số" (−0.5: 1.90/1.95) và đối xứng (−0.5: 1.90/2.10) → theo kiểu của API thật.
+        var quote = OddsParser.MainHandicap(Values(("Home -0.5", "1.90"), ("Away -0.5", "1.95"), ("Away +0.5", "2.10")));
+
+        Assert.NotNull(quote);
+        Assert.Equal(-0.5m, quote.Line);
+        Assert.Equal(1.95m, quote.PriceB);
+    }
+
+    [Fact]
+    public void Real_bet365_totals()
+    {
+        var quote = OddsParser.MainTotals(Values(
+            ("Over 1.5", "1.25"), ("Under 1.5", "4.00"), ("Over 2.5", "1.80"), ("Under 2.5", "2.00"),
+            ("Over 3.5", "3.00"), ("Under 3.5", "1.40"), ("Over 0.5", "1.04"), ("Under 0.5", "13.00"),
+            ("Over 4.5", "5.50"), ("Under 4.5", "1.14")));
+
+        Assert.NotNull(quote);
+        Assert.Equal(2.5m, quote.Line);
+        Assert.Equal(1.80m, quote.PriceA);
+        Assert.Equal(2.00m, quote.PriceB);
+    }
+
+    [Fact]
     public void Totals_main_line()
     {
         var quote = OddsParser.MainTotals(Values(

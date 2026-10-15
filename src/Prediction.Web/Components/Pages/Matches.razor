@@ -37,7 +37,7 @@
         <button class="chip @(_leagueId == league.Id ? "active" : "")" @onclick="() => _leagueId = league.Id">
             @if (!string.IsNullOrEmpty(league.LogoUrl))
             {
-                <img src="@league.LogoUrl" alt="" />
+                <img src="@league.LogoUrl" alt="" onerror="this.remove()" />
             }
             @league.Name <span class="text-muted">@count</span>
         </button>
@@ -100,7 +100,7 @@ else
                 <div class="league-head">
                     @if (!string.IsNullOrEmpty(league?.LogoUrl))
                     {
-                        <img src="@league.LogoUrl" alt="" />
+                        <img src="@league.LogoUrl" alt="" onerror="this.remove()" />
                     }
                     <span>@(league?.Name ?? "Giải khác")</span>
                     <span class="country">@league?.Country</span>

@@ -110,7 +110,7 @@
                                 <td><input type="checkbox" class="form-check-input" checked="@l.IsTracked" @onchange="e => SetTrackedAsync(l, (bool)e.Value!)" /></td>
                                 <td class="small text-muted">@l.Id</td>
                                 <td>@l.Name <span class="small text-muted">@l.Country</span> @if (l.IsDemo) { <span class="badge bg-warning text-dark">demo</span> }</td>
-                                <td class="small">@Standings.SeasonLabel(l.CurrentSeason)</td>
+                                <td class="small">@l.SeasonLabel(l.CurrentSeason)</td>
                                 <td>
                                     @if (!l.IsDemo)
                                     {
@@ -126,7 +126,10 @@
                 </table>
             </div>
             <div class="card-body border-top">
-                <div class="small text-muted mb-1">Mùa ghi theo năm bắt đầu (2025 = mùa 2025/26). Mỗi lần tải tốn 1 request. Nên tải 3–5 mùa gần nhất để kiểm chứng quy tắc.</div>
+                <div class="small text-muted mb-1">
+                    Ô "Tải mùa cũ" nhập số mùa theo API: phần lớn giải ghi theo năm bắt đầu (2025 = mùa 2025/26), riêng V-League ghi theo năm kết thúc (2026 = mùa 2025/26).
+                    Mỗi lần tải tốn 1 request. Nên tải 3–5 mùa gần nhất để kiểm chứng quy tắc.
+                </div>
                 <label class="form-label small mb-0">Tìm và thêm giải (tên giải hoặc quốc gia, vd "Vietnam")</label>
                 <div class="input-group input-group-sm">
                     <input class="form-control" @bind="_search" />
@@ -237,7 +240,7 @@
     {
         var season = _backfillSeason[league.Id];
         var log = await Sync.RunAsync(SyncJobs.Backfill,
-            async (s, c) => $"{league.Name} {Standings.SeasonLabel(season)}: {await s.SyncFixturesAsync(league.Id, season, c)} trận.", default);
+            async (s, c) => $"{league.Name} {league.SeasonLabel(season)}: {await s.SyncFixturesAsync(league.Id, season, c)} trận.", default);
         Show(log?.Ok ?? false, log?.Message);
         await LoadAsync();
     }

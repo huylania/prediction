@@ -31,7 +31,7 @@ else
                     <div class="form-check">
                         <input class="form-check-input" type="checkbox" id="s-@s.LeagueId-@s.Season" checked="@_selected.Contains(key)"
                                @onchange="e => Toggle(key, (bool)e.Value!)" />
-                        <label class="form-check-label small" for="s-@s.LeagueId-@s.Season">@s.LeagueName @Standings.SeasonLabel(s.Season) <span class="text-muted">(@s.Finished trận)</span></label>
+                        <label class="form-check-label small" for="s-@s.LeagueId-@s.Season">@s.LeagueName @s.SeasonLabel <span class="text-muted">(@s.Finished trận)</span></label>
                     </div>
                 }
             </div>

@@ -17,7 +17,7 @@ public static class SeedData
             new League { Id = 78, Name = "Bundesliga", Country = "Germany", Type = "League", CurrentSeason = 2026, IsTracked = true },
             new League { Id = 61, Name = "Ligue 1", Country = "France", Type = "League", CurrentSeason = 2026, IsTracked = true },
             new League { Id = 2, Name = "UEFA Champions League", Country = "World", Type = "Cup", CurrentSeason = 2026, IsTracked = true },
-            new League { Id = 340, Name = "V.League 1", Country = "Vietnam", Type = "League", CurrentSeason = 2026, IsTracked = true });
+            new League { Id = 340, Name = "V.League 1", Country = "Vietnam", Type = "League", CurrentSeason = 2027, SeasonYearIsEndYear = true, IsTracked = true });
 
         b.Entity<Team>().HasData(new Team { Id = ManchesterUnitedId, Name = "Manchester United" });
 

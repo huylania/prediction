@@ -5,7 +5,7 @@ using Prediction.Web.Data;
 
 namespace Prediction.Web.Services;
 
-public sealed record SeasonOption(int LeagueId, string LeagueName, int Season, int Finished);
+public sealed record SeasonOption(int LeagueId, string LeagueName, int Season, string SeasonLabel, int Finished);
 
 public sealed class BacktestResult
 {
@@ -26,10 +26,14 @@ public sealed class BacktestService(IDbContextFactory<AppDbContext> dbFactory, T
             .GroupBy(f => new { f.LeagueId, f.Season })
             .Select(g => new { g.Key.LeagueId, g.Key.Season, Count = g.Count() })
             .ToListAsync(ct);
-        var names = await db.Leagues.AsNoTracking().ToDictionaryAsync(l => l.Id, l => l.Name, ct);
+        var leagues = await db.Leagues.AsNoTracking().ToDictionaryAsync(l => l.Id, ct);
 
         return rows
-            .Select(r => new SeasonOption(r.LeagueId, names.GetValueOrDefault(r.LeagueId) ?? $"#{r.LeagueId}", r.Season, r.Count))
+            .Select(r =>
+            {
+                var league = leagues.GetValueOrDefault(r.LeagueId);
+                return new SeasonOption(r.LeagueId, league?.Name ?? $"#{r.LeagueId}", r.Season, league?.SeasonLabel(r.Season) ?? SeasonText.Label(r.Season), r.Count);
+            })
             .OrderBy(r => r.LeagueName).ThenByDescending(r => r.Season)
             .ToList();
     }

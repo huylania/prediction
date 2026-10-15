@@ -1,6 +1,9 @@
 @if (!string.IsNullOrEmpty(Team?.LogoUrl))
 {
-    <img src="@Team.LogoUrl" alt="" class="crest" loading="lazy" />
+    @* Logo không tải được thì chuyển sang vòng tròn chữ viết tắt ngay sau nó. *@
+    <img src="@Team.LogoUrl" alt="" class="crest" loading="lazy"
+         onerror="this.style.display='none';this.nextElementSibling.style.display='inline-flex';" />
+    <span class="crest crest-fallback" style="display: none; background: hsl(@Hue, 55%, 38%)" aria-hidden="true">@Initials</span>
 }
 else
 {

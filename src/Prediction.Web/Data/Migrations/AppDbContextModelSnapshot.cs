@@ -210,6 +210,9 @@ namespace Prediction.Web.Data.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<bool>("SeasonYearIsEndYear")
+                        .HasColumnType("bit");
+
                     b.Property<string>("Type")
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
@@ -227,6 +230,7 @@ namespace Prediction.Web.Data.Migrations
                             IsDemo = false,
                             IsTracked = true,
                             Name = "Premier League",
+                            SeasonYearIsEndYear = false,
                             Type = "League"
                         },
                         new
@@ -237,6 +241,7 @@ namespace Prediction.Web.Data.Migrations
                             IsDemo = false,
                             IsTracked = true,
                             Name = "La Liga",
+                            SeasonYearIsEndYear = false,
                             Type = "League"
                         },
                         new
@@ -247,6 +252,7 @@ namespace Prediction.Web.Data.Migrations
                             IsDemo = false,
                             IsTracked = true,
                             Name = "Serie A",
+                            SeasonYearIsEndYear = false,
                             Type = "League"
                         },
                         new
@@ -257,6 +263,7 @@ namespace Prediction.Web.Data.Migrations
                             IsDemo = false,
                             IsTracked = true,
                             Name = "Bundesliga",
+                            SeasonYearIsEndYear = false,
                             Type = "League"
                         },
                         new
@@ -267,6 +274,7 @@ namespace Prediction.Web.Data.Migrations
                             IsDemo = false,
                             IsTracked = true,
                             Name = "Ligue 1",
+                            SeasonYearIsEndYear = false,
                             Type = "League"
                         },
                         new
@@ -277,16 +285,18 @@ namespace Prediction.Web.Data.Migrations
                             IsDemo = false,
                             IsTracked = true,
                             Name = "UEFA Champions League",
+                            SeasonYearIsEndYear = false,
                             Type = "Cup"
                         },
                         new
                         {
                             Id = 340,
                             Country = "Vietnam",
-                            CurrentSeason = 2026,
+                            CurrentSeason = 2027,
                             IsDemo = false,
                             IsTracked = true,
                             Name = "V.League 1",
+                            SeasonYearIsEndYear = true,
                             Type = "League"
                         });
                 });

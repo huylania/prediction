@@ -50,6 +50,17 @@ public class MatchAdvisorTests
     }
 
     [Fact]
+    public void Win_or_draw_prediction_is_worded_as_such()
+    {
+        var ctx = Ctx(Movement(Market.AsianHandicap, (-1m, 1.9m, 1.9m)), new ApiAdvice { WinnerTeamId = 33, WinnerComment = "Win or draw", PercentHome = 45 });
+
+        var advice = MatchAdvisor.Advise(ctx, [HomePick("MU")], "MU", "Everton");
+
+        Assert.Contains(advice.Picks[0].For, s => s == "API dự đoán MU thắng hoặc hòa (thắng 45%)");
+        Assert.Contains("Dự đoán: MU thắng hoặc hòa", advice.ApiSummary);
+    }
+
+    [Fact]
     public void Opposite_rules_count_against_each_other()
     {
         var ctx = Ctx(Movement(Market.AsianHandicap, (-1m, 1.9m, 1.9m)));

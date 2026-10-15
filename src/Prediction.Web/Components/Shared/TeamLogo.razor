@@ -1,6 +1,6 @@
 @if (!string.IsNullOrEmpty(Url))
 {
-    <img src="@Url" alt="" class="team-logo" loading="lazy" />
+    <img src="@Url" alt="" class="team-logo" loading="lazy" onerror="this.remove()" />
 }
 
 @code {

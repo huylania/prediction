@@ -223,13 +223,14 @@ public static class MatchAdvisor
             var sideTeam = side == PickSide.Home ? ctx.Fixture.HomeTeamId : ctx.Fixture.AwayTeamId;
             var otherTeam = side == PickSide.Home ? ctx.Fixture.AwayTeamId : ctx.Fixture.HomeTeamId;
             var sidePercent = side == PickSide.Home ? api.PercentHome : api.PercentAway;
+            var verdict = WinOrDraw(api) ? "thắng hoặc hòa" : "thắng";
             if (winner == sideTeam)
             {
-                pro.Add(sidePercent is { } p ? $"API dự đoán {name} thắng ({p}%)" : $"API dự đoán {name} thắng");
+                pro.Add(sidePercent is { } p ? $"API dự đoán {name} {verdict} (thắng {p}%)" : $"API dự đoán {name} {verdict}");
             }
             else if (winner == otherTeam)
             {
-                con.Add($"API dự đoán {other} thắng");
+                con.Add($"API dự đoán {other} {verdict}");
             }
         }
         else if (api.UnderOverSide is { } ouSide)
@@ -238,6 +239,10 @@ public static class MatchAdvisor
             (ouSide == side ? pro : con).Add(text);
         }
     }
+
+    /// <summary>API ghi "Win or draw" khi chỉ dự đoán đội đó không thua.</summary>
+    private static bool WinOrDraw(ApiAdvice api) =>
+        api.WinnerComment?.Contains("draw", StringComparison.OrdinalIgnoreCase) == true;
 
     private static string? ApiSummary(ApiAdvice? api, Fixture fixture, string home, string away)
     {
@@ -257,9 +262,9 @@ public static class MatchAdvisor
             parts.Add($"{home} {api.PercentHome ?? 0}% · Hòa {api.PercentDraw ?? 0}% · {away} {api.PercentAway ?? 0}%");
         }
 
-        if (api.WinnerTeamId is { } winner)
+        if (api.WinnerTeamId is { } winner && (winner == fixture.HomeTeamId || winner == fixture.AwayTeamId))
         {
-            parts.Add($"Dự đoán thắng: {(winner == fixture.HomeTeamId ? home : winner == fixture.AwayTeamId ? away : "?")}");
+            parts.Add($"Dự đoán: {(winner == fixture.HomeTeamId ? home : away)} {(WinOrDraw(api) ? "thắng hoặc hòa" : "thắng")}");
         }
 
         if (api.UnderOverSide is { } ou)

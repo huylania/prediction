@@ -14,10 +14,27 @@ public class League
     /// <summary>"League" hoặc "Cup" theo API-Football.</summary>
     public string? Type { get; set; }
 
-    /// <summary>Mùa hiện tại theo cách đánh số của API-Football (năm bắt đầu mùa).</summary>
+    /// <summary>Mùa hiện tại theo cách đánh số của API-Football (thường là năm bắt đầu mùa, xem <see cref="SeasonYearIsEndYear"/>).</summary>
     public int CurrentSeason { get; set; }
+
+    /// <summary>
+    /// API đánh số mùa theo năm kết thúc (vd V-League: mùa 2026/27 là 2027) thay vì năm bắt đầu.
+    /// </summary>
+    public bool SeasonYearIsEndYear { get; set; }
 
     public bool IsTracked { get; set; } = true;
 
     public bool IsDemo { get; set; }
+
+    /// <summary>Nhãn mùa dễ đọc, vd "2026/27".</summary>
+    public string SeasonLabel(int season) => SeasonText.Label(season, SeasonYearIsEndYear);
+}
+
+public static class SeasonText
+{
+    public static string Label(int season, bool yearIsEndYear = false)
+    {
+        var start = yearIsEndYear ? season - 1 : season;
+        return $"{start}/{(start + 1) % 100:00}";
+    }
 }

@@ -52,9 +52,9 @@ public static partial class OddsParser
     }
 
     /// <summary>
-    /// API có thể ghi mức chấp theo hai kiểu: "Home -0.75" / "Away +0.75" (mỗi cửa mang mức của chính nó)
-    /// hoặc "Home -0.75" / "Away -0.75" (cùng một con số = mức của đội nhà). Thử cả hai cách ghép,
-    /// giữ cách cho nhiều cặp hợp lệ hơn (tổng xác suất ngầm định giống kèo thật).
+    /// API-Football ghi mức chấp kiểu "cùng số": "Home -0.75" / "Away -0.75" là một cặp, con số là mức chấp
+    /// của đội nhà (đã xác nhận với dữ liệu Bet365 thật). Vẫn thử thêm kiểu đối xứng ("Home -0.75" / "Away +0.75")
+    /// phòng khi nhà cái khác ghi khác, và giữ kiểu cho nhiều cặp hợp lệ hơn (tổng xác suất ngầm định giống kèo thật).
     /// </summary>
     public static ParsedQuote? MainHandicap(IEnumerable<BetValue> values)
     {
@@ -74,7 +74,8 @@ public static partial class OddsParser
 
         var mirrored = Pairs(home, h => away.TryGetValue(-h, out var a) ? a : null);
         var sameNumber = Pairs(home, h => away.TryGetValue(h, out var a) ? a : null);
-        var chosen = sameNumber.Count > mirrored.Count ? sameNumber : mirrored;
+        // API-Football thật (đã kiểm tra với Bet365) dùng kiểu "cùng số"; chỉ chọn kiểu đối xứng khi nó cho nhiều cặp hợp lệ hơn hẳn.
+        var chosen = mirrored.Count > sameNumber.Count ? mirrored : sameNumber;
 
         return MainLine(chosen, Market.AsianHandicap);
     }

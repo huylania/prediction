@@ -67,6 +67,10 @@ public sealed class DataSyncService(
         if (current is not null)
         {
             league.CurrentSeason = current.Year;
+            if (DateOnly.TryParse(current.Start, System.Globalization.CultureInfo.InvariantCulture, out var start))
+            {
+                league.SeasonYearIsEndYear = start.Year < current.Year;
+            }
         }
     }
 
