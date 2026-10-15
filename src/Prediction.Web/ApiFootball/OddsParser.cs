@@ -9,13 +9,16 @@ namespace Prediction.Web.ApiFootball;
 public sealed record ParsedQuote(Market Market, decimal Line, decimal PriceA, decimal PriceB);
 
 /// <summary>
-/// Đọc kèo chấp châu Á ("Asian Handicap") và tài xỉu ("Goals Over/Under") từ phản hồi /odds,
+/// Đọc kèo chấp châu Á ("Asian Handicap") và tài xỉu châu Á ("Goal Line", dự phòng "Goals Over/Under") từ phản hồi /odds,
 /// chọn MỨC CHÍNH = cặp có hai odds gần nhau nhất.
 /// </summary>
 public static partial class OddsParser
 {
     public const string HandicapBetName = "Asian Handicap";
     public const string TotalsBetName = "Goals Over/Under";
+
+    /// <summary>Tài xỉu châu Á của Bet365 (có mức 1/4, 3/4); "Goals Over/Under" chỉ có mức x.5 nên mức chính hay lệch giá.</summary>
+    public const string AsianTotalsBetName = "Goal Line";
     public const string CornersTotalsBetName = "Corners Over Under";
     public const string CornersHandicapBetName = "Corners Asian Handicap";
     public const string CardsTotalsBetName = "Cards Over/Under";
@@ -40,7 +43,14 @@ public static partial class OddsParser
 
         var quotes = new List<ParsedQuote>(5);
         Add(HandicapBetName, values => MainHandicap(values, Market.AsianHandicap));
-        Add(TotalsBetName, values => MainTotals(values, Market.OverUnder));
+
+        // Tài xỉu bàn: gộp Goal Line (ưu tiên giá khi trùng mức) với Goals Over/Under rồi chọn mức chính.
+        var totals = Values(AsianTotalsBetName).Concat(Values(TotalsBetName)).ToList();
+        if (totals.Count > 0 && MainTotals(totals, Market.OverUnder) is { } ou)
+        {
+            quotes.Add(ou);
+        }
+
         Add(CornersTotalsBetName, values => MainTotals(values, Market.CornersOverUnder));
         Add(CornersHandicapBetName, values => MainHandicap(values, Market.CornersHandicap));
         Add(CardsTotalsBetName, values => MainTotals(values, Market.CardsOverUnder));
@@ -54,6 +64,9 @@ public static partial class OddsParser
                 quotes.Add(quote);
             }
         }
+
+        List<BetValue> Values(string betName) =>
+            bookmaker.Bets.FirstOrDefault(b => string.Equals(b.Name?.Trim(), betName, StringComparison.OrdinalIgnoreCase))?.Values ?? [];
     }
 
     /// <summary>

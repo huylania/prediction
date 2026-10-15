@@ -71,7 +71,7 @@ Lệnh này tạo **"Giải Demo"** gồm 12 đội giả, 2 mùa kết quả, c
    - Số mùa nhập theo cách API đánh số: phần lớn giải ghi theo năm bắt đầu (2025 = mùa 2025/26), riêng **V-League ghi theo năm kết thúc** (2026 = mùa 2025/26). Website tự hiện nhãn mùa đúng.
 3. Sửa quy tắc mẫu *"MU gặp đội xếp dưới → chọn MU"* cho đúng thói quen của bạn, rồi bấm **Kiểm chứng**.
 
-Về dữ liệu kèo: API-Football ghi kèo chấp kiểu "cùng số" (`Home -0.75 @1.95` / `Away -0.75 @1.90` là một cặp, con số là mức chấp của đội nhà). Website lấy **mức chính** là cặp có hai odds gần nhau nhất, giống mức nhà cái hiển thị đầu tiên. Cách đọc này đã kiểm tra với dữ liệu Bet365 thật.
+Về dữ liệu kèo: API-Football ghi kèo chấp kiểu "cùng số" (`Home -0.75 @1.95` / `Away -0.75 @1.90` là một cặp, con số là mức chấp của đội nhà). Website lấy **mức chính** là cặp có hai odds gần nhau nhất, giống mức nhà cái hiển thị đầu tiên. Cách đọc này đã kiểm tra với dữ liệu Bet365 thật. Tài xỉu bàn lấy kèo **châu Á** ("Goal Line" của Bet365, có mức 1/4, 3/4 như 2.75), không lấy kèo châu Âu chỉ có mức x.5 (vd Tài 2.5 @1.62/2.25).
 
 Website tự đồng bộ ở chế độ nền theo chu kỳ:
 
@@ -156,7 +156,7 @@ Cách website tính (các ngưỡng lấy nguyên từ file kỹ năng):
 - **Mẫu phong độ**: 10 trận gần nhất mọi giải có trong CSDL. Nếu đội có HLV mới hoặc tân binh trụ cột: trận 1–3 → **cờ đỏ 5, chờ ổn định**; từ trận 4 → chỉ dùng các trận dưới giai đoạn mới. Mẫu dưới 5 trận được kéo về trung bình giải.
 - **Bàn thắng**: `Kỳ vọng = ((Ghi nhà + Thủng khách) + (Ghi khách + Thủng nhà)) / 2`. Tài khi Δ ≥ +0.40 và kỳ vọng ≥ trung bình giải; Xỉu ngược lại.
 - **Kèo chấp dự phóng**: độ vượt trội đội nhà = 0.6 × phong độ + 0.4 × (chênh hiệu số/trận ÷ 2) + lợi thế sân (0.30; giải "thánh địa sân nhà" 0.60; đội nhà "mạnh sân nhà" +0.25; đội khách "yếu sân khách" +0.25), làm tròn về bội số 1/4. `Δ_H = kèo nhà cái − dự phóng`; |Δ_H| ≥ 0.5 hoặc kèo nhảy ≥ 0.5 → **kèo lạ**, website tìm nguyên nhân (chấn thương, lịch dày, HLV/tân binh, DNA sân) để phán "kèo thực lực" hay "nghi bẫy".
-- **Phạt góc** (không xét dòng tiền): kỳ vọng tương tự bàn thắng, trộn số liệu chung với số liệu theo sân; Tài/Xỉu góc khi |Δ| ≥ 1.2 kèm phong cách; chấp góc khi chênh góc kiếm ≥ 2.0/trận và mức chấp nhà cái thấp hơn. Thẻ chỉ để tham khảo (tối đa nhóm B).
+- **Phạt góc** (không xét dòng tiền): chỉ khuyến nghị khi mỗi đội có ít nhất 5 trận có thống kê góc (ít hơn thì mô hình coi 2 đội ngang nhau về góc, dễ ra cửa dưới chấp góc sâu ảo). Kỳ vọng tương tự bàn thắng, trộn số liệu chung với số liệu theo sân; Tài/Xỉu góc khi |Δ| ≥ 1.2 kèm phong cách; chấp góc khi chênh góc kiếm ≥ 2.0/trận và mức chấp nhà cái thấp hơn. Thẻ chỉ để tham khảo (tối đa nhóm B).
 - **Xác suất**: Poisson cho bàn, nhị thức âm cho góc/thẻ; tính thắng / thắng nửa / hoàn / thua nửa / thua cho đúng mức kèo thật và EV theo odds.
 - **Điểm** = 5 + phần xác suất + phần EV + đạt ngưỡng (+0.75) + DNA cùng/ngược hướng (±0.5–1.0) + đã qua giai đoạn ổn định (+0.5) + API cùng hướng (+0.25) + quy tắc của bạn cùng hướng (+0.5) + kèo dịch về cửa đó (+0.25) − mẫu ít trận.
 - **Ít dữ liệu**: một đội có dưới 5 trận trong CSDL → trừ 1 điểm, điểm tối đa 7.9 và **tối đa nhóm B**. Thẻ trận gắn nhãn "ít dữ liệu (n trận)".

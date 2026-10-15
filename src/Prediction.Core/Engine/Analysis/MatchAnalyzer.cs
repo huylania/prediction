@@ -81,7 +81,8 @@ public static class MatchAnalyzer
 
         // 4b. Phạt góc
         var cHalf = league.Corners / 2;
-        var cornersKnown = homeForm.CornerMatches > 0 && awayForm.CornerMatches > 0;
+        // Mỗi đội cần đủ mẫu thống kê góc: mẫu quá ít bị kéo về TB giải làm 2 đội "ngang nhau" → cửa dưới chấp góc sâu ảo.
+        var cornersKnown = homeForm.CornerMatches >= MinSample && awayForm.CornerMatches >= MinSample;
         var cwH = Shrink(Blend(homeForm.CornersFor, homeForm.VenueCornersFor, homeForm.VenueCornerMatches) ?? cHalf, homeForm.CornerMatches, cHalf);
         var ccH = Shrink(Blend(homeForm.CornersAgainst, homeForm.VenueCornersAgainst, homeForm.VenueCornerMatches) ?? cHalf, homeForm.CornerMatches, cHalf);
         var cwA = Shrink(Blend(awayForm.CornersFor, awayForm.VenueCornersFor, awayForm.VenueCornerMatches) ?? cHalf, awayForm.CornerMatches, cHalf);
@@ -395,7 +396,7 @@ public static class MatchAnalyzer
         string verdict;
         if (expCorners is null)
         {
-            verdict = "Chưa có thống kê phạt góc của hai đội.";
+            verdict = CornerSampleText(c) ?? "Chưa có thống kê phạt góc của hai đội.";
         }
         else if (delta is { } d && d >= CornersDeltaThreshold && expCorners >= leagueAvg && CornerStyleOver(c, out var why))
         {
@@ -441,7 +442,7 @@ public static class MatchAnalyzer
         string verdict;
         if (gap is null)
         {
-            verdict = "Chưa có thống kê phạt góc.";
+            verdict = CornerSampleText(c) ?? "Chưa có thống kê phạt góc.";
         }
         else if (line is null)
         {
@@ -475,6 +476,12 @@ public static class MatchAnalyzer
             Verdict = verdict,
         };
     }
+
+    /// <summary>Có thống kê góc nhưng chưa đủ mẫu: ghi số trận để biết vì sao không khuyến nghị kèo góc.</summary>
+    private static string? CornerSampleText(Ctx c) =>
+        c.HomeForm.CornerMatches + c.AwayForm.CornerMatches == 0
+            ? null
+            : $"Chưa đủ thống kê phạt góc ({c.Input.HomeName} {c.HomeForm.CornerMatches} / {c.Input.AwayName} {c.AwayForm.CornerMatches} trận, cần ≥ {MinSample} mỗi đội) → không khuyến nghị kèo góc.";
 
     private static LayerRow CardsRow(Ctx c, double? expCards)
     {

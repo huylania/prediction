@@ -163,6 +163,23 @@ public class ApiParsingTests
     }
 
     [Fact]
+    public void Prefers_asian_goal_line_for_totals()
+    {
+        // Dữ liệu Bet365 thật (thu gọn) trận C3 Mjallby AIF – Inter Club d'Escaldes 15/10/2026.
+        var json = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Data", "odds-goal-line.json"));
+        var item = Parse<ApiEnvelope>(json).Response.Deserialize<List<OddsItem>>(ApiFootballClient.Json)!.Single();
+        var quotes = OddsParser.Parse(item, 8);
+
+        // "Goals Over/Under" chỉ có x.5 → Tài 2.5 @1.62/2.25 lệch giá; "Goal Line" (châu Á) cho mức chính 2.75 @1.78/2.02.
+        var ou = Assert.Single(quotes, q => q.Market == Market.OverUnder);
+        Assert.Equal((2.75m, 1.78m, 2.02m), (ou.Line, ou.PriceA, ou.PriceB));
+        var ah = Assert.Single(quotes, q => q.Market == Market.AsianHandicap);
+        Assert.Equal((-1.5m, 1.92m, 1.88m), (ah.Line, ah.PriceA, ah.PriceB));
+        Assert.Equal(9.5m, Assert.Single(quotes, q => q.Market == Market.CornersOverUnder).Line);
+        Assert.Equal(-2.5m, Assert.Single(quotes, q => q.Market == Market.CornersHandicap).Line);
+    }
+
+    [Fact]
     public void Error_object_is_reported()
     {
         var envelope = Parse<ApiEnvelope>("""{"errors": {"token": "Error/Missing application key."}, "results": 0, "response": []}""");

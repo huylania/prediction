@@ -487,6 +487,21 @@ public class MatchAnalyzerTests
     }
 
     [Fact]
+    public void Corner_picks_need_five_matches_with_corner_stats_per_team()
+    {
+        // Đội mới chỉ có 2 trận có thống kê góc: không được khuyến nghị cửa dưới chấp góc sâu "thắng 90%".
+        var thin = MatchAnalyzer.Analyze(Input(home: History(2, 2, 0, cf: 8, ca: 2), away: History(2, 0, 2, cf: 2, ca: 8),
+            corners: 9.5m, cornersHandicap: -3.5m));
+        Assert.DoesNotContain(thin.Picks, p => p.Market is Market.CornersOverUnder or Market.CornersHandicap);
+        Assert.Contains("Chưa đủ thống kê phạt góc", thin.CornerHandicap.Verdict);
+        Assert.Contains("Nhà 2 / Khách 2 trận", thin.CornersRow.Verdict);
+
+        var full = MatchAnalyzer.Analyze(Input(home: History(10, 2, 0, cf: 8, ca: 2), away: History(10, 0, 2, cf: 2, ca: 8),
+            corners: 9.5m, cornersHandicap: -3.5m));
+        Assert.Contains(full.Picks, p => p.Market == Market.CornersHandicap);
+    }
+
+    [Fact]
     public void Red_flag_names_for_cards()
     {
         Assert.Equal("Kèo lạ / xung đột tín hiệu", RedFlagText.Short(2));
