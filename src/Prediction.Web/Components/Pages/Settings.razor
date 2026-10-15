@@ -84,7 +84,7 @@
                 @if (AiReports.IsConfigured)
                 {
                     <div>Đã cấu hình API key · model <code>@AiOptions.Value.Model</code> · effort <code>@AiOptions.Value.Effort</code> · tra cứu web: @(AiOptions.Value.WebSearch ? $"bật (tối đa {AiOptions.Value.WebSearchMaxUses} lượt)" : "tắt")</div>
-                    <div class="text-muted mt-1">Đã viết @_aiCount báo cáo, tổng chi phí ước tính ~$@_aiCost.ToString("0.00").</div>
+                    <div class="text-muted mt-1">Đã viết @_aiCount báo cáo, tổng chi phí ước tính ~$@_aiCost.ToString("0.00"). Chi tiết mọi lần gọi Claude và nút tắt AI tự động: <a href="chi-phi-ai">Chi phí AI</a>.</div>
                 }
                 else
                 {

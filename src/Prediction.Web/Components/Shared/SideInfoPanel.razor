@@ -37,7 +37,7 @@
         }
         else
         {
-            <div class="small text-muted mb-2">Chưa có. @(SideInfo.AutoEnabled ? "Website tự điền cho các trận nhóm A/B trong 24 giờ tới." : "")</div>
+            <div class="small text-muted mb-2">Chưa có. @(_auto ? "Website tự điền cho các trận nhóm A/B trong 24 giờ tới (tắt ở trang Chi phí AI)." : "")</div>
         }
         <div class="d-flex align-items-center gap-2">
             <button class="btn btn-sm btn-outline-primary" disabled="@_running" @onclick="GenerateAsync">@(Info is null ? "AI điền thông tin bên lề" : "Điền lại")</button>
@@ -66,6 +66,9 @@
 
     private bool _running;
     private string? _error;
+    private bool _auto;
+
+    protected override async Task OnInitializedAsync() => _auto = await SideInfo.AutoEnabledAsync();
 
     private static RenderFragment Row(string label, string? value) => __builder =>
     {

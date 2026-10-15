@@ -43,6 +43,7 @@ builder.Services.AddSingleton<DemoDataSeeder>();
 builder.Services.AddSingleton<InsightService>();
 builder.Services.AddSingleton<BacktestService>();
 builder.Services.AddSingleton<AnalysisService>();
+builder.Services.AddSingleton<AiUsageService>();
 builder.Services.AddSingleton<AiReportService>();
 builder.Services.AddSingleton<MatchContextService>();
 builder.Services.AddSingleton<SideInfoService>();

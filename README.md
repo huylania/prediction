@@ -195,6 +195,24 @@ Trang **DNA & nhân sự** cho sửa nhãn DNA của giải/đội (đã nhập 
 
 Báo cáo hiện dần trên trang, được lưu lại (bấm **"Phân tích lại"** để viết bản mới). Chi phí ước tính **$0.2–0.5/lượt** (hiện kèm mỗi báo cáo). Cấu hình trong `appsettings.json`, mục `Anthropic` (`Model`, `Effort`, `MaxTokens`, `WebSearch`, `WebSearchMaxUses`).
 
+### Chi phí AI (Claude)
+
+Menu **Chi phí AI** (`/chi-phi-ai`) ghi lại **mọi lần gọi API Claude**, kể cả lần lỗi, vì phần đã chạy vẫn bị tính tiền. Mỗi lần ghi: tính năng, model, trận, token vào / cache / ra, lượt tra web, chi phí ước tính, thời gian, lỗi. Trang có tổng theo tính năng, theo ngày và từng lần gọi.
+
+Chi phí là ước tính theo bảng giá (Opus $4/$20, Sonnet $2/$10 mỗi triệu token vào/ra; ghi cache 1 giờ ×2, đọc cache ×0.1; $0.01 mỗi lượt tra web). Số chính xác xem ở console.anthropic.com.
+
+| Tính năng | Khi nào gọi | Model | Ước tính / lần |
+|---|---|---|---|
+| Báo cáo AI | Bấm "Viết báo cáo AI" / "Phân tích lại" (tab Phân tích chuyên sâu) | `Model` (Opus) + tra web ≤ 5 | $0.2–0.6 (phần lớn là nạp file kỹ năng ~27k token vào cache, rẻ hơn nếu viết tiếp trong 1 giờ) |
+| Thông tin bên lề — **tự động** | Tác vụ nền 30 phút/lần, trận nhóm A/B trong 24 giờ tới chưa có thông tin | `SideInfoModel` (Sonnet) + tra web ≤ 4 | $0.05–0.20 / trận, tối đa `SideInfoDailyBudgetUsd`/ngày |
+| Thông tin bên lề — bấm tay | Bấm "AI điền thông tin bên lề" / "Điền lại" (tab Lịch sử & bên lề) | như trên | $0.05–0.20 |
+| Góc Live — đọc ảnh AiScore | Bấm "Claude đọc ảnh" | `CornerModel` (Sonnet) | $0.01–0.03 |
+| Góc Live — Claude nhận định | Bấm "Claude nhận định" | `CornerModel` (Sonnet) | $0.02–0.05 |
+
+- **Tác vụ tự động** chỉ có "thông tin bên lề" là tự gọi Claude. Bật/tắt và đổi giới hạn/ngày (theo giờ Việt Nam) ngay trên trang Chi phí AI, ghi đè `Anthropic:SideInfoAuto` / `SideInfoDailyBudgetUsd`.
+- Giới hạn ngày giờ tính theo log, gồm cả lần lỗi.
+- Trận gọi lỗi (Claude không trả JSON, dừng giữa chừng…) chờ 12 giờ mới thử lại. Trước đây trận lỗi bị gọi lại mỗi 30 phút mà không tính vào giới hạn.
+
 ## Mốc kèo, lịch sử kèo & thông tin bên lề
 
 Tab **Lịch sử & bên lề** ở trang chi tiết trận (và thẻ cảnh báo ⚠ trên thẻ trận):

@@ -101,7 +101,7 @@ public sealed record CornerAiCost(string Model, long InputTokens, long OutputTok
 /// AI của mục Góc Live — dùng RIÊNG file kỹ năng "phan-tich-goc" (không dùng chung với báo cáo phân tích chuyên sâu):
 /// đọc ảnh chụp AiScore thành số liệu cho form, và "Claude nhận định" từ số liệu + kết quả công thức của website.
 /// </summary>
-public sealed class CornerAiService(IOptions<AiReportOptions> options, IWebHostEnvironment env, ILogger<CornerAiService> logger)
+public sealed class CornerAiService(IOptions<AiReportOptions> options, IWebHostEnvironment env, AiUsageService usage, ILogger<CornerAiService> logger)
 {
     private const string VisionInstructions = """
         Bạn đọc ảnh chụp màn hình trận đang đá trên AiScore (hoặc ứng dụng tỉ số tương tự) cho mục "Góc Live" của website soi kèo cá nhân.
@@ -172,7 +172,24 @@ public sealed class CornerAiService(IOptions<AiReportOptions> options, IWebHostE
 
         content.Add(new BetaTextBlockParam { Text = "Đọc các ảnh trên và trả về JSON theo đúng cấu trúc." });
 
-        var response = await Client(o).Beta.Messages.Create(new MessageCreateParams
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        var subject = $"Đọc {images.Count} ảnh AiScore";
+        BetaMessage response;
+        try
+        {
+            response = await CreateAsync();
+        }
+        catch (Exception ex)
+        {
+            await usage.LogAsync(new AiUsageLog
+            {
+                Feature = AiFeature.CornerVision, Model = o.CornerModel, Subject = subject, DurationMs = (int)watch.ElapsedMilliseconds,
+                Ok = false, Error = ex is OperationCanceledException ? "Đã dừng / quá thời gian" : ex.Message,
+            });
+            throw;
+        }
+
+        async Task<BetaMessage> CreateAsync() => await Client(o).Beta.Messages.Create(new MessageCreateParams
         {
             Model = o.CornerModel,
             MaxTokens = 4000,
@@ -188,16 +205,33 @@ public sealed class CornerAiService(IOptions<AiReportOptions> options, IWebHostE
         }, ct);
 
         var text = string.Join("\n", response.Content.Select(b => b.TryPickText(out var t) ? t.Text : null).Where(t => t is not null));
-        if (response.StopReason?.Raw() == "refusal")
+        var refused = response.StopReason?.Raw() == "refusal";
+        var json = refused ? null : SideInfoService.Parse(text);
+        var u = response.Usage;
+        var model = response.Model.Raw();
+        var log = new AiUsageLog
+        {
+            Feature = AiFeature.CornerVision, Model = model, Subject = subject,
+            InputTokens = (int)u.InputTokens, OutputTokens = (int)u.OutputTokens,
+            CacheReadTokens = (int)(u.CacheReadInputTokens ?? 0), CacheWriteTokens = (int)(u.CacheCreationInputTokens ?? 0),
+            CostUsd = AiPricing.Cost(model, u.InputTokens, u.OutputTokens, u.CacheReadInputTokens ?? 0, u.CacheCreationInputTokens ?? 0, 0, cacheWrite1h: true),
+            DurationMs = (int)watch.ElapsedMilliseconds, Ok = json is not null,
+            Error = refused ? "Claude từ chối đọc ảnh" : json is null ? "Không trả về JSON hợp lệ" : null,
+        };
+        await usage.LogAsync(log);
+        if (refused)
         {
             throw new InvalidOperationException("Claude đã từ chối đọc ảnh này.");
         }
 
-        var json = SideInfoService.Parse(text) ?? throw new InvalidOperationException("Claude không trả về JSON hợp lệ — thử ảnh rõ hơn.");
-        var cost = Cost(response.Model.Raw(), response.Usage.InputTokens + (response.Usage.CacheCreationInputTokens ?? 0) + (response.Usage.CacheReadInputTokens ?? 0),
-            response.Usage.OutputTokens);
+        if (json is null)
+        {
+            throw new InvalidOperationException("Claude không trả về JSON hợp lệ — thử ảnh rõ hơn.");
+        }
+
+        var cost = new CornerAiCost(model, log.InputTokens + log.CacheReadTokens + log.CacheWriteTokens, log.OutputTokens, log.CostUsd);
         logger.LogInformation("Góc Live: đọc {Count} ảnh AiScore, {Input} token vào, {Output} ra, ~${Cost}", images.Count, cost.InputTokens, cost.OutputTokens, cost.CostUsd);
-        return (ParseForm(json), cost);
+        return (ParseForm(json.Value), cost);
     }
 
     /// <summary>Chuyển JSON Claude đọc từ ảnh thành form.</summary>
@@ -265,25 +299,44 @@ public sealed class CornerAiService(IOptions<AiReportOptions> options, IWebHostE
 
         var text = new StringBuilder();
         string? stopReason = null;
-        long inputTokens = 0, output = 0;
+        long inTokens = 0, output = 0, cacheRead = 0, cacheWrite = 0;
         var model = o.CornerModel;
-        await foreach (var ev in Client(o).Beta.Messages.CreateStreaming(parameters, ct))
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        AiUsageLog Log(bool ok, string? error) => new()
         {
-            if (ev.TryPickStart(out var start))
+            Feature = AiFeature.CornerCommentary, Model = model, Subject = match,
+            InputTokens = (int)inTokens, OutputTokens = (int)output, CacheReadTokens = (int)cacheRead, CacheWriteTokens = (int)cacheWrite,
+            CostUsd = AiPricing.Cost(model, inTokens, output, cacheRead, cacheWrite, 0, cacheWrite1h: true),
+            DurationMs = (int)watch.ElapsedMilliseconds, Ok = ok, Error = error,
+        };
+
+        try
+        {
+            await foreach (var ev in Client(o).Beta.Messages.CreateStreaming(parameters, ct))
             {
-                model = start.Message.Model.Raw();
-                inputTokens = start.Message.Usage.InputTokens + (start.Message.Usage.CacheReadInputTokens ?? 0) + (start.Message.Usage.CacheCreationInputTokens ?? 0);
+                if (ev.TryPickStart(out var start))
+                {
+                    model = start.Message.Model.Raw();
+                    inTokens = start.Message.Usage.InputTokens;
+                    cacheRead = start.Message.Usage.CacheReadInputTokens ?? 0;
+                    cacheWrite = start.Message.Usage.CacheCreationInputTokens ?? 0;
+                }
+                else if (ev.TryPickContentBlockDelta(out var delta) && delta.Delta.TryPickText(out var chunk))
+                {
+                    text.Append(chunk.Text);
+                    await onUpdate(new AiReportUpdate(chunk.Text, null));
+                }
+                else if (ev.TryPickDelta(out var messageDelta))
+                {
+                    stopReason = messageDelta.Delta.StopReason?.Raw();
+                    output = messageDelta.Usage.OutputTokens;
+                }
             }
-            else if (ev.TryPickContentBlockDelta(out var delta) && delta.Delta.TryPickText(out var chunk))
-            {
-                text.Append(chunk.Text);
-                await onUpdate(new AiReportUpdate(chunk.Text, null));
-            }
-            else if (ev.TryPickDelta(out var messageDelta))
-            {
-                stopReason = messageDelta.Delta.StopReason?.Raw();
-                output = messageDelta.Usage.OutputTokens;
-            }
+        }
+        catch (Exception ex)
+        {
+            await usage.LogAsync(Log(false, ex is OperationCanceledException ? "Đã dừng / quá thời gian" : ex.Message));
+            throw;
         }
 
         var markdown = text.ToString().Trim();
@@ -296,8 +349,10 @@ public sealed class CornerAiService(IOptions<AiReportOptions> options, IWebHostE
             markdown += "\n\n> Nhận định bị cắt do chạm giới hạn độ dài (Anthropic:CornerMaxTokens).";
         }
 
-        var cost = Cost(model, inputTokens, output);
-        logger.LogInformation("Góc Live: Claude nhận định {Match}, {Input} token vào, {Output} ra, ~${Cost}", match, inputTokens, output, cost.CostUsd);
+        var log = Log(stopReason is not ("refusal" or "max_tokens"), stopReason is "refusal" or "max_tokens" ? $"stop_reason = {stopReason}" : null);
+        await usage.LogAsync(log);
+        var cost = new CornerAiCost(model, inTokens + cacheRead + cacheWrite, output, log.CostUsd);
+        logger.LogInformation("Góc Live: Claude nhận định {Match}, {Input} token vào, {Output} ra, ~${Cost}", match, cost.InputTokens, output, cost.CostUsd);
         return (markdown, cost);
     }
 
@@ -366,12 +421,6 @@ public sealed class CornerAiService(IOptions<AiReportOptions> options, IWebHostE
     private static AnthropicClient Client(AiReportOptions o) => string.IsNullOrWhiteSpace(o.BaseUrl)
         ? new AnthropicClient { ApiKey = o.ApiKey, Timeout = TimeSpan.FromMinutes(o.TimeoutMinutes) }
         : new AnthropicClient { ApiKey = o.ApiKey, Timeout = TimeSpan.FromMinutes(o.TimeoutMinutes), BaseUrl = o.BaseUrl };
-
-    private static CornerAiCost Cost(string model, long input, long output)
-    {
-        var (inPrice, outPrice) = SideInfoService.Prices(model);
-        return new CornerAiCost(model, input, output, Math.Round((input * inPrice + output * outPrice) / 1_000_000m, 4));
-    }
 
     private static MediaType MediaTypeOf(string contentType) => contentType.ToLowerInvariant() switch
     {

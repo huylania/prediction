@@ -1,0 +1,239 @@
+@page "/chi-phi-ai"
+@rendermode InteractiveServer
+@using System.Globalization
+@using Microsoft.Extensions.Options
+@inject AiUsageService Usage
+@inject AiReportService Reports
+@inject IOptions<AiReportOptions> AiOptions
+@inject TimeDisplay Time
+
+<PageTitle>Chi phí AI</PageTitle>
+
+<h1 class="h3 mb-1">Chi phí AI (Claude)</h1>
+<p class="text-muted small mb-3">
+    Mọi lần gọi API Claude đều được ghi lại, kể cả lần lỗi (phần đã chạy vẫn bị tính tiền). Chi phí là <strong>ước tính</strong> theo bảng giá
+    (token vào/ra, cache, $0.01 mỗi lượt tra web); số chính xác xem ở <strong>console.anthropic.com → Usage / Billing</strong>.
+    Lần gọi trước khi có log chỉ còn báo cáo AI và thông tin bên lề đã lưu (ghi "dữ liệu cũ").
+</p>
+
+@if (_message is not null)
+{
+    <div class="alert alert-success py-2 small">@_message</div>
+}
+
+<div class="an-section">
+    <h2>Các tính năng dùng Claude</h2>
+    @if (!Reports.IsConfigured)
+    {
+        <div class="alert alert-secondary py-2 small mb-2">Website chưa có API key Claude nên không tính năng nào gọi Claude (không tốn tiền).</div>
+    }
+    <div class="table-responsive">
+        <table class="table table-sm small align-middle mb-1">
+            <thead><tr><th>Tính năng</th><th>Khi nào gọi</th><th>Model</th><th class="text-end">Ước tính / lần</th><th class="text-end">@PeriodLabel</th></tr></thead>
+            <tbody>
+                @foreach (var f in Features)
+                {
+                    var stat = Stat(f.Feature);
+                    <tr>
+                        <td class="fw-semibold">@AiFeatureText.Label(f.Feature)</td>
+                        <td>@f.When</td>
+                        <td class="text-nowrap">@f.Model</td>
+                        <td class="text-end text-nowrap">@f.Estimate</td>
+                        <td class="text-end text-nowrap">@stat.Count lần · <strong>$@Money(stat.Cost)</strong></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="an-section">
+    <h2>AI tự động</h2>
+    <p class="small mb-2">
+        Chỉ có <strong>một</strong> tính năng tự gọi Claude mà không cần bấm: <strong>thông tin bên lề cho trận nhóm A/B</strong> (tác vụ nền 30 phút/lần,
+        mỗi trận 1 lần; trận gọi lỗi thì chờ 12 giờ mới thử lại). Hôm nay đã dùng <strong>$@Money(_autoToday)</strong> / $@Money(_budget).
+    </p>
+    <div class="d-flex flex-wrap gap-3 align-items-end">
+        <label class="d-flex align-items-center gap-2 small">
+            <input type="checkbox" class="form-check-input" @bind="_auto" /> Bật AI tự điền thông tin bên lề
+        </label>
+        <div>
+            <label class="form-label small mb-0">Giới hạn mỗi ngày (USD, giờ Việt Nam)</label>
+            <input type="number" step="0.5" min="0" class="form-control form-control-sm" style="width: 120px" @bind="_budget" />
+        </div>
+        <button class="btn btn-sm btn-primary" @onclick="SaveAsync">Lưu</button>
+    </div>
+    <div class="hint mt-1">Tắt thì website không tự gọi Claude nữa; các nút bấm tay (báo cáo AI, điền bên lề, Góc Live) vẫn dùng được.</div>
+</div>
+
+<div class="d-flex flex-wrap gap-2 mb-2">
+    @foreach (var (days, label) in Periods)
+    {
+        <button class="chip @(_days == days ? "active" : "")" @onclick="() => SetPeriodAsync(days)">@label</button>
+    }
+</div>
+
+<div class="an-section">
+    <h2>Tổng @PeriodLabel.ToLowerInvariant()</h2>
+    <div class="table-responsive">
+        <table class="table table-sm small align-middle mb-0">
+            <thead><tr><th>Tính năng</th><th class="text-end">Số lần</th><th class="text-end">Lỗi</th><th class="text-end">Token vào (+cache)</th><th class="text-end">Token ra</th><th class="text-end">Tra web</th><th class="text-end">Chi phí</th></tr></thead>
+            <tbody>
+                @foreach (var g in _logs.GroupBy(l => l.Feature).OrderByDescending(g => g.Sum(l => l.CostUsd)))
+                {
+                    <tr>
+                        <td>@AiFeatureText.Label(g.Key)</td>
+                        <td class="text-end">@g.Count()</td>
+                        <td class="text-end @(g.Any(l => !l.Ok) ? "text-danger" : "")">@g.Count(l => !l.Ok)</td>
+                        <td class="text-end">@Tokens(g.Sum(l => (long)l.InputTokens)) (+@Tokens(g.Sum(l => (long)l.CacheReadTokens + l.CacheWriteTokens)))</td>
+                        <td class="text-end">@Tokens(g.Sum(l => (long)l.OutputTokens))</td>
+                        <td class="text-end">@g.Sum(l => l.WebSearches)</td>
+                        <td class="text-end fw-semibold">$@Money(g.Sum(l => l.CostUsd))</td>
+                    </tr>
+                }
+                <tr class="table-light fw-semibold">
+                    <td>Tổng</td><td class="text-end">@_logs.Count</td><td class="text-end">@_logs.Count(l => !l.Ok)</td><td colspan="3"></td>
+                    <td class="text-end">$@Money(_logs.Sum(l => l.CostUsd))</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@if (_logs.Count > 0)
+{
+    <div class="an-section">
+        <h2>Theo ngày</h2>
+        <div class="table-responsive">
+            <table class="table table-sm small align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>Ngày</th>
+                        @foreach (var f in Features) { <th class="text-end">@AiFeatureText.Label(f.Feature)</th> }
+                        <th class="text-end">Tổng</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var day in _logs.GroupBy(l => Time.ToLocal(l.CreatedAtUtc).Date).OrderByDescending(g => g.Key).Take(31))
+                    {
+                        <tr>
+                            <td class="text-nowrap">@Time.DayLabel(day.Key)</td>
+                            @foreach (var f in Features)
+                            {
+                                var items = day.Where(l => l.Feature == f.Feature).ToList();
+                                <td class="text-end text-nowrap">@(items.Count == 0 ? "—" : $"{items.Count} · ${Money(items.Sum(l => l.CostUsd))}")</td>
+                            }
+                            <td class="text-end fw-semibold">$@Money(day.Sum(l => l.CostUsd))</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="an-section">
+        <h2>Từng lần gọi <span class="small text-muted fw-normal">(mới nhất, tối đa 200)</span></h2>
+        <div class="table-responsive">
+            <table class="table table-sm small align-middle mb-0">
+                <thead><tr><th>Giờ</th><th>Tính năng</th><th>Model</th><th>Nội dung</th><th class="text-end">Token vào / cache / ra</th><th class="text-end">Web</th><th class="text-end">Chi phí</th><th class="text-end">Thời gian</th><th>Kết quả</th></tr></thead>
+                <tbody>
+                    @foreach (var l in _logs.Take(200))
+                    {
+                        <tr>
+                            <td class="text-nowrap">@Time.Short(l.CreatedAtUtc)</td>
+                            <td>@AiFeatureText.Label(l.Feature)</td>
+                            <td class="text-nowrap">@l.Model</td>
+                            <td>
+                                @if (l.FixtureId is { } id)
+                                {
+                                    <a href="tran-dau/@id">@(l.Subject ?? $"Trận #{id}")</a>
+                                }
+                                else
+                                {
+                                    @l.Subject
+                                }
+                            </td>
+                            <td class="text-end text-nowrap">@Tokens(l.InputTokens) / @Tokens(l.CacheReadTokens + l.CacheWriteTokens) / @Tokens(l.OutputTokens)</td>
+                            <td class="text-end">@l.WebSearches</td>
+                            <td class="text-end fw-semibold">$@Money(l.CostUsd)</td>
+                            <td class="text-end text-nowrap">@(l.DurationMs > 0 ? $"{l.DurationMs / 1000.0:0.#} s" : "—")</td>
+                            <td>@if (l.Ok) { <span class="badge bg-success-subtle text-success-emphasis">OK</span> } else { <span class="badge bg-danger">Lỗi</span> <span class="small text-danger">@l.Error</span> }</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+else
+{
+    <div class="empty-state">Chưa có lần gọi Claude nào trong khoảng này.</div>
+}
+
+@code {
+    private static readonly (int? Days, string Label)[] Periods = [(1, "Hôm nay"), (7, "7 ngày"), (30, "30 ngày"), (null, "Tất cả")];
+
+    private int? _days = 30;
+    private List<AiUsageLog> _logs = [];
+    private bool _auto;
+    private decimal _budget;
+    private decimal _autoToday;
+    private string? _message;
+
+    private sealed record FeatureInfo(AiFeature Feature, string When, string Model, string Estimate);
+
+    private List<FeatureInfo> Features
+    {
+        get
+        {
+            var o = AiOptions.Value;
+            return
+            [
+                new(AiFeature.Report, "Bấm \"Viết báo cáo AI\" / \"Phân tích lại\" ở tab Phân tích chuyên sâu của trận", $"{o.Model} + tra web ≤ {o.WebSearchMaxUses}", "$0.2–0.6"),
+                new(AiFeature.SideInfoAuto, $"Tự động 30 phút/lần cho trận nhóm A/B trong 24 giờ tới ({(_auto ? $"đang bật, tối đa ${Money(_budget)}/ngày" : "đang tắt")})", $"{o.SideInfoModel} + tra web ≤ {o.SideInfoWebSearchMaxUses}", "$0.05–0.20"),
+                new(AiFeature.SideInfoManual, "Bấm \"AI điền thông tin bên lề\" / \"Điền lại\" ở tab Lịch sử & bên lề", $"{o.SideInfoModel} + tra web ≤ {o.SideInfoWebSearchMaxUses}", "$0.05–0.20"),
+                new(AiFeature.CornerVision, "Bấm \"Claude đọc ảnh\" ở trang Góc Live", o.CornerModel, "$0.01–0.03"),
+                new(AiFeature.CornerCommentary, "Bấm \"Claude nhận định\" ở trang Góc Live", o.CornerModel, "$0.02–0.05"),
+            ];
+        }
+    }
+
+    private string PeriodLabel => Periods.First(p => p.Days == _days).Label;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var settings = await Usage.SettingsAsync();
+        (_auto, _budget) = (settings.SideInfoAuto, settings.SideInfoDailyBudgetUsd);
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        var todayStart = Time.ToUtc(Time.TodayLocal);
+        DateTime? from = _days is { } d ? Time.ToUtc(Time.TodayLocal.AddDays(1 - d)) : null;
+        _logs = await Usage.LogsAsync(from);
+        _autoToday = await Usage.SpentAsync(AiFeature.SideInfoAuto, todayStart);
+    }
+
+    private async Task SetPeriodAsync(int? days)
+    {
+        _days = days;
+        await LoadAsync();
+    }
+
+    private async Task SaveAsync()
+    {
+        await Usage.SaveSettingsAsync(new AiAutoSettings(_auto, _budget));
+        _message = _auto ? $"Đã lưu: AI tự điền thông tin bên lề BẬT, tối đa ${Money(_budget)}/ngày." : "Đã lưu: TẮT AI tự điền thông tin bên lề.";
+    }
+
+    private (int Count, decimal Cost) Stat(AiFeature feature)
+    {
+        var items = _logs.Where(l => l.Feature == feature).ToList();
+        return (items.Count, items.Sum(l => l.CostUsd));
+    }
+
+    private static string Money(decimal value) => value.ToString(value < 1 ? "0.000" : "0.00", CultureInfo.InvariantCulture);
+
+    private static string Tokens(long value) => value >= 10_000 ? (value / 1000.0).ToString("0", CultureInfo.InvariantCulture) + "k" : value.ToString(CultureInfo.InvariantCulture);
+}

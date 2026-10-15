@@ -75,15 +75,9 @@ public sealed class AiReportService(
     IWebHostEnvironment env,
     TimeDisplay time,
     TimeProvider clock,
+    AiUsageService usage,
     ILogger<AiReportService> logger)
 {
-    // Giá Claude Opus 5.5 (USD / triệu token) và web search (USD / lượt) để ước tính chi phí.
-    private const decimal InputPrice = 4m;
-    private const decimal OutputPrice = 20m;
-    private const decimal CacheWrite1hPrice = 8m;
-    private const decimal CacheReadPrice = 0.20m;
-    private const decimal WebSearchPrice = 0.01m;
-
     private const string AppInstructions = """
         Bạn đang chạy bên trong website soi kèo cá nhân của người dùng (Blazor + API-Football). Mỗi yêu cầu gửi kèm số liệu
         đã được website tính sẵn cho MỘT trận đấu (JSON): BXH trước trận, phong độ 10 trận gần nhất hoặc giai đoạn HLV/tân binh mới,
@@ -154,42 +148,60 @@ public sealed class AiReportService(
         string? stopReason = null;
         long input = 0, output = 0, cacheRead = 0, cacheWrite = 0, searches = 0;
         var model = o.Model;
-
-        await foreach (var ev in client.Beta.Messages.CreateStreaming(parameters, ct))
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        var subject = $"{result.Home} – {result.Away}";
+        AiUsageLog Log(bool ok, string? error) => new()
         {
-            if (ev.TryPickStart(out var start))
+            Feature = AiFeature.Report, Model = model, FixtureId = fixtureId, Subject = subject,
+            InputTokens = (int)input, OutputTokens = (int)output, CacheReadTokens = (int)cacheRead, CacheWriteTokens = (int)cacheWrite,
+            WebSearches = (int)searches, CostUsd = AiPricing.Cost(model, input, output, cacheRead, cacheWrite, searches, cacheWrite1h: true),
+            DurationMs = (int)watch.ElapsedMilliseconds, Ok = ok, Error = error,
+        };
+
+        try
+        {
+            await foreach (var ev in client.Beta.Messages.CreateStreaming(parameters, ct))
             {
-                model = start.Message.Model.Raw();
-                input = start.Message.Usage.InputTokens;
-                cacheRead = start.Message.Usage.CacheReadInputTokens ?? 0;
-                cacheWrite = start.Message.Usage.CacheCreationInputTokens ?? 0;
-            }
-            else if (ev.TryPickContentBlockStart(out var blockStart))
-            {
-                if (blockStart.ContentBlock.TryPickBetaServerToolUse(out _))
+                if (ev.TryPickStart(out var start))
                 {
-                    await onUpdate(new AiReportUpdate(null, "Đang tra cứu web…"));
+                    model = start.Message.Model.Raw();
+                    input = start.Message.Usage.InputTokens;
+                    cacheRead = start.Message.Usage.CacheReadInputTokens ?? 0;
+                    cacheWrite = start.Message.Usage.CacheCreationInputTokens ?? 0;
                 }
-                else if (blockStart.ContentBlock.TryPickBetaText(out _) && text.Length > 0 && text[^1] != '\n')
+                else if (ev.TryPickContentBlockStart(out var blockStart))
                 {
-                    // Khối văn bản mới (sau một lượt tra cứu): xuống dòng để không dính chữ.
-                    text.Append("\n\n");
+                    if (blockStart.ContentBlock.TryPickBetaServerToolUse(out _))
+                    {
+                        await onUpdate(new AiReportUpdate(null, "Đang tra cứu web…"));
+                    }
+                    else if (blockStart.ContentBlock.TryPickBetaText(out _) && text.Length > 0 && text[^1] != '\n')
+                    {
+                        // Khối văn bản mới (sau một lượt tra cứu): xuống dòng để không dính chữ.
+                        text.Append("\n\n");
+                    }
+                }
+                else if (ev.TryPickContentBlockDelta(out var delta) && delta.Delta.TryPickText(out var chunk))
+                {
+                    text.Append(chunk.Text);
+                    await onUpdate(new AiReportUpdate(chunk.Text, null));
+                }
+                else if (ev.TryPickDelta(out var messageDelta))
+                {
+                    stopReason = messageDelta.Delta.StopReason?.Raw();
+                    output = messageDelta.Usage.OutputTokens;
+                    input = messageDelta.Usage.InputTokens ?? input;
+                    cacheRead = messageDelta.Usage.CacheReadInputTokens ?? cacheRead;
+                    cacheWrite = messageDelta.Usage.CacheCreationInputTokens ?? cacheWrite;
+                    searches = messageDelta.Usage.ServerToolUse?.WebSearchRequests ?? searches;
                 }
             }
-            else if (ev.TryPickContentBlockDelta(out var delta) && delta.Delta.TryPickText(out var chunk))
-            {
-                text.Append(chunk.Text);
-                await onUpdate(new AiReportUpdate(chunk.Text, null));
-            }
-            else if (ev.TryPickDelta(out var messageDelta))
-            {
-                stopReason = messageDelta.Delta.StopReason?.Raw();
-                output = messageDelta.Usage.OutputTokens;
-                input = messageDelta.Usage.InputTokens ?? input;
-                cacheRead = messageDelta.Usage.CacheReadInputTokens ?? cacheRead;
-                cacheWrite = messageDelta.Usage.CacheCreationInputTokens ?? cacheWrite;
-                searches = messageDelta.Usage.ServerToolUse?.WebSearchRequests ?? searches;
-            }
+        }
+        catch (Exception ex)
+        {
+            // Phần đã chạy vẫn bị tính tiền: ghi log với số token nhận được tới lúc lỗi.
+            await usage.LogAsync(Log(false, ex is OperationCanceledException ? "Đã dừng / quá thời gian" : ex.Message));
+            throw;
         }
 
         var markdown = text.ToString().Trim();
@@ -217,8 +229,7 @@ public sealed class AiReportService(
             CacheReadTokens = (int)cacheRead,
             CacheWriteTokens = (int)cacheWrite,
             WebSearches = (int)searches,
-            CostUsd = Math.Round((input * InputPrice + output * OutputPrice + cacheWrite * CacheWrite1hPrice + cacheRead * CacheReadPrice) / 1_000_000m
-                + searches * WebSearchPrice, 4),
+            CostUsd = AiPricing.Cost(model, input, output, cacheRead, cacheWrite, searches, cacheWrite1h: true),
             CreatedAtUtc = clock.GetUtcNow().UtcDateTime,
         };
 
@@ -227,6 +238,8 @@ public sealed class AiReportService(
             db.AiReports.Add(report);
             await db.SaveChangesAsync(CancellationToken.None);
         }
+
+        await usage.LogAsync(Log(stopReason is not ("refusal" or "max_tokens"), stopReason is "refusal" or "max_tokens" or "pause_turn" ? $"stop_reason = {stopReason}" : null));
 
         logger.LogInformation("Báo cáo AI trận {Fixture}: {Input}+{CacheRead} cache đọc +{CacheWrite} cache ghi vào, {Output} ra, {Searches} lượt web, ~${Cost}",
             fixtureId, input, cacheRead, cacheWrite, output, searches, report.CostUsd);

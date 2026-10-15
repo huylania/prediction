@@ -100,6 +100,70 @@ namespace Prediction.Web.Data.Migrations
                     b.ToTable("AiReports");
                 });
 
+            modelBuilder.Entity("Prediction.Core.Entities.AiUsageLog", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<int>("CacheReadTokens")
+                        .HasColumnType("int");
+
+                    b.Property<int>("CacheWriteTokens")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("CostUsd")
+                        .HasPrecision(10, 4)
+                        .HasColumnType("decimal(10,4)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("DurationMs")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Error")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int>("Feature")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("FixtureId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("InputTokens")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Model")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<bool>("Ok")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("OutputTokens")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Subject")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int>("WebSearches")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAtUtc");
+
+                    b.HasIndex("Feature", "CreatedAtUtc");
+
+                    b.ToTable("AiUsageLogs");
+                });
+
             modelBuilder.Entity("Prediction.Core.Entities.AnalysisPick", b =>
                 {
                     b.Property<long>("Id")
@@ -255,6 +319,21 @@ namespace Prediction.Web.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("ApiAdvices");
+                });
+
+            modelBuilder.Entity("Prediction.Core.Entities.AppSetting", b =>
+                {
+                    b.Property<string>("Key")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Value")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.HasKey("Key");
+
+                    b.ToTable("AppSettings");
                 });
 
             modelBuilder.Entity("Prediction.Core.Entities.ClosingLine", b =>

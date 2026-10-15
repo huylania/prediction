@@ -33,6 +33,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<LiveCornerOdds> LiveCornerOdds => Set<LiveCornerOdds>();
     public DbSet<LiveCornerPick> LiveCornerPicks => Set<LiveCornerPick>();
     public DbSet<LiveOddsSnapshot> LiveOddsSnapshots => Set<LiveOddsSnapshot>();
+    public DbSet<AiUsageLog> AiUsageLogs => Set<AiUsageLog>();
+    public DbSet<AppSetting> AppSettings => Set<AppSetting>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -315,6 +317,23 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(x => x.PriceB).HasPrecision(8, 3);
             e.HasOne(x => x.Fixture).WithMany().HasForeignKey(x => x.FixtureId).OnDelete(DeleteBehavior.Cascade);
             e.HasIndex(x => new { x.FixtureId, x.Market, x.FirstHalf, x.FetchedAtUtc });
+        });
+
+        b.Entity<AiUsageLog>(e =>
+        {
+            e.Property(x => x.Model).HasMaxLength(100);
+            e.Property(x => x.Subject).HasMaxLength(200);
+            e.Property(x => x.Error).HasMaxLength(500);
+            e.Property(x => x.CostUsd).HasPrecision(10, 4);
+            e.HasIndex(x => x.CreatedAtUtc);
+            e.HasIndex(x => new { x.Feature, x.CreatedAtUtc });
+        });
+
+        b.Entity<AppSetting>(e =>
+        {
+            e.HasKey(x => x.Key);
+            e.Property(x => x.Key).HasMaxLength(100);
+            e.Property(x => x.Value).HasMaxLength(1000);
         });
 
         b.Entity<LiveCornerPick>(e =>

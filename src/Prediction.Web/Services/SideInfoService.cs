@@ -22,8 +22,12 @@ public sealed class SideInfoService(
     MatchContextService contexts,
     TimeDisplay time,
     TimeProvider clock,
+    AiUsageService usage,
     ILogger<SideInfoService> logger)
 {
+    /// <summary>Trận tự điền bị lỗi thì chờ chừng này giờ mới thử lại (tránh tốn tiền gọi lại mỗi 30 phút).</summary>
+    private const int RetryAfterFailureHours = 12;
+
     private const string Instructions = """
         Bạn là trợ lý tra cứu bóng đá cho website soi kèo cá nhân. Nhiệm vụ: dùng công cụ tìm kiếm web để điền THÔNG TIN BÊN LỀ
         của một trận đấu, ngắn gọn, bằng tiếng Việt, chỉ ghi điều tra cứu được (không bịa). Không cần phân tích kèo.
@@ -47,7 +51,8 @@ public sealed class SideInfoService(
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(options.Value.ApiKey);
 
-    public bool AutoEnabled => IsConfigured && options.Value.SideInfoAuto;
+    /// <summary>Đang bật tự điền (appsettings, ghi đè được ở trang Chi phí AI).</summary>
+    public async Task<bool> AutoEnabledAsync(CancellationToken ct = default) => IsConfigured && (await usage.SettingsAsync(ct)).SideInfoAuto;
 
     public string Model => options.Value.SideInfoModel;
 
@@ -56,25 +61,31 @@ public sealed class SideInfoService(
     /// <summary>Tự điền cho các trận nhóm A/B trong 24 giờ tới (trong giới hạn chi phí/ngày).</summary>
     public async Task<string?> RunAutoAsync(CancellationToken ct)
     {
-        if (!AutoEnabled)
+        var settings = await usage.SettingsAsync(ct);
+        if (!IsConfigured || !settings.SideInfoAuto)
         {
             return null;
         }
 
         var o = options.Value;
+        var budget = settings.SideInfoDailyBudgetUsd;
         var now = UtcNow;
         await using var db = await dbFactory.CreateDbContextAsync(ct);
-        var dayStart = now.Date;
-        var spent = await db.MatchSideInfos.Where(s => s.IsAuto && s.CreatedAtUtc >= dayStart).SumAsync(s => (decimal?)s.CostUsd, ct) ?? 0;
-        if (spent >= o.SideInfoDailyBudgetUsd)
+
+        // Giới hạn theo ngày giờ Việt Nam, tính từ log (gồm cả lần gọi lỗi vẫn bị tính tiền).
+        var dayStart = time.ToUtc(time.TodayLocal);
+        var spent = await usage.SpentAsync(AiFeature.SideInfoAuto, dayStart, ct);
+        if (spent >= budget)
         {
             return null;
         }
 
+        var retryAfter = now.AddHours(-RetryAfterFailureHours);
         var ids = await db.AnalysisPicks.AsNoTracking()
             .Where(p => p.Group != AnalysisGroup.C && p.Fixture!.KickoffUtc > now && p.Fixture.KickoffUtc <= now.AddHours(24)
                 && p.Fixture.League!.IsTracked && !p.Fixture.League.IsDemo
-                && !db.MatchSideInfos.Any(s => s.FixtureId == p.FixtureId))
+                && !db.MatchSideInfos.Any(s => s.FixtureId == p.FixtureId)
+                && !db.AiUsageLogs.Any(l => l.FixtureId == p.FixtureId && l.Feature == AiFeature.SideInfoAuto && !l.Ok && l.CreatedAtUtc > retryAfter))
             .OrderBy(p => p.Fixture!.KickoffUtc)
             .Select(p => p.FixtureId)
             .Distinct()
@@ -82,27 +93,33 @@ public sealed class SideInfoService(
             .ToListAsync(ct);
 
         var done = 0;
-        var cost = 0m;
+        var failed = 0;
         foreach (var id in ids)
         {
-            if (spent + cost >= o.SideInfoDailyBudgetUsd)
+            if (await usage.SpentAsync(AiFeature.SideInfoAuto, dayStart, ct) >= budget)
             {
                 break;
             }
 
             try
             {
-                var info = await GenerateAsync(id, true, ct);
-                cost += info.CostUsd;
+                await GenerateAsync(id, true, ct);
                 done++;
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                logger.LogWarning(ex, "AI điền thông tin bên lề trận {Fixture} lỗi", id);
+                failed++;
+                logger.LogWarning(ex, "AI điền thông tin bên lề trận {Fixture} lỗi (thử lại sau {Hours} giờ)", id, RetryAfterFailureHours);
             }
         }
 
-        return done == 0 ? null : $"AI điền thông tin bên lề: {done} trận nhóm A/B, ~${cost:0.00} (hôm nay ~${spent + cost:0.00}/{o.SideInfoDailyBudgetUsd:0.##}).";
+        if (done + failed == 0)
+        {
+            return null;
+        }
+
+        var today = await usage.SpentAsync(AiFeature.SideInfoAuto, dayStart, ct);
+        return $"AI điền thông tin bên lề: {done} trận nhóm A/B{(failed > 0 ? $", {failed} lỗi" : "")} (hôm nay ~${today:0.00}/{budget:0.##}).";
     }
 
     public async Task<MatchSideInfo> GenerateAsync(int fixtureId, bool isAuto, CancellationToken ct)
@@ -123,7 +140,25 @@ public sealed class SideInfoService(
             .DistinctBy(r => r.FixtureId)
             .ToList();
 
-        var response = await client.Beta.Messages.Create(new MessageCreateParams
+        var feature = isAuto ? AiFeature.SideInfoAuto : AiFeature.SideInfoManual;
+        var subject = $"{view.Home} – {view.Away}";
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        BetaMessage response;
+        try
+        {
+            response = await CreateAsync();
+        }
+        catch (Exception ex)
+        {
+            await usage.LogAsync(new AiUsageLog
+            {
+                Feature = feature, Model = o.SideInfoModel, FixtureId = fixtureId, Subject = subject,
+                DurationMs = (int)watch.ElapsedMilliseconds, Ok = false, Error = ex is OperationCanceledException ? "Đã dừng / quá thời gian" : ex.Message,
+            });
+            throw;
+        }
+
+        Task<BetaMessage> CreateAsync() => client.Beta.Messages.Create(new MessageCreateParams
         {
             Model = o.SideInfoModel,
             MaxTokens = 8000,
@@ -142,13 +177,26 @@ public sealed class SideInfoService(
             throw new InvalidOperationException("Claude từ chối yêu cầu này.");
         }
 
-        var usage = response.Usage;
-        var searches = usage.ServerToolUse?.WebSearchRequests ?? 0;
-        var (inPrice, outPrice) = Prices(response.Model.Raw());
-        var cost = Math.Round((usage.InputTokens * inPrice + usage.OutputTokens * outPrice
-            + (usage.CacheCreationInputTokens ?? 0) * inPrice * 1.25m + (usage.CacheReadInputTokens ?? 0) * inPrice * 0.1m) / 1_000_000m + searches * 0.01m, 4);
+        var tokens = response.Usage;
+        var searches = tokens.ServerToolUse?.WebSearchRequests ?? 0;
+        var model = response.Model.Raw();
+        var cost = AiPricing.Cost(model, tokens.InputTokens, tokens.OutputTokens, tokens.CacheReadInputTokens ?? 0, tokens.CacheCreationInputTokens ?? 0, searches);
+        var parsed = Parse(text);
+        var log = new AiUsageLog
+        {
+            Feature = feature, Model = model, FixtureId = fixtureId, Subject = subject,
+            InputTokens = (int)tokens.InputTokens, OutputTokens = (int)tokens.OutputTokens,
+            CacheReadTokens = (int)(tokens.CacheReadInputTokens ?? 0), CacheWriteTokens = (int)(tokens.CacheCreationInputTokens ?? 0),
+            WebSearches = (int)searches, CostUsd = cost, DurationMs = (int)watch.ElapsedMilliseconds,
+            Ok = parsed is not null, Error = parsed is null ? $"AI không trả về JSON hợp lệ (stop_reason = {stop})" : null,
+        };
+        await usage.LogAsync(log);
+        if (parsed is null)
+        {
+            throw new InvalidOperationException(log.Error);
+        }
 
-        var parsed = Parse(text) ?? throw new InvalidOperationException("AI không trả về JSON hợp lệ.");
+        var json = parsed.Value;
         var now = UtcNow;
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         var info = await db.MatchSideInfos.FindAsync([fixtureId], ct);
@@ -158,16 +206,16 @@ public sealed class SideInfoService(
             db.MatchSideInfos.Add(info);
         }
 
-        info.Rivalry = Str(parsed, "rivalry", 2000);
-        info.Motivation = Str(parsed, "motivation", 2000);
-        info.News = Str(parsed, "news", 3000);
-        info.VenueNotes = Str(parsed, "venue_notes", 1000);
-        info.Weather = Str(parsed, "weather", 500);
-        info.AltitudeM = parsed.TryGetProperty("altitude_m", out var alt) && alt.ValueKind == JsonValueKind.Number && alt.TryGetDouble(out var a) && a is > -500 and < 6000
+        info.Rivalry = Str(json, "rivalry", 2000);
+        info.Motivation = Str(json, "motivation", 2000);
+        info.News = Str(json, "news", 3000);
+        info.VenueNotes = Str(json, "venue_notes", 1000);
+        info.Weather = Str(json, "weather", 500);
+        info.AltitudeM = json.TryGetProperty("altitude_m", out var alt) && alt.ValueKind == JsonValueKind.Number && alt.TryGetDouble(out var a) && a is > -500 and < 6000
             ? (int)Math.Round(a)
             : null;
-        info.Surface = Str(parsed, "surface", 50);
-        info.Sources = parsed.TryGetProperty("sources", out var src) && src.ValueKind == JsonValueKind.Array
+        info.Surface = Str(json, "surface", 50);
+        info.Sources = json.TryGetProperty("sources", out var src) && src.ValueKind == JsonValueKind.Array
             ? Truncate(string.Join("\n", src.EnumerateArray().Where(x => x.ValueKind == JsonValueKind.String).Select(x => x.GetString())), 3000)
             : null;
         info.Model = response.Model.Raw();
@@ -177,7 +225,7 @@ public sealed class SideInfoService(
 
         // Kèo trận cũ: chỉ nhận cho các trận đã hỏi, không ghi đè kèo nhập tay.
         var asked = missing.Select(m => m.FixtureId).ToHashSet();
-        if (parsed.TryGetProperty("lines", out var lines) && lines.ValueKind == JsonValueKind.Array)
+        if (json.TryGetProperty("lines", out var lines) && lines.ValueKind == JsonValueKind.Array)
         {
             var existing = await db.ClosingLines.Where(c => asked.Contains(c.FixtureId)).ToDictionaryAsync(c => c.FixtureId, ct);
             foreach (var l in lines.EnumerateArray())
@@ -312,11 +360,5 @@ public sealed class SideInfoService(
     };
 
     /// <summary>Giá USD / triệu token (vào, ra) theo dòng model.</summary>
-    public static (decimal Input, decimal Output) Prices(string model) => model switch
-    {
-        var m when m.Contains("opus", StringComparison.OrdinalIgnoreCase) => (4m, 20m),
-        var m when m.Contains("haiku", StringComparison.OrdinalIgnoreCase) => (1m, 5m),
-        var m when m.Contains("fable", StringComparison.OrdinalIgnoreCase) || m.Contains("mythos", StringComparison.OrdinalIgnoreCase) => (10m, 50m),
-        _ => (2m, 10m),
-    };
+    public static (decimal Input, decimal Output) Prices(string model) => AiPricing.Prices(model);
 }
