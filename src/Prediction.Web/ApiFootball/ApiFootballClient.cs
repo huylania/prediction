@@ -51,6 +51,14 @@ public sealed class ApiFootballClient(HttpClient http, IOptions<ApiFootballOptio
     public Task<List<FixtureItem>> GetFixturesAsync(int leagueId, int season, CancellationToken ct) =>
         GetListAsync<FixtureItem>($"fixtures?league={leagueId}&season={season}", ct);
 
+    /// <summary>Các trận đang đá của những giải cho trước.</summary>
+    public Task<List<FixtureItem>> GetLiveFixturesAsync(IEnumerable<int> leagueIds, CancellationToken ct) =>
+        GetListAsync<FixtureItem>($"fixtures?live={string.Join('-', leagueIds)}", ct);
+
+    /// <summary>Trận theo id (tối đa 20 id mỗi lần).</summary>
+    public Task<List<FixtureItem>> GetFixturesByIdsAsync(IEnumerable<int> fixtureIds, CancellationToken ct) =>
+        GetListAsync<FixtureItem>($"fixtures?ids={string.Join('-', fixtureIds)}", ct);
+
     public Task<List<OddsItem>> GetLeagueOddsAsync(int leagueId, int season, CancellationToken ct) =>
         GetListAsync<OddsItem>($"odds?league={leagueId}&season={season}&bookmaker={BookmakerId}", ct);
 

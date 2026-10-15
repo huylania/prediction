@@ -55,6 +55,10 @@ public static class Settlement
         return new SettlementResult(outcome, Profit(outcome, odds));
     }
 
+    /// <summary>Kết quả tạm tính nếu trận dừng ở tỉ số hiện tại (null nếu chưa có tỉ số).</summary>
+    public static SettlementResult? AtScore(PickSide side, decimal lineForSide, decimal odds, int? homeGoals, int? awayGoals) =>
+        homeGoals is { } hg && awayGoals is { } ag ? Settle(side, lineForSide, odds, hg, ag) : null;
+
     public static decimal Profit(BetOutcome outcome, decimal odds) => outcome switch
     {
         BetOutcome.Win => odds - 1,

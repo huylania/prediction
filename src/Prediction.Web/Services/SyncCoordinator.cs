@@ -15,6 +15,7 @@ public static class SyncJobs
     public const string Advice = "advice";
     public const string AdviceFinal = "advice-final";
     public const string Suggestions = "suggestions";
+    public const string Live = "live";
     public const string Backfill = "backfill";
 
     public static string Label(string job) => job switch
@@ -26,6 +27,7 @@ public static class SyncJobs
         Advice => "Tư vấn API",
         AdviceFinal => "Tư vấn API sát giờ",
         Suggestions => "Gợi ý",
+        Live => "Trực tiếp",
         Backfill => "Tải mùa cũ",
         _ => job,
     };
@@ -117,6 +119,7 @@ public sealed class SyncCoordinator(
         SyncJobs.Advice => RunAsync(job, (s, c) => s.SyncAdviceAsync(false, c), ct),
         SyncJobs.AdviceFinal => RunAsync(job, (s, c) => s.SyncAdviceAsync(true, c), ct),
         SyncJobs.Suggestions => RunAsync(job, async (_, c) => await suggestions.RefreshAsync(c), ct),
+        SyncJobs.Live => RunAsync(job, (s, c) => s.SyncLiveAsync(c), ct),
         _ => throw new ArgumentOutOfRangeException(nameof(job)),
     };
 }
@@ -189,6 +192,7 @@ public sealed class SyncBackgroundService(
             yield return (SyncJobs.ClosingOdds, o.ClosingOddsIntervalMinutes);
             yield return (SyncJobs.Advice, o.AdviceIntervalMinutes);
             yield return (SyncJobs.AdviceFinal, 15);
+            yield return (SyncJobs.Live, o.LiveIntervalMinutes);
         }
 
         yield return (SyncJobs.Suggestions, o.SuggestionsIntervalMinutes);

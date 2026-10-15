@@ -27,6 +27,9 @@ public class Fixture
     public int? HomeGoals { get; set; }
     public int? AwayGoals { get; set; }
 
+    /// <summary>Phút thi đấu khi trận đang diễn ra (theo API).</summary>
+    public int? Elapsed { get; set; }
+
     /// <summary>Trận thuộc giai đoạn có bảng xếp hạng (vòng đấu thường / league phase C1).</summary>
     public bool HasTable { get; set; } = true;
 
@@ -35,6 +38,8 @@ public class Fixture
     public bool IsFinished => FixtureStatus.IsFinished(Status) && HomeGoals.HasValue && AwayGoals.HasValue;
 
     public bool IsCancelled => FixtureStatus.IsCancelled(Status);
+
+    public bool IsLive => FixtureStatus.IsLive(Status);
 }
 
 public static class FixtureStatus
@@ -45,12 +50,15 @@ public static class FixtureStatus
     private static readonly HashSet<string> Finished = ["FT", "AET", "PEN"];
     private static readonly HashSet<string> Cancelled = ["CANC", "ABD", "AWD", "WO"];
     private static readonly HashSet<string> Upcoming = ["NS", "TBD"];
+    private static readonly HashSet<string> Live = ["1H", "HT", "2H", "ET", "BT", "P", "SUSP", "INT", "LIVE"];
 
     public static bool IsFinished(string status) => Finished.Contains(status);
 
     public static bool IsCancelled(string status) => Cancelled.Contains(status);
 
     public static bool IsUpcoming(string status) => Upcoming.Contains(status);
+
+    public static bool IsLive(string status) => Live.Contains(status);
 
     public static string Label(string status) => status switch
     {

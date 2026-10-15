@@ -19,6 +19,7 @@ public sealed class SyncOptions
     public int AdviceIntervalMinutes { get; set; } = 360;
     public int AdviceLookaheadDays { get; set; } = 3;
     public int SuggestionsIntervalMinutes { get; set; } = 5;
+    public int LiveIntervalMinutes { get; set; } = 1;
 }
 
 /// <summary>Các tác vụ lấy dữ liệu từ API-Football và ghi vào CSDL.</summary>
@@ -155,6 +156,61 @@ public sealed class DataSyncService(
         await db.SaveChangesAsync(ct);
         logger.LogInformation("Đồng bộ {Count} trận giải {League} mùa {Season}", items.Count, leagueId, season);
         return items.Count;
+    }
+
+    /// <summary>
+    /// Tỉ số và phút thi đấu của các trận đang diễn ra. Chỉ gọi API khi có trận trong khung giờ thi đấu.
+    /// Trận rời khỏi danh sách "live" được lấy lại theo id để có trạng thái cuối (FT, hoãn...).
+    /// Trả về thông điệp chỉ khi có trận vừa kết thúc, để nhật ký không bị lặp mỗi phút.
+    /// </summary>
+    public async Task<string?> SyncLiveAsync(CancellationToken ct)
+    {
+        var now = Now;
+        var leagues = await db.Leagues.AsNoTracking().Where(l => l.IsTracked && !l.IsDemo).ToDictionaryAsync(l => l.Id, ct);
+        var leagueIds = leagues.Keys.ToList();
+        var windowStart = now.AddHours(-4);
+        var candidates = (await db.Fixtures
+                .Where(f => leagueIds.Contains(f.LeagueId) && f.KickoffUtc <= now && f.KickoffUtc >= windowStart)
+                .ToListAsync(ct))
+            .Where(f => !f.IsFinished && !f.IsCancelled && f.Status != "PST")
+            .ToList();
+        if (candidates.Count == 0)
+        {
+            return null;
+        }
+
+        var live = await api.GetLiveFixturesAsync(leagueIds, ct);
+        var liveIds = live.Select(i => i.Fixture.Id).ToHashSet();
+        var others = candidates.Where(f => !liveIds.Contains(f.Id)).Select(f => f.Id).ToList();
+        var items = live.ToList();
+        foreach (var chunk in others.Chunk(20))
+        {
+            items.AddRange(await api.GetFixturesByIdsAsync(chunk, ct));
+        }
+
+        var byId = candidates.ToDictionary(f => f.Id);
+        var finished = 0;
+        foreach (var item in items)
+        {
+            if (!byId.TryGetValue(item.Fixture.Id, out var fixture))
+            {
+                fixture = await db.Fixtures.FindAsync([item.Fixture.Id], ct);
+                if (fixture is null)
+                {
+                    continue; // trận chưa có trong CSDL: lần đồng bộ lịch tiếp theo sẽ thêm
+                }
+            }
+
+            var wasFinished = fixture.IsFinished;
+            ApiMapper.Apply(fixture, item, leagues.GetValueOrDefault(fixture.LeagueId)?.Type, now);
+            if (!wasFinished && fixture.IsFinished)
+            {
+                finished++;
+            }
+        }
+
+        await db.SaveChangesAsync(ct);
+        return finished == 0 ? null : $"Trực tiếp: {live.Count} trận đang đá, {finished} trận vừa kết thúc.";
     }
 
     /// <summary>Kèo theo giải cho mọi trận sắp đá đã có kèo (bắt kèo mở và biến động trong ngày).</summary>

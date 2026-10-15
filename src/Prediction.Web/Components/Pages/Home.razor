@@ -63,32 +63,34 @@ else
         </div>
     </div>
 
-    <h2 class="h5">Gợi ý cho 3 ngày tới</h2>
+    @if (_live.Count > 0)
+    {
+        <div class="d-flex align-items-center mb-2">
+            <h2 class="h5 mb-0"><span class="live-dot me-1"></span> Đang đá</h2>
+            <a href="tran-dau?tab=live" class="ms-auto small">Xem tất cả →</a>
+        </div>
+        <div class="row g-3 mb-4">
+            @foreach (var m in _live.Take(4))
+            {
+                <div class="col-xxl-6"><MatchCard Match="m" Standalone="true" /></div>
+            }
+        </div>
+    }
+
+    <div class="d-flex align-items-center mb-2">
+        <h2 class="h5 mb-0">Gợi ý cho 3 ngày tới</h2>
+        <a href="tran-dau?tab=upcoming" class="ms-auto small">Tất cả trận sắp đá →</a>
+    </div>
     @if (_picks.Count == 0)
     {
-        <p class="text-muted">Chưa có trận nào khớp quy tắc trong 3 ngày tới.</p>
+        <div class="empty-state mb-4">Chưa có trận nào khớp quy tắc trong 3 ngày tới.</div>
     }
     else
     {
         <div class="row g-3 mb-4">
             @foreach (var m in _picks)
             {
-                <div class="col-md-6 col-xl-4">
-                    <div class="card match-card h-100">
-                        <div class="card-body">
-                            <div class="small text-muted mb-1">@Time.Kickoff(m.Fixture.KickoffUtc) · @m.League?.Name</div>
-                            <div class="teams mb-2">
-                                <a href="tran-dau/@m.Fixture.Id" class="text-decoration-none text-dark">
-                                    <span class="rank">@RankText(m.Context.Home)</span>@m.Home
-                                    <span class="text-muted fw-normal">vs</span>
-                                    <span class="rank">@RankText(m.Context.Away)</span>@m.Away
-                                </a>
-                            </div>
-                            <AdviceView Advice="m.Advice" Compact="true" />
-                            <a href="tran-dau/@m.Fixture.Id" class="small">Xem tư vấn chi tiết →</a>
-                        </div>
-                    </div>
-                </div>
+                <div class="col-xxl-6"><MatchCard Match="m" Standalone="true" /></div>
             }
         </div>
     }
@@ -150,6 +152,7 @@ else
     private bool _loading = true;
     private int _activeRules;
     private List<MatchInsight> _picks = [];
+    private List<MatchInsight> _live = [];
     private List<MatchInsight> _movers = [];
     private List<(Rule Rule, RuleRecord Record)> _rules = [];
     private RuleRecord _total = RuleRecord.Empty;
@@ -158,6 +161,9 @@ else
     protected override async Task OnInitializedAsync()
     {
         var now = Insights.UtcNow;
+        _live = (await Insights.ForWindowAsync(now.AddHours(-4), now.AddMinutes(1), null))
+            .Where(m => m.Fixture.IsLive || (FixtureStatus.IsUpcoming(m.Fixture.Status) && m.Fixture.KickoffUtc <= now))
+            .ToList();
         var matches = (await Insights.ForWindowAsync(now, now.AddDays(3), null))
             .Where(m => FixtureStatus.IsUpcoming(m.Fixture.Status))
             .ToList();

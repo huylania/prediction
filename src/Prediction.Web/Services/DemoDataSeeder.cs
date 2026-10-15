@@ -65,7 +65,16 @@ public sealed class DemoDataSeeder(IDbContextFactory<AppDbContext> dbFactory, Su
                 for (var m = 0; m < rounds[r].Count; m++)
                 {
                     var (home, away) = rounds[r][m];
-                    var kickoff = Round(roundStart.AddHours(m * 7));
+                    // Vòng 10 mùa này: 2 trận đang đá, 1 trận vừa đá xong hôm nay, còn lại sắp đá.
+                    var kickoff = season == 2026 && r == 9
+                        ? m switch
+                        {
+                            0 => now.AddMinutes(-70),
+                            1 => now.AddMinutes(-28),
+                            2 => now.AddHours(-4),
+                            _ => Round(now.AddHours(3 + (m - 3) * 7)),
+                        }
+                        : Round(roundStart.AddHours(m * 7));
                     var fixture = new Fixture
                     {
                         Id = ++fixtureId,
@@ -87,6 +96,16 @@ public sealed class DemoDataSeeder(IDbContextFactory<AppDbContext> dbFactory, Su
                         fixture.Status = FixtureStatus.FullTime;
                         fixture.HomeGoals = Poisson(random, lambdaHome);
                         fixture.AwayGoals = Poisson(random, lambdaAway);
+                    }
+                    else if (kickoff < now)
+                    {
+                        // Đang đá: phút thi đấu tính cả 15 phút nghỉ giữa hiệp.
+                        var minutes = (int)(now - kickoff).TotalMinutes;
+                        fixture.Status = minutes <= 45 ? "1H" : minutes < 60 ? "HT" : "2H";
+                        fixture.Elapsed = minutes <= 45 ? minutes : minutes < 60 ? 45 : Math.Min(90, minutes - 15);
+                        var share = fixture.Elapsed.Value / 90.0;
+                        fixture.HomeGoals = Poisson(random, lambdaHome * share);
+                        fixture.AwayGoals = Poisson(random, lambdaAway * share);
                     }
 
                     db.Fixtures.Add(fixture);

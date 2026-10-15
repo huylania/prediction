@@ -1,0 +1,103 @@
+@inject TimeDisplay Time
+@{
+    var f = Match.Fixture;
+    var live = f.IsLive || (FixtureStatus.IsUpcoming(f.Status) && f.KickoffUtc <= DateTime.UtcNow);
+    var hasScore = f.HomeGoals.HasValue && f.AwayGoals.HasValue;
+}
+<div class="mc @(live ? "mc-live" : "") @(Standalone ? "mc-standalone" : "")">
+    <div class="mc-head">
+        @if (live)
+        {
+            <span class="live-badge"><span class="dot"></span>@LiveText(f)</span>
+        }
+        else if (f.IsFinished)
+        {
+            <span class="ft-badge">@FixtureStatus.Label(f.Status)</span>
+        }
+        else if (FixtureStatus.IsUpcoming(f.Status))
+        {
+            <span class="ko">@Time.ToLocal(f.KickoffUtc).ToString("HH:mm")</span>
+            <span>@Time.Weekday(f.KickoffUtc) @Time.ToLocal(f.KickoffUtc).ToString("dd/MM")</span>
+        }
+        else
+        {
+            <span class="ft-badge">@FixtureStatus.Label(f.Status)</span>
+        }
+        @if (Standalone && Match.League is { } league)
+        {
+            <span class="mc-league">@league.Name</span>
+        }
+        @if (!string.IsNullOrEmpty(f.Round))
+        {
+            <span class="mc-round">@RoundText(f.Round)</span>
+        }
+        <a class="details" href="tran-dau/@f.Id">Chi tiết →</a>
+    </div>
+
+    <div class="mc-teams">
+        <div class="mc-team home">
+            <TeamCrest Team="Match.HomeTeam" Name="@Match.Home" />
+            <div class="min-w-0">
+                <div class="name" title="@Match.Home">@Match.Home</div>
+                <div class="meta">
+                    @if (Match.Context.Home?.Rank is { } hr)
+                    {
+                        <span class="rank-pill">#@hr</span>
+                    }
+                    <FormChips Form="@Match.Context.Home?.Form" />
+                </div>
+            </div>
+        </div>
+        <div class="mc-score">
+            @if (hasScore && !FixtureStatus.IsUpcoming(f.Status))
+            {
+                <div class="score">@f.HomeGoals<span class="sep">-</span>@f.AwayGoals</div>
+            }
+            else
+            {
+                <span class="vs">VS</span>
+            }
+        </div>
+        <div class="mc-team away">
+            <TeamCrest Team="Match.AwayTeam" Name="@Match.Away" />
+            <div class="min-w-0">
+                <div class="name" title="@Match.Away">@Match.Away</div>
+                <div class="meta">
+                    <FormChips Form="@Match.Context.Away?.Form" />
+                    @if (Match.Context.Away?.Rank is { } ar)
+                    {
+                        <span class="rank-pill">#@ar</span>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="mc-markets">
+        <MarketBox Outlook="Handicap" Match="Match" />
+        <MarketBox Outlook="Totals" Match="Match" />
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public MatchInsight Match { get; set; } = default!;
+
+    /// <summary>Thẻ đứng riêng (không nằm trong nhóm giải): có viền và hiện tên giải.</summary>
+    [Parameter] public bool Standalone { get; set; }
+
+    private MarketOutlook Handicap => MatchAdvisor.Outlook(Match.Context, Match.Advice, Market.AsianHandicap, Match.Home, Match.Away);
+
+    private MarketOutlook Totals => MatchAdvisor.Outlook(Match.Context, Match.Advice, Market.OverUnder, Match.Home, Match.Away);
+
+    private static string LiveText(Fixture f) => f.Status switch
+    {
+        "HT" => "Nghỉ giữa hiệp",
+        "NS" or "TBD" => "Đã bắt đầu",
+        "P" => "Luân lưu",
+        _ when f.Elapsed is { } e => $"{e}'",
+        _ => "Trực tiếp",
+    };
+
+    private static string RoundText(string round) =>
+        round.Replace("Regular Season - ", "Vòng ").Replace("League Stage - ", "Lượt ");
+}

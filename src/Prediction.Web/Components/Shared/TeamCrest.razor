@@ -1,0 +1,35 @@
+@if (!string.IsNullOrEmpty(Team?.LogoUrl))
+{
+    <img src="@Team.LogoUrl" alt="" class="crest" loading="lazy" />
+}
+else
+{
+    <span class="crest crest-fallback" style="background: hsl(@Hue, 55%, 38%)" aria-hidden="true">@Initials</span>
+}
+
+@code {
+    [Parameter] public Team? Team { get; set; }
+    [Parameter] public string Name { get; set; } = "";
+
+    private string DisplayName => Team?.Name ?? Name;
+
+    private string Initials
+    {
+        get
+        {
+            var words = DisplayName.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                .Where(w => w is not ("FC" or "CF" or "AFC" or "SC" or "United" or "City") || DisplayName.Split(' ').Length == 1)
+                .ToList();
+            if (words.Count == 0)
+            {
+                return "?";
+            }
+
+            return words.Count == 1
+                ? words[0][..Math.Min(2, words[0].Length)].ToUpperInvariant()
+                : $"{char.ToUpperInvariant(words[0][0])}{char.ToUpperInvariant(words[1][0])}";
+        }
+    }
+
+    private int Hue => Math.Abs(DisplayName.Aggregate(17, (h, c) => h * 31 + c)) % 360;
+}

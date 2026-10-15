@@ -137,6 +137,9 @@ namespace Prediction.Web.Data.Migrations
                     b.Property<int>("AwayTeamId")
                         .HasColumnType("int");
 
+                    b.Property<int?>("Elapsed")
+                        .HasColumnType("int");
+
                     b.Property<bool>("HasTable")
                         .HasColumnType("bit");
 

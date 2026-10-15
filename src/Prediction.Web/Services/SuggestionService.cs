@@ -132,7 +132,7 @@ public sealed class SuggestionService(IDbContextFactory<AppDbContext> dbFactory,
     }
 
     /// <summary>
-    /// Chỉ dùng cho dữ liệu demo: sinh gợi ý cho các trận ĐÃ ĐÁ như thể hệ thống đã chạy từ trước,
+    /// Chỉ dùng cho dữ liệu demo: sinh gợi ý cho các trận đã/đang đá như thể hệ thống đã chạy từ trước,
     /// để trang thành tích có số liệu.
     /// </summary>
     public async Task BackfillAsync(int leagueId, CancellationToken ct)
@@ -141,7 +141,7 @@ public sealed class SuggestionService(IDbContextFactory<AppDbContext> dbFactory,
         var now = clock.GetUtcNow().UtcDateTime;
         var rules = await db.Rules.AsNoTracking().Where(r => r.IsActive).ToListAsync(ct);
         var finished = (await db.Fixtures.AsNoTracking().Where(f => f.LeagueId == leagueId && f.KickoffUtc < now).ToListAsync(ct))
-            .Where(f => f.IsFinished)
+            .Where(f => f.IsFinished || f.IsLive)
             .ToList();
         var contexts = await ContextLoader.LoadAsync(db, finished, now, ct);
         var existing = (await db.Suggestions.Where(s => s.Fixture!.LeagueId == leagueId).Select(s => new { s.RuleId, s.FixtureId }).ToListAsync(ct))

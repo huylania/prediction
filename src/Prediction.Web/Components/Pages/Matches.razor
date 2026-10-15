@@ -1,156 +1,244 @@
 @page "/tran-dau"
 @rendermode InteractiveServer
+@implements IDisposable
 @inject InsightService Insights
-@inject IDbContextFactory<AppDbContext> DbFactory
 @inject TimeDisplay Time
+@inject NavigationManager Navigation
 
 <PageTitle>Trận đấu</PageTitle>
 
-<h1 class="h3 mb-3">Trận đấu</h1>
-
-<div class="d-flex flex-wrap gap-2 align-items-end mb-3">
-    <div>
-        <label class="form-label small mb-0">Giải</label>
-        <select class="form-select form-select-sm" value="@_leagueId" @onchange="LeagueChanged">
-            <option value="">Tất cả giải</option>
-            @foreach (var l in _leagues)
-            {
-                <option value="@l.Id">@l.Name</option>
-            }
-        </select>
-    </div>
-    <div>
-        <label class="form-label small mb-0">Ngày</label>
-        <div class="input-group input-group-sm">
-            <button class="btn btn-outline-secondary" @onclick="() => ShiftDay(-1)">‹</button>
-            <input type="date" class="form-control" value="@_date.ToString("yyyy-MM-dd")" @onchange="DateChanged" />
-            <button class="btn btn-outline-secondary" @onclick="() => ShiftDay(1)">›</button>
-            <button class="btn btn-outline-secondary" @onclick="Today">Hôm nay</button>
-        </div>
-    </div>
-    <div class="form-check ms-2">
-        <input class="form-check-input" type="checkbox" id="onlyPicks" checked="@_onlyPicks" @onchange="e => { _onlyPicks = (bool)e.Value!; }" />
-        <label class="form-check-label small" for="onlyPicks">Chỉ trận có gợi ý</label>
+<div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+    <h1 class="h3 mb-0 me-3">Trận đấu</h1>
+    <ul class="nav mc-tabs gap-1">
+        <li class="nav-item">
+            <button class="nav-link @(_tab == "live" ? "active" : "")" @onclick='() => SwitchTab("live")'>
+                <span class="live-dot"></span> Đang đá <span class="count">@_live.Count</span>
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link @(_tab == "upcoming" ? "active" : "")" @onclick='() => SwitchTab("upcoming")'>
+                Sắp đá <span class="count">@_upcoming.Count</span>
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link @(_tab == "results" ? "active" : "")" @onclick='() => SwitchTab("results")'>Kết quả</button>
+        </li>
+    </ul>
+    <div class="ms-auto small text-muted">
+        Cập nhật @_updatedLocal.ToString("HH:mm:ss") · tự làm mới @(_tab == "live" ? "30 giây" : "2 phút")
+        <button class="btn btn-sm btn-link p-0 ms-1" @onclick="() => LoadAsync()">Làm mới</button>
     </div>
 </div>
 
-@if (_loading)
+<div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+    <button class="chip @(_leagueId is null ? "active" : "")" @onclick="() => _leagueId = null">Tất cả giải</button>
+    @foreach (var (league, count) in LeagueCounts())
+    {
+        <button class="chip @(_leagueId == league.Id ? "active" : "")" @onclick="() => _leagueId = league.Id">
+            @if (!string.IsNullOrEmpty(league.LogoUrl))
+            {
+                <img src="@league.LogoUrl" alt="" />
+            }
+            @league.Name <span class="text-muted">@count</span>
+        </button>
+    }
+    <div class="ms-auto d-flex align-items-center gap-2">
+        @if (_tab == "upcoming")
+        {
+            <select class="form-select form-select-sm w-auto" @bind="_days" @bind:after="LoadAsync">
+                <option value="1">Hôm nay & 24 giờ tới</option>
+                <option value="3">3 ngày tới</option>
+                <option value="7">7 ngày tới</option>
+            </select>
+        }
+        @if (_tab == "results")
+        {
+            <div class="input-group input-group-sm w-auto">
+                <button class="btn btn-outline-secondary" @onclick="() => ShiftDay(-1)">‹</button>
+                <span class="input-group-text bg-white">@Time.DayLabel(_resultDate)</span>
+                <button class="btn btn-outline-secondary" disabled="@(_resultDate >= Time.TodayLocal)" @onclick="() => ShiftDay(1)">›</button>
+            </div>
+        }
+        <div class="form-check form-switch mb-0">
+            <input class="form-check-input" type="checkbox" id="onlyPicks" @bind="_onlyPicks" />
+            <label class="form-check-label small" for="onlyPicks">Chỉ trận có gợi ý theo quy tắc</label>
+        </div>
+    </div>
+</div>
+
+@if (_loading && Current.Count == 0)
 {
-    <p class="text-muted">Đang tải…</p>
+    <div class="empty-state">Đang tải…</div>
 }
 else if (Visible.Count == 0)
 {
-    <p class="text-muted">Không có trận nào.</p>
+    <div class="empty-state">
+        @(_tab switch
+        {
+            "live" => "Hiện không có trận nào đang đá.",
+            "upcoming" => "Không có trận sắp đá trong khoảng đã chọn.",
+            _ => "Không có kết quả trong ngày này.",
+        })
+        @if (_tab == "live" && _upcoming.Count > 0)
+        {
+            <div class="mt-2"><button class="btn btn-sm btn-success" @onclick='() => SwitchTab("upcoming")'>Xem @_upcoming.Count trận sắp đá</button></div>
+        }
+    </div>
 }
 else
 {
-    <div class="table-responsive">
-        <table class="table table-sm table-hover bg-white">
-            <thead>
-                <tr>
-                    <th>Giờ</th>
-                    <th>Giải</th>
-                    <th>Trận</th>
-                    <th class="text-center">Tỉ số</th>
-                    <th>Chấp (đội nhà)</th>
-                    <th>Tài xỉu</th>
-                    <th>Gợi ý</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var m in Visible)
-                {
-                    <tr>
-                        <td class="text-nowrap small">@Time.Kickoff(m.Fixture.KickoffUtc)</td>
-                        <td class="small">@m.League?.Name</td>
-                        <td>
-                            <a href="tran-dau/@m.Fixture.Id" class="text-decoration-none">
-                                <span class="rank">@Rank(m.Context.Home)</span><TeamLogo Url="@m.HomeTeam?.LogoUrl" />@m.Home
-                                <span class="text-muted">–</span>
-                                <span class="rank">@Rank(m.Context.Away)</span><TeamLogo Url="@m.AwayTeam?.LogoUrl" />@m.Away
-                            </a>
-                        </td>
-                        <td class="text-center text-nowrap">
-                            @if (m.Fixture.HomeGoals.HasValue)
-                            {
-                                <strong>@m.Fixture.HomeGoals - @m.Fixture.AwayGoals</strong>
-                            }
-                            else
-                            {
-                                <span class="small text-muted">@FixtureStatus.Label(m.Fixture.Status)</span>
-                            }
-                        </td>
-                        <td class="small text-nowrap">@Quote(m.Context.Handicap, true)</td>
-                        <td class="small text-nowrap">@Quote(m.Context.Totals, false)</td>
-                        <td class="small">
-                            @foreach (var p in m.Advice.Picks)
-                            {
-                                <div><span class="badge @(p.HasConflict ? "bg-warning text-dark" : "bg-success")">@p.Label</span></div>
-                            }
-                        </td>
-                    </tr>
-                }
-            </tbody>
-        </table>
-    </div>
+    @foreach (var day in Visible.GroupBy(m => Time.ToLocal(m.Fixture.KickoffUtc).Date).OrderBy(g => _tab == "results" ? DateTime.MinValue : g.Key))
+    {
+        @if (_tab == "upcoming")
+        {
+            <div class="day-head">@Time.DayLabel(day.Key)</div>
+        }
+        @foreach (var group in day.GroupBy(m => m.Fixture.LeagueId).OrderBy(g => g.First().League?.Name))
+        {
+            var league = group.First().League;
+            <div class="league-group">
+                <div class="league-head">
+                    @if (!string.IsNullOrEmpty(league?.LogoUrl))
+                    {
+                        <img src="@league.LogoUrl" alt="" />
+                    }
+                    <span>@(league?.Name ?? "Giải khác")</span>
+                    <span class="country">@league?.Country</span>
+                    <span class="ms-auto count">@group.Count() trận</span>
+                </div>
+                <div class="league-body">
+                    @foreach (var m in group.OrderBy(m => m.Fixture.KickoffUtc).ThenBy(m => m.Fixture.Id))
+                    {
+                        <MatchCard Match="m" />
+                    }
+                </div>
+            </div>
+        }
+    }
 }
 
 @code {
-    private List<League> _leagues = [];
-    private List<MatchInsight> _matches = [];
+    [SupplyParameterFromQuery(Name = "tab")] public string? TabQuery { get; set; }
+
+    private string _tab = "live";
     private int? _leagueId;
-    private DateTime _date;
+    private int _days = 1;
     private bool _onlyPicks;
     private bool _loading = true;
+    private DateTime _resultDate;
+    private DateTime _updatedLocal;
+    private List<MatchInsight> _live = [];
+    private List<MatchInsight> _upcoming = [];
+    private List<MatchInsight> _results = [];
+    private Timer? _timer;
+    private int _refreshing;
 
-    private List<MatchInsight> Visible => _onlyPicks ? _matches.Where(m => m.HasPicks).ToList() : _matches;
+    private List<MatchInsight> Current => _tab switch { "live" => _live, "upcoming" => _upcoming, _ => _results };
+
+    private List<MatchInsight> Visible => Current
+        .Where(m => _leagueId is null || m.Fixture.LeagueId == _leagueId)
+        .Where(m => !_onlyPicks || m.HasPicks)
+        .ToList();
 
     protected override async Task OnInitializedAsync()
     {
-        await using var db = await DbFactory.CreateDbContextAsync();
-        _leagues = await db.Leagues.AsNoTracking().Where(l => l.IsTracked).OrderBy(l => l.Name).ToListAsync();
-        _date = Time.TodayLocal;
+        _resultDate = Time.TodayLocal;
+        var requested = TabQuery is "live" or "upcoming" or "results";
+        if (requested)
+        {
+            _tab = TabQuery!;
+        }
+
         await LoadAsync();
+        if (!requested)
+        {
+            _tab = _live.Count > 0 ? "live" : "upcoming";
+        }
+    }
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _timer = new Timer(_ => _ = InvokeAsync(AutoRefreshAsync), null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
+        }
+    }
+
+    private DateTime _lastFullRefresh = DateTime.UtcNow;
+
+    private async Task AutoRefreshAsync()
+    {
+        // Tab "Đang đá" làm mới mỗi 30 giây, các tab khác mỗi 2 phút.
+        if (_tab != "live" && DateTime.UtcNow - _lastFullRefresh < TimeSpan.FromMinutes(2))
+        {
+            return;
+        }
+
+        await LoadAsync();
+        StateHasChanged();
     }
 
     private async Task LoadAsync()
     {
-        _loading = true;
-        var from = Time.ToUtc(_date);
-        _matches = await Insights.ForWindowAsync(from, from.AddDays(1), _leagueId);
-        _loading = false;
-    }
-
-    private async Task LeagueChanged(ChangeEventArgs e)
-    {
-        _leagueId = int.TryParse(e.Value?.ToString(), out var id) ? id : null;
-        await LoadAsync();
-    }
-
-    private async Task DateChanged(ChangeEventArgs e)
-    {
-        if (DateTime.TryParse(e.Value?.ToString(), out var d))
+        if (Interlocked.Exchange(ref _refreshing, 1) == 1)
         {
-            _date = d.Date;
+            return;
+        }
+
+        try
+        {
+            _loading = true;
+            var now = Insights.UtcNow;
+
+            _live = (await Insights.ForWindowAsync(now.AddHours(-4), now.AddMinutes(1), null))
+                .Where(m => m.Fixture.IsLive || (FixtureStatus.IsUpcoming(m.Fixture.Status) && m.Fixture.KickoffUtc <= now))
+                .ToList();
+
+            _upcoming = (await Insights.ForWindowAsync(now, now.AddDays(_days), null))
+                .Where(m => FixtureStatus.IsUpcoming(m.Fixture.Status))
+                .ToList();
+
+            if (_tab == "results")
+            {
+                var from = Time.ToUtc(_resultDate);
+                _results = (await Insights.ForWindowAsync(from, from.AddDays(1), null))
+                    .Where(m => m.Fixture.IsFinished || m.Fixture.IsCancelled || m.Fixture.Status == "PST")
+                    .OrderByDescending(m => m.Fixture.KickoffUtc)
+                    .ToList();
+            }
+
+            _updatedLocal = Time.ToLocal(DateTime.UtcNow);
+            _lastFullRefresh = DateTime.UtcNow;
+        }
+        finally
+        {
+            _loading = false;
+            Interlocked.Exchange(ref _refreshing, 0);
+        }
+    }
+
+    private async Task SwitchTab(string tab)
+    {
+        _tab = tab;
+        _leagueId = null;
+        Navigation.NavigateTo($"tran-dau?tab={tab}", replace: true);
+        if (tab == "results")
+        {
             await LoadAsync();
         }
     }
 
     private async Task ShiftDay(int days)
     {
-        _date = _date.AddDays(days);
+        _resultDate = _resultDate.AddDays(days);
         await LoadAsync();
     }
 
-    private async Task Today()
-    {
-        _date = Time.TodayLocal;
-        await LoadAsync();
-    }
+    private IEnumerable<(League League, int Count)> LeagueCounts() => Current
+        .Where(m => m.League is not null)
+        .GroupBy(m => m.Fixture.LeagueId)
+        .Select(g => (g.First().League!, g.Count()))
+        .OrderBy(x => x.Item1.Name);
 
-    private static string Rank(TeamSnapshot? s) => s?.Rank is { } r ? $"#{r}" : "";
-
-    private static string Quote(MarketMovement? m, bool handicap) => m is null
-        ? "—"
-        : $"{(handicap ? LineText.Signed(m.Current.Line) : LineText.Number(m.Current.Line))} ({LineText.Odds(m.Current.PriceA)}/{LineText.Odds(m.Current.PriceB)})" + (m.LineDelta != 0 ? " ⇅" : "");
+    public void Dispose() => _timer?.Dispose();
 }

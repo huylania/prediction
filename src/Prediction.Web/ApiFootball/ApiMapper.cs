@@ -48,6 +48,7 @@ public static class ApiMapper
         var ft = item.Score?.Fulltime;
         target.HomeGoals = ft?.Home ?? item.Goals.Home;
         target.AwayGoals = ft?.Away ?? item.Goals.Away;
+        target.Elapsed = FixtureStatus.IsLive(target.Status) ? item.Fixture.Status.Elapsed : null;
         target.UpdatedAtUtc = nowUtc;
     }
 

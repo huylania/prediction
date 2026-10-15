@@ -133,6 +133,29 @@ public class ApiParsingTests
         Assert.Equal(new DateTime(2027, 3, 10, 20, 0, 0, DateTimeKind.Utc), fixture.KickoffUtc);
     }
 
+    [Fact]
+    public void Maps_live_fixture_with_elapsed_minute()
+    {
+        const string json = """
+        {
+          "fixture": {"id": 3003, "date": "2026-10-15T12:00:00+00:00", "status": {"long": "Second Half", "short": "2H", "elapsed": 67}},
+          "league": {"id": 39, "season": 2026, "round": "Regular Season - 8"},
+          "teams": {"home": {"id": 33, "name": "Manchester United"}, "away": {"id": 45, "name": "Everton"}},
+          "goals": {"home": 1, "away": 0},
+          "score": {"halftime": {"home": 1, "away": 0}, "fulltime": {"home": null, "away": null}}
+        }
+        """;
+
+        var fixture = new Fixture();
+        ApiMapper.Apply(fixture, Parse<FixtureItem>(json), "League", DateTime.UtcNow);
+
+        Assert.True(fixture.IsLive);
+        Assert.Equal(67, fixture.Elapsed);
+        Assert.Equal(1, fixture.HomeGoals);
+        Assert.Equal(0, fixture.AwayGoals);
+        Assert.False(fixture.IsFinished);
+    }
+
     [Theory]
     [InlineData("League", "Regular Season - 12", true)]
     [InlineData("Cup", "League Stage - 3", true)]

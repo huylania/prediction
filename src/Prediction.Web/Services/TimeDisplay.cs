@@ -42,6 +42,23 @@ public sealed class TimeDisplay
         return $"{DayName(local.DayOfWeek)} {local:dd/MM HH:mm}";
     }
 
+    /// <summary>"T7", "CN".</summary>
+    public string Weekday(DateTime utc) => DayName(ToLocal(utc).DayOfWeek);
+
+    /// <summary>"Hôm nay", "Ngày mai", "Hôm qua" hoặc "T7 18/10".</summary>
+    public string DayLabel(DateTime localDate)
+    {
+        var diff = (localDate.Date - TodayLocal).Days;
+        var text = $"{DayName(localDate.DayOfWeek)} {localDate:dd/MM}";
+        return diff switch
+        {
+            0 => $"Hôm nay · {text}",
+            1 => $"Ngày mai · {text}",
+            -1 => $"Hôm qua · {text}",
+            _ => text,
+        };
+    }
+
     public string Full(DateTime utc) => ToLocal(utc).ToString("dd/MM/yyyy HH:mm", Vi);
 
     public string Short(DateTime utc) => ToLocal(utc).ToString("dd/MM HH:mm", Vi);

@@ -54,7 +54,7 @@
                 <div class="small text-muted mt-2">
                     Chu kỳ: lịch/kết quả @SyncOpts.Value.FixturesIntervalMinutes phút · kèo theo giải @SyncOpts.Value.OddsIntervalMinutes phút ·
                     kèo sát giờ @SyncOpts.Value.ClosingOddsIntervalMinutes phút (trong @SyncOpts.Value.ClosingWindowMinutes phút trước trận) ·
-                    tư vấn API @SyncOpts.Value.AdviceIntervalMinutes phút. Sửa trong <code>appsettings.json</code> mục <code>Sync</code>.
+                    tư vấn API @SyncOpts.Value.AdviceIntervalMinutes phút · tỉ số trực tiếp @SyncOpts.Value.LiveIntervalMinutes phút (chỉ khi có trận đang đá). Sửa trong <code>appsettings.json</code> mục <code>Sync</code>.
                 </div>
             </div>
         </div>
@@ -67,7 +67,7 @@
                     <div class="alert alert-info py-2 small">Đang chạy: @SyncJobs.Label(job)…</div>
                 }
                 <div class="d-flex flex-wrap gap-2">
-                    @foreach (var j in new[] { SyncJobs.Leagues, SyncJobs.Fixtures, SyncJobs.Odds, SyncJobs.ClosingOdds, SyncJobs.Advice })
+                    @foreach (var j in new[] { SyncJobs.Leagues, SyncJobs.Fixtures, SyncJobs.Live, SyncJobs.Odds, SyncJobs.ClosingOdds, SyncJobs.Advice })
                     {
                         <button class="btn btn-sm btn-outline-primary" disabled="@(Sync.CurrentJob is not null || !Api.IsConfigured)" @onclick="() => RunJobAsync(j)">@SyncJobs.Label(j)</button>
                     }

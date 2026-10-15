@@ -52,6 +52,44 @@ public sealed class MatchAdvice
     public string? ApiSummary { get; init; }
 }
 
+public enum TrendStrength
+{
+    /// <summary>Không có tín hiệu nào.</summary>
+    None = 0,
+
+    /// <summary>Một tín hiệu, không có tín hiệu ngược.</summary>
+    Weak = 1,
+
+    /// <summary>Từ hai tín hiệu cùng hướng, không có tín hiệu ngược.</summary>
+    Strong = 2,
+
+    /// <summary>Tín hiệu trái chiều.</summary>
+    Mixed = 3,
+}
+
+/// <summary>Gợi ý cho một loại kèo (chấp hoặc tài xỉu) của một trận.</summary>
+public sealed class MarketOutlook
+{
+    public required Market Market { get; init; }
+
+    /// <summary>Biến động kèo đến hiện tại (hoặc kèo đóng nếu trận đã bắt đầu).</summary>
+    public MarketMovement? Movement { get; init; }
+
+    /// <summary>Cửa theo quy tắc của bạn có nhiều tín hiệu ủng hộ nhất.</summary>
+    public PickAdvice? RulePick { get; init; }
+
+    /// <summary>Các cửa khác cũng được quy tắc chọn (các quy tắc mâu thuẫn nhau).</summary>
+    public IReadOnlyList<PickAdvice> OtherRulePicks { get; init; } = [];
+
+    /// <summary>Xu hướng tham khảo từ biến động kèo + dự đoán API (không phải quy tắc của bạn).</summary>
+    public PickSide? TrendSide { get; init; }
+    public decimal? TrendLine { get; init; }
+    public decimal? TrendOdds { get; init; }
+    public TrendStrength Strength { get; init; }
+    public IReadOnlyList<string> TrendFor { get; init; } = [];
+    public IReadOnlyList<string> TrendAgainst { get; init; } = [];
+}
+
 /// <summary>
 /// Gộp các tín hiệu cho một trận: quy tắc khớp (kèm thành tích), biến động kèo, dự đoán của API.
 /// Chỉ tổng hợp tín hiệu, không phải mô hình xác suất.
@@ -98,67 +136,106 @@ public static class MatchAdvisor
                 item.Against.Add($"Quy tắc “{rp.Rule.Name}” chọn cửa ngược lại");
             }
 
-            AddMarketSignal(item, ctx, home, away);
-            AddApiSignal(item, ctx, home, away);
+            AddSignals(ctx, item.Side, home, away, item.For, item.Against);
             advice.Picks.Add(item);
         }
 
         return advice;
     }
 
-    private static void AddMarketSignal(PickAdvice item, MatchContext ctx, string home, string away)
+    /// <summary>
+    /// Gợi ý cho một loại kèo của trận: cửa theo quy tắc (nếu có quy tắc khớp), và xu hướng tham khảo
+    /// từ biến động kèo + dự đoán API cho mọi trận.
+    /// </summary>
+    public static MarketOutlook Outlook(MatchContext ctx, MatchAdvice advice, Market market, string home, string away)
     {
-        var movement = ctx.MovementFor(item.Side.Market());
-        if (movement is null)
-        {
-            return;
-        }
+        var rulePicks = advice.Picks
+            .Where(p => p.Side.Market() == market)
+            .OrderByDescending(p => p.For.Count - p.Against.Count)
+            .ThenByDescending(p => p.Rules.Count)
+            .ToList();
 
-        var name = LineText.Side(item.Side, home, away);
-        var other = LineText.Side(item.Side.Opposite(), home, away);
-        switch (movement.LeanFor(item.Side))
+        PickSide[] sides = market == Market.AsianHandicap ? [PickSide.Home, PickSide.Away] : [PickSide.Over, PickSide.Under];
+        var best = sides
+            .Select(side =>
+            {
+                List<string> pro = [], con = [];
+                AddSignals(ctx, side, home, away, pro, con);
+                return (Side: side, For: pro, Against: con);
+            })
+            .OrderByDescending(x => x.For.Count - x.Against.Count)
+            .First();
+
+        var strength = (best.For.Count, best.Against.Count) switch
         {
-            case Lean.Toward:
-                item.For.Add($"Kèo/tiền đang nghiêng về {name}");
-                break;
-            case Lean.Against:
-                item.Against.Add($"Kèo/tiền đang nghiêng về {other}");
-                break;
-        }
+            (0, _) => TrendStrength.None,
+            ( >= 2, 0) => TrendStrength.Strong,
+            (_, 0) => TrendStrength.Weak,
+            _ => TrendStrength.Mixed,
+        };
+
+        var movement = ctx.MovementFor(market);
+        var trendSide = strength is TrendStrength.Weak or TrendStrength.Strong ? best.Side : (PickSide?)null;
+        return new MarketOutlook
+        {
+            Market = market,
+            Movement = movement,
+            RulePick = rulePicks.FirstOrDefault(),
+            OtherRulePicks = rulePicks.Skip(1).ToList(),
+            Strength = strength,
+            TrendSide = trendSide,
+            TrendLine = trendSide is { } ts && movement is not null ? LineText.LineForSide(ts, movement.Current.Line) : null,
+            TrendOdds = trendSide is { } to && movement is not null ? (to is PickSide.Home or PickSide.Over ? movement.Current.PriceA : movement.Current.PriceB) : null,
+            TrendFor = strength == TrendStrength.None ? [] : best.For,
+            TrendAgainst = strength == TrendStrength.None ? [] : best.Against,
+        };
     }
 
-    private static void AddApiSignal(PickAdvice item, MatchContext ctx, string home, string away)
+    /// <summary>Tín hiệu từ biến động kèo và dự đoán API cho một cửa.</summary>
+    private static void AddSignals(MatchContext ctx, PickSide side, string home, string away, List<string> pro, List<string> con)
     {
+        var name = LineText.Side(side, home, away);
+        var other = LineText.Side(side.Opposite(), home, away);
+
+        switch (ctx.MovementFor(side.Market())?.LeanFor(side))
+        {
+            case Lean.Toward:
+                pro.Add($"Kèo/tiền đang nghiêng về {name}");
+                break;
+            case Lean.Against:
+                con.Add($"Kèo/tiền đang nghiêng về {other}");
+                break;
+        }
+
         var api = ctx.Advice;
         if (api is null)
         {
             return;
         }
 
-        if (item.Side.Market() == Market.AsianHandicap)
+        if (side.Market() == Market.AsianHandicap)
         {
             if (api.WinnerTeamId is not { } winner)
             {
                 return;
             }
 
-            var sideTeam = item.Side == PickSide.Home ? ctx.Fixture.HomeTeamId : ctx.Fixture.AwayTeamId;
-            var sidePercent = item.Side == PickSide.Home ? api.PercentHome : api.PercentAway;
-            var name = LineText.Side(item.Side, home, away);
-            var other = LineText.Side(item.Side.Opposite(), home, away);
+            var sideTeam = side == PickSide.Home ? ctx.Fixture.HomeTeamId : ctx.Fixture.AwayTeamId;
+            var otherTeam = side == PickSide.Home ? ctx.Fixture.AwayTeamId : ctx.Fixture.HomeTeamId;
+            var sidePercent = side == PickSide.Home ? api.PercentHome : api.PercentAway;
             if (winner == sideTeam)
             {
-                item.For.Add(sidePercent is { } p ? $"API dự đoán {name} thắng ({p}%)" : $"API dự đoán {name} thắng");
+                pro.Add(sidePercent is { } p ? $"API dự đoán {name} thắng ({p}%)" : $"API dự đoán {name} thắng");
             }
-            else
+            else if (winner == otherTeam)
             {
-                item.Against.Add($"API dự đoán {other} thắng");
+                con.Add($"API dự đoán {other} thắng");
             }
         }
         else if (api.UnderOverSide is { } ouSide)
         {
             var text = $"API dự đoán {(ouSide == PickSide.Over ? "Tài" : "Xỉu")} {api.UnderOver!.TrimStart('+', '-')}";
-            (ouSide == item.Side ? item.For : item.Against).Add(text);
+            (ouSide == side ? pro : con).Add(text);
         }
     }
 

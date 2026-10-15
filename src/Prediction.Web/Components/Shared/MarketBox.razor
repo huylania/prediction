@@ -1,0 +1,153 @@
+@{
+    var m = Outlook.Movement;
+    var f = Match.Fixture;
+    var started = !FixtureStatus.IsUpcoming(f.Status);
+    var mainSide = Outlook.RulePick?.Side ?? Outlook.TrendSide;
+    var css = Outlook.RulePick is { } rp ? (rp.HasConflict || Outlook.OtherRulePicks.Count > 0 ? "mk-conflict" : "mk-rule")
+        : Outlook.Strength is TrendStrength.Strong or TrendStrength.Weak ? "mk-trend" : "";
+}
+<div class="mk @css">
+    <div class="mk-title">
+        <span>@(IsHandicap ? "Kèo chấp châu Á" : "Tài xỉu")</span>
+        @if (m is not null)
+        {
+            <span class="mk-when">@(started ? "kèo đóng" : "hiện tại")</span>
+        }
+    </div>
+
+    @if (m is null)
+    {
+        <div class="mk-empty">Chưa có kèo</div>
+    }
+    else
+    {
+        <div class="odds-row">
+            @foreach (var side in Sides)
+            {
+                var line = LineText.LineForSide(side, m.Current.Line);
+                var price = side is PickSide.Home or PickSide.Over ? m.Current.PriceA : m.Current.PriceB;
+                var state = Outlook.RulePick?.Side == side ? "picked" : Outlook.RulePick is null && Outlook.TrendSide == side ? "trend" : "";
+                <div class="odds-btn @state">
+                    <span class="lbl">@SideLabel(side, line)</span>
+                    <span class="price">@LineText.Odds(price)</span>
+                </div>
+            }
+        </div>
+        <div class="mk-move">
+            Mở @LineShort(m.Open.Line) (@LineText.Odds(m.Open.PriceA)/@LineText.Odds(m.Open.PriceB))
+            @if (m.Changes > 0)
+            {
+                <span> → @LineShort(m.Current.Line) · @m.Changes lần đổi</span>
+            }
+            @switch (m.LeanFor(IsHandicap ? PickSide.Home : PickSide.Over))
+            {
+                case Lean.Toward:
+                    <span class="lean"> · ↗ nghiêng @(IsHandicap ? Match.Home : "Tài")</span>
+                    break;
+                case Lean.Against:
+                    <span class="lean"> · ↗ nghiêng @(IsHandicap ? Match.Away : "Xỉu")</span>
+                    break;
+            }
+        </div>
+    }
+
+    <div class="mk-pick">
+        @if (Outlook.RulePick is { } pick)
+        {
+            <div>
+                <span class="tag tag-rule">GỢI Ý</span><strong>@pick.Label</strong>
+                <span class="consensus @(pick.HasConflict ? "warn" : "")">@pick.Consensus</span>
+            </div>
+            <div class="mk-rules">Theo quy tắc: @string.Join(", ", pick.Rules.Select(r => r.Rule.Name))</div>
+            @if (pick.Against.Count > 0)
+            {
+                <ul class="signals">
+                    @foreach (var s in pick.Against)
+                    {
+                        <li class="con">✗ @s</li>
+                    }
+                </ul>
+            }
+            @foreach (var other in Outlook.OtherRulePicks)
+            {
+                <div class="mt-1"><span class="tag tag-warn">MÂU THUẪN</span>@string.Join(", ", other.Rules.Select(r => r.Rule.Name)) chọn <strong>@other.Label</strong></div>
+            }
+        }
+        else if (Outlook.Strength is TrendStrength.Strong or TrendStrength.Weak && Outlook.TrendSide is { } trend)
+        {
+            <div>
+                <span class="tag tag-trend">XU HƯỚNG</span><strong>@TrendLabel(trend)</strong>
+                <span class="consensus">@(Outlook.Strength == TrendStrength.Strong ? "mạnh" : "nhẹ")</span>
+            </div>
+            <ul class="signals">
+                @foreach (var s in Outlook.TrendFor)
+                {
+                    <li class="pro">✓ @s</li>
+                }
+            </ul>
+            <div class="mk-note">Tham khảo từ biến động kèo và API — chưa có quy tắc của bạn khớp.</div>
+        }
+        else if (Outlook.Strength == TrendStrength.Mixed)
+        {
+            <div><span class="tag tag-mixed">TRÁI CHIỀU</span><span class="text-muted">Tín hiệu không thống nhất</span></div>
+            <ul class="signals">
+                @foreach (var s in Outlook.TrendFor)
+                {
+                    <li class="pro">✓ @s</li>
+                }
+                @foreach (var s in Outlook.TrendAgainst)
+                {
+                    <li class="con">✗ @s</li>
+                }
+            </ul>
+        }
+        else
+        {
+            <div class="text-muted">Chưa có gợi ý cho trận này.</div>
+        }
+    </div>
+
+    @if (started && mainSide is { } chosen && SideLine(chosen) is { } sideLine && Settlement.AtScore(chosen, sideLine, SideOdds(chosen), f.HomeGoals, f.AwayGoals) is { } result)
+    {
+        <div class="provisional">
+            @if (f.IsFinished)
+            {
+                <span>Kết quả @SideLabel(chosen, sideLine):</span>
+                <OutcomeBadge Outcome="result.Outcome" />
+                <span class="@Fmt.Sign(result.Profit) fw-semibold">@Fmt.Profit(result.Profit)</span>
+            }
+            else
+            {
+                <span>Nếu dừng ở tỉ số này, @SideLabel(chosen, sideLine):</span>
+                <OutcomeBadge Outcome="result.Outcome" />
+                @if (!IsHandicap)
+                {
+                    <span class="text-muted"> · tổng bàn @(f.HomeGoals + f.AwayGoals)</span>
+                }
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public MarketOutlook Outlook { get; set; } = default!;
+    [Parameter, EditorRequired] public MatchInsight Match { get; set; } = default!;
+
+    private bool IsHandicap => Outlook.Market == Market.AsianHandicap;
+
+    private PickSide[] Sides => IsHandicap ? [PickSide.Home, PickSide.Away] : [PickSide.Over, PickSide.Under];
+
+    private string SideLabel(PickSide side, decimal line) => IsHandicap
+        ? $"{LineText.Side(side, Match.Home, Match.Away)} {LineText.Signed(line)}"
+        : $"{LineText.Side(side, Match.Home, Match.Away)} {LineText.Number(line)}";
+
+    private string LineShort(decimal line) => IsHandicap ? LineText.Signed(line) : LineText.Number(line);
+
+    private decimal? SideLine(PickSide side) => Outlook.Movement is { } m ? LineText.LineForSide(side, m.Current.Line) : null;
+
+    private decimal SideOdds(PickSide side) => Outlook.Movement is { } m ? (side is PickSide.Home or PickSide.Over ? m.Current.PriceA : m.Current.PriceB) : 0;
+
+    private string TrendLabel(PickSide side) => Outlook.TrendLine is { } line && Outlook.TrendOdds is { } odds
+        ? LineText.Pick(side, line, odds, Match.Home, Match.Away)
+        : LineText.Side(side, Match.Home, Match.Away);
+}
