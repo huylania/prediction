@@ -36,6 +36,21 @@ public sealed class AiReportOptions
 
     /// <summary>Thời gian chờ tối đa một báo cáo (phút).</summary>
     public int TimeoutMinutes { get; set; } = 10;
+
+    /// <summary>Model cho "thông tin bên lề" (tra cứu, tóm tắt — dùng model rẻ hơn).</summary>
+    public string SideInfoModel { get; set; } = "claude-sonnet-5-5";
+
+    public string SideInfoEffort { get; set; } = "medium";
+
+    public int SideInfoWebSearchMaxUses { get; set; } = 4;
+
+    /// <summary>Tự điền thông tin bên lề cho các trận nhóm A/B trong 24 giờ tới.</summary>
+    public bool SideInfoAuto { get; set; } = true;
+
+    /// <summary>Giới hạn chi phí tự động mỗi ngày (USD).</summary>
+    public decimal SideInfoDailyBudgetUsd { get; set; } = 3m;
+
+    public int SideInfoMaxPerRun { get; set; } = 10;
 }
 
 /// <summary>Một cập nhật khi đang nhận báo cáo: đoạn văn bản mới hoặc trạng thái (vd đang tra cứu web).</summary>
@@ -49,6 +64,7 @@ public sealed class AiReportService(
     IOptions<AiReportOptions> options,
     IDbContextFactory<AppDbContext> dbFactory,
     AnalysisService analyses,
+    MatchContextService contexts,
     IWebHostEnvironment env,
     TimeDisplay time,
     TimeProvider clock,
@@ -66,7 +82,9 @@ public sealed class AiReportService(
         đã được website tính sẵn cho MỘT trận đấu (JSON): BXH trước trận, phong độ 10 trận gần nhất hoặc giai đoạn HLV/tân binh mới,
         thống kê phạt góc/thẻ/sút/xG từ API-Football, kèo Bet365 (mở → hiện tại), DNA giải/đội do người dùng gắn nhãn,
         HLV mới/tân binh, danh sách vắng mặt, kèo chấp dự phóng, cờ đỏ, bảng đối chiếu 3 lớp, mô hình Poisson và khuyến nghị
-        của website. Đây là nguồn định lượng chính: giữ nguyên các con số, không bịa thêm số liệu thống kê.
+        của website; phần "boi_canh" có các mốc kèo (mở → khi có đội hình → 5 phút trước trận), cảnh báo kèo dịch ≥ 0.5,
+        lịch sử kèo đối đầu và 5 trận gần nhất, sân, thời tiết, đội hình ra sân và thông tin bên lề.
+        Đây là nguồn định lượng chính: giữ nguyên các con số, không bịa thêm số liệu thống kê.
 
         Quy ước kèo trong JSON: kèo chấp ghi theo đội nhà (âm = đội nhà chấp, vd -0.75 là đội nhà chấp 3/4 trái);
         tài xỉu/góc/thẻ là mốc tổng. Xác suất là của mô hình website (Poisson cho bàn, nhị thức âm cho góc/thẻ).
@@ -97,6 +115,7 @@ public sealed class AiReportService(
         }
 
         var result = await analyses.ForFixtureAsync(fixtureId, ct) ?? throw new InvalidOperationException("Không tìm thấy trận.");
+        var context = await contexts.ForFixtureAsync(fixtureId, ct);
         var o = options.Value;
         var client = string.IsNullOrWhiteSpace(o.BaseUrl)
             ? new AnthropicClient { ApiKey = o.ApiKey, Timeout = TimeSpan.FromMinutes(o.TimeoutMinutes) }
@@ -121,7 +140,7 @@ public sealed class AiReportService(
                 new() { Text = AppInstructions, CacheControl = new BetaCacheControlEphemeral { Ttl = Ttl.Ttl1h } },
             },
             Tools = tools,
-            Messages = [new() { Role = Role.User, Content = UserMessage(result) }],
+            Messages = [new() { Role = Role.User, Content = UserMessage(result, context) }],
         };
 
         var text = new StringBuilder();
@@ -133,7 +152,7 @@ public sealed class AiReportService(
         {
             if (ev.TryPickStart(out var start))
             {
-                model = start.Message.Model;
+                model = start.Message.Model.Raw();
                 input = start.Message.Usage.InputTokens;
                 cacheRead = start.Message.Usage.CacheReadInputTokens ?? 0;
                 cacheWrite = start.Message.Usage.CacheCreationInputTokens ?? 0;
@@ -157,7 +176,7 @@ public sealed class AiReportService(
             }
             else if (ev.TryPickDelta(out var messageDelta))
             {
-                stopReason = messageDelta.Delta.StopReason?.ToString();
+                stopReason = messageDelta.Delta.StopReason?.Raw();
                 output = messageDelta.Usage.OutputTokens;
                 input = messageDelta.Usage.InputTokens ?? input;
                 cacheRead = messageDelta.Usage.CacheReadInputTokens ?? cacheRead;
@@ -240,9 +259,9 @@ public sealed class AiReportService(
         Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
     };
 
-    private string UserMessage(MatchAnalysisResult r)
+    private string UserMessage(MatchAnalysisResult r, MatchContextView? context)
     {
-        var data = BuildData(r);
+        var data = new { PhanTich = BuildData(r), BoiCanh = context is null ? null : BuildContext(context) };
         return $"""
             Hãy phân tích trận {r.Home} – {r.Away} ({r.League?.Name}, {time.Full(r.Fixture.KickoffUtc)} giờ Việt Nam) theo đúng quy trình
             và CẤU TRÚC KẾT QUẢ ĐẦU RA (mục 9) trong hướng dẫn.
@@ -370,6 +389,53 @@ public sealed class AiReportService(
                 : null,
             QuyTacCuaNguoiDungDangChon = i.RuleSides.Select(s => s.ToString()),
             DuLieuIt = a.LowData,
+        };
+    }
+
+    private static object BuildContext(MatchContextView v)
+    {
+        object? Point(LinePoint? p) => p is null ? null : new
+        {
+            Luc = p.AtUtc?.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture),
+            ChapNha = p.HandicapLine,
+            OddsNha = p.HandicapHome,
+            OddsKhach = p.HandicapAway,
+            TaiXiu = p.TotalLine,
+            OddsTai = p.Over,
+            OddsXiu = p.Under,
+        };
+
+        object Line(HistoryLine h, int teamId) => new
+        {
+            Ngay = h.KickoffUtc.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            Giai = h.LeagueName,
+            Tran = $"{h.HomeName} {(h.HasScore ? $"{h.HomeGoals}-{h.AwayGoals}" : "vs")} {h.AwayName}",
+            ChapDoiDangXet = h.HandicapFor(teamId),
+            TaiXiu = h.TotalLine,
+            NguonKeo = h.Origin.ToString(),
+        };
+
+        var f = v.Fixture;
+        return new
+        {
+            MocKeo = new { MoKeo = Point(v.Open), KhiCoDoiHinh = Point(v.Lineups), NamPhutTruocTran = Point(v.PreKickoff), HienTai = Point(v.Current) },
+            CanhBaoKeo = v.Alerts.Select(a => new { a.Title, ChiTiet = a.Detail }),
+            DoiDau = v.HeadToHead.Select(h => Line(h, f.HomeTeamId)),
+            NamTranGanNhatNha = v.HomeRecent.Select(h => Line(h, f.HomeTeamId)),
+            NamTranGanNhatKhach = v.AwayRecent.Select(h => Line(h, f.AwayTeamId)),
+            San = v.Venue is { } venue
+                ? new { venue.Name, venue.City, venue.Country, MatSan = venue.Surface, DoCaoM = venue.ElevationM, SucChua = venue.Capacity }
+                : null,
+            ThoiTiet = v.Weather is { } w
+                ? new { NhietDo = w.TemperatureC, MuaMm = w.PrecipitationMm, KhaNangMua = w.PrecipitationProbability, GioKmh = w.WindKph, DoAm = w.HumidityPercent, MoTa = OpenMeteoClient.Describe(w.WeatherCode) }
+                : null,
+            GhiChuDieuKien = v.Conditions,
+            DoiHinh = v.Lineup is { } l
+                ? new { Nha = l.HomeStartXI, SoDoNha = l.HomeFormation, Khach = l.AwayStartXI, SoDoKhach = l.AwayFormation }
+                : null,
+            ThongTinBenLe = v.SideInfo is { } si
+                ? new { ThuHan = si.Rivalry, DongLuc = si.Motivation, TinLe = si.News, DacDiemSan = si.VenueNotes, ThoiTiet = si.Weather }
+                : null,
         };
     }
 

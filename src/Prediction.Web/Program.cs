@@ -45,6 +45,7 @@ builder.Services.AddSingleton<BacktestService>();
 builder.Services.AddSingleton<AnalysisService>();
 builder.Services.AddSingleton<AiReportService>();
 builder.Services.AddSingleton<MatchContextService>();
+builder.Services.AddSingleton<SideInfoService>();
 builder.Services.AddScoped<DataSyncService>();
 builder.Services.AddHostedService<SyncBackgroundService>();
 

@@ -46,6 +46,9 @@ public sealed class SyncOptions
     public int VenuesIntervalMinutes { get; set; } = 360;
     public int WeatherIntervalMinutes { get; set; } = 180;
 
+    /// <summary>AI tự điền thông tin bên lề cho trận nhóm A/B (chỉ khi có Anthropic:ApiKey).</summary>
+    public int SideInfoIntervalMinutes { get; set; } = 30;
+
     /// <summary>Còn ít hơn số request này trong ngày thì tạm dừng các tác vụ phụ (thống kê, HLV, chấn thương, tư vấn).</summary>
     public int QuotaReserve { get; set; } = 1000;
 }

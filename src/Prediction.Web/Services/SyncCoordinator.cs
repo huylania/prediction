@@ -26,6 +26,7 @@ public static class SyncJobs
     public const string HeadToHead = "h2h";
     public const string Venues = "venues";
     public const string Weather = "weather";
+    public const string SideInfo = "side-info";
 
     /// <summary>Tác vụ phụ: tạm dừng khi quota trong ngày sắp hết.</summary>
     public static bool IsLowPriority(string job) => job is Stats or Coaches or Injuries or Advice or HeadToHead or Venues;
@@ -50,6 +51,7 @@ public static class SyncJobs
         HeadToHead => "Lịch sử đối đầu",
         Venues => "Sân vận động",
         Weather => "Thời tiết",
+        SideInfo => "AI điền thông tin bên lề",
         _ => job,
     };
 }
@@ -63,6 +65,7 @@ public sealed class SyncCoordinator(
     IDbContextFactory<AppDbContext> dbFactory,
     SuggestionService suggestions,
     AnalysisService analysis,
+    SideInfoService sideInfo,
     TimeProvider clock,
     ILogger<SyncCoordinator> logger)
 {
@@ -91,7 +94,7 @@ public sealed class SyncCoordinator(
             try
             {
                 message = await work(sync, ct);
-                if (job is not (SyncJobs.Suggestions or SyncJobs.Analysis))
+                if (job is not (SyncJobs.Suggestions or SyncJobs.Analysis or SyncJobs.SideInfo))
                 {
                     var suggestionMessage = await suggestions.RefreshAsync(ct);
                     message = message is null || suggestionMessage is null ? message : $"{message} {suggestionMessage}";
@@ -151,6 +154,7 @@ public sealed class SyncCoordinator(
         SyncJobs.HeadToHead => RunAsync(job, (s, c) => s.SyncHeadToHeadAsync(c), ct),
         SyncJobs.Venues => RunAsync(job, (s, c) => s.SyncVenuesAsync(c), ct),
         SyncJobs.Weather => RunAsync(job, (s, c) => s.SyncWeatherAsync(c), ct),
+        SyncJobs.SideInfo => RunAsync(job, (_, c) => sideInfo.RunAutoAsync(c), ct),
         _ => throw new ArgumentOutOfRangeException(nameof(job)),
     };
 }
@@ -239,6 +243,7 @@ public sealed class SyncBackgroundService(
         }
 
         yield return (SyncJobs.Weather, o.WeatherIntervalMinutes);
+        yield return (SyncJobs.SideInfo, o.SideInfoIntervalMinutes);
 
         yield return (SyncJobs.Suggestions, o.SuggestionsIntervalMinutes);
         yield return (SyncJobs.Analysis, o.AnalysisIntervalMinutes);

@@ -1,0 +1,97 @@
+@inject SideInfoService SideInfo
+@inject TimeDisplay Time
+<div class="an-section">
+    <h2>
+        Thông tin bên lề (AI)
+        @if (Info is { } i && !_running)
+        {
+            <span class="small text-muted fw-normal ms-auto">@i.Model · @Time.Short(i.CreatedAtUtc) · @(i.IsAuto ? "tự động" : "bấm tay") · ~$@i.CostUsd.ToString("0.00")</span>
+        }
+    </h2>
+    @if (!SideInfo.IsConfigured)
+    {
+        <div class="small text-muted">Cần API key Claude (<code>dotnet user-secrets set "Anthropic:ApiKey" "sk-ant-..."</code>) để AI tra cứu lịch sử thù hận, động lực, tin bên lề, đặc điểm sân và kèo các trận cũ.</div>
+    }
+    else
+    {
+        @if (Info is { } info)
+        {
+            <dl class="row small mb-2">
+                @Row("Lịch sử thù hận / đối đầu", info.Rivalry)
+                @Row("Động lực", info.Motivation)
+                @Row("Tin bên lề", info.News)
+                @Row("Đặc điểm sân", info.VenueNotes)
+                @Row("Thời tiết", info.Weather)
+                @if (info.AltitudeM is not null || info.Surface is not null)
+                {
+                    @Row("Độ cao / mặt sân", $"{(info.AltitudeM is { } a ? $"{a} m" : "—")} / {info.Surface ?? "—"}")
+                }
+            </dl>
+            @if (!string.IsNullOrWhiteSpace(info.Sources))
+            {
+                <details class="small mb-2">
+                    <summary>Nguồn (@info.Sources.Split('\n').Length)</summary>
+                    <ul class="mb-0">@foreach (var url in info.Sources.Split('\n', StringSplitOptions.RemoveEmptyEntries)) { <li><a href="@url" target="_blank" rel="noopener noreferrer">@url</a></li> }</ul>
+                </details>
+            }
+        }
+        else
+        {
+            <div class="small text-muted mb-2">Chưa có. @(SideInfo.AutoEnabled ? "Website tự điền cho các trận nhóm A/B trong 24 giờ tới." : "")</div>
+        }
+        <div class="d-flex align-items-center gap-2">
+            <button class="btn btn-sm btn-outline-primary" disabled="@_running" @onclick="GenerateAsync">@(Info is null ? "AI điền thông tin bên lề" : "Điền lại")</button>
+            @if (_running)
+            {
+                <span class="spinner-border spinner-border-sm"></span><span class="small">AI đang tra cứu (30–90 giây)…</span>
+            }
+            else
+            {
+                <span class="hint">Model @SideInfo.Model, tra web tối đa vài lượt, ước tính ~$0.05–0.15. AI cũng điền kèo các trận cũ còn thiếu (nhãn AI).</span>
+            }
+        </div>
+        @if (_error is not null)
+        {
+            <div class="text-danger small mt-1">@_error</div>
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public int FixtureId { get; set; }
+
+    [Parameter] public MatchSideInfo? Info { get; set; }
+
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private bool _running;
+    private string? _error;
+
+    private static RenderFragment Row(string label, string? value) => __builder =>
+    {
+        if (!string.IsNullOrWhiteSpace(value))
+        {
+            <dt class="col-sm-3">@label</dt>
+            <dd class="col-sm-9" style="white-space: pre-line">@value</dd>
+        }
+    };
+
+    private async Task GenerateAsync()
+    {
+        _running = true;
+        _error = null;
+        try
+        {
+            await SideInfo.GenerateAsync(FixtureId, false, default);
+            await OnChanged.InvokeAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = $"Lỗi: {ex.Message}";
+        }
+        finally
+        {
+            _running = false;
+        }
+    }
+}

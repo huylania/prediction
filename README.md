@@ -10,6 +10,8 @@ Website biến **kinh nghiệm bet của bạn thành quy tắc**, ví dụ *"MU
 - **Phân tích chuyên sâu** theo file kỹ năng `src/Prediction.Web/Ai/bong-da-skill.md`: DNA giải/đội, quy tắc chờ ổn định 2–3 trận khi đổi HLV hoặc có tân binh, kèo chấp dự phóng và kèo lạ, 5 cờ đỏ, đối chiếu 3 lớp bàn thắng / phạt góc / thẻ, xác suất và thang điểm 10 chia **Nhóm A / B / C**.
 - **Cảnh báo In-play** cho trận đang đá theo 5 quy tắc của file kỹ năng, dựa trên thống kê trực tiếp (sút, góc, thẻ, phút ghi bàn).
 - **Báo cáo AI** (tùy chọn): Claude đọc toàn bộ số liệu phân tích, tự tra cứu web và viết báo cáo đúng cấu trúc mục 9 của file kỹ năng.
+- **Mốc kèo & cảnh báo ≥ 0.5**: kèo mở → khi có đội hình → 5 phút trước trận; cảnh báo khi kèo chấp / tài xỉu dịch từ 0.5 trở lên, lệch ≥ 0.5 so với lần gặp gần nhất, hoặc biên độ kèo 5 lần gặp gần nhất > 0.5.
+- **Lịch sử & bên lề**: 5 lần đối đầu + 5 trận gần nhất mỗi đội kèm kèo chấp/tài xỉu và kết quả kèo; đội hình ra sân; sân (mặt cỏ, độ cao), thời tiết giờ bóng lăn; thông tin bên lề (thù hận, động lực, tin lề) do AI tra cứu.
 
 Hỗ trợ **kèo chấp châu Á** và **tài xỉu** (kể cả các mức 1/4 và 3/4); phần phân tích chuyên sâu đọc thêm **tài xỉu góc, chấp góc và tài xỉu thẻ** của Bet365.
 
@@ -19,7 +21,7 @@ Hỗ trợ **kèo chấp châu Á** và **tài xỉu** (kể cả các mức 1/4
 
 - [.NET 10 SDK](https://dotnet.microsoft.com/download)
 - SQL Server: LocalDB (có sẵn khi cài Visual Studio), Express, Developer, hoặc chạy bằng Docker.
-- API key của [API-Football](https://www.api-football.com/) (api-sports.io v3). Với 15 giải mặc định, website dùng khoảng **4.000–5.500 request vào ngày cuối tuần** (kèo, tỉ số + thống kê trực tiếp, chấn thương, HLV, tải dần thống kê lịch sử), nên cần **gói Pro (7.500 request/ngày) trở lên**. Khi còn dưới 1.000 request trong ngày, các tác vụ phụ tự tạm dừng.
+- API key của [API-Football](https://www.api-football.com/) (api-sports.io v3). Với 19 giải mặc định, website dùng khoảng **5.000–6.500 request vào ngày cuối tuần** (kèo, tỉ số + thống kê trực tiếp, chấn thương, HLV, tải dần thống kê lịch sử), nên cần **gói Pro (7.500 request/ngày) trở lên**. Khi còn dưới 1.000 request trong ngày, các tác vụ phụ tự tạm dừng.
 - (Tùy chọn) API key Claude từ [console.anthropic.com](https://console.anthropic.com/) nếu muốn dùng báo cáo AI.
 
 ## Cài đặt và chạy
@@ -63,7 +65,7 @@ Lệnh này tạo **"Giải Demo"** gồm 12 đội giả, 2 mùa kết quả, c
 
 ## Việc cần làm sau lần chạy đầu
 
-1. Website tự đồng bộ ngay khi khởi động. Id các giải đã được kiểm tra với API thật: Premier League 39, La Liga 140, Serie A 135, Bundesliga 78, Ligue 1 61, Champions League 2, V.League 1 340, 2. Bundesliga 79, Eredivisie 88, Eerste Divisie 89, MLS 253, Brazil Serie A 71, Brazil Serie B 72, Ligue 2 62, Segunda División 141. Muốn theo dõi thêm giải khác, dùng ô **"Tìm và thêm giải"** trong Cài đặt; bỏ tick giải không cần để tiết kiệm request.
+1. Website tự đồng bộ ngay khi khởi động. Id các giải đã được kiểm tra với API thật: Premier League 39, La Liga 140, Serie A 135, Bundesliga 78, Ligue 1 61, Champions League 2, V.League 1 340, 2. Bundesliga 79, Eredivisie 88, Eerste Divisie 89, MLS 253, Brazil Serie A 71, Brazil Serie B 72, Ligue 2 62, Segunda División 141, AFC Champions League Elite (C1 châu Á) 17, AFC Champions League Two (C2 châu Á) 18, Thai League 1 296, Thai League 2 297. Muốn theo dõi thêm giải khác, dùng ô **"Tìm và thêm giải"** trong Cài đặt; bỏ tick giải không cần để tiết kiệm request.
 2. **"Tải mùa cũ"** 3–5 mùa gần nhất cho mỗi giải (mỗi mùa tốn 1 request). Phần kiểm chứng không cần kèo dùng các kết quả này.
    - Số mùa nhập theo cách API đánh số: phần lớn giải ghi theo năm bắt đầu (2025 = mùa 2025/26), riêng **V-League ghi theo năm kết thúc** (2026 = mùa 2025/26). Website tự hiện nhãn mùa đúng.
 3. Sửa quy tắc mẫu *"MU gặp đội xếp dưới → chọn MU"* cho đúng thói quen của bạn, rồi bấm **Kiểm chứng**.
@@ -84,6 +86,12 @@ Website tự đồng bộ ở chế độ nền theo chu kỳ:
 | HLV | 1 ngày | các đội có trận trong 3 ngày tới, mỗi đội 1 lần/tuần |
 | Gợi ý | 5 phút | sinh, chốt và chấm gợi ý (không tốn request) |
 | Phân tích chuyên sâu | 10 phút | cập nhật khuyến nghị A/B/C, chốt lúc bóng lăn, chấm sau trận (không tốn request) |
+| Đội hình | 5 phút | trong 75 phút trước trận, 1 request / 20 trận; có đội hình là lấy kèo ngay (mốc "khi có đội hình") |
+| Kèo 5 phút trước trận | 1 phút | 1 request / trận (mốc "5 phút trước trận") |
+| Đối đầu | 6 giờ | 5 lần gặp gần nhất, mỗi cặp 1 request/tuần |
+| Sân vận động | 6 giờ | mặt sân, sức chứa (mỗi sân 1 request, lưu lại) + tọa độ/độ cao từ Open-Meteo |
+| Thời tiết | 3 giờ | Open-Meteo (miễn phí, không cần key), các trận trong 48 giờ tới |
+| AI điền thông tin bên lề | 30 phút | chỉ khi có key Claude: các trận nhóm A/B trong 24 giờ tới, tối đa $3/ngày |
 
 Chỉnh chu kỳ trong `appsettings.json`, mục `Sync`. Nhà cái mặc định là Bet365 (`ApiFootball:BookmakerId = 8`).
 
@@ -154,6 +162,16 @@ Trang **DNA & nhân sự** cho sửa nhãn DNA của giải/đội (đã nhập 
 - Bật sẵn **fallback khi bị từ chối** (`fallbacks: "default"`): nếu bộ lọc an toàn từ chối, API tự chạy lại bằng model dự phòng.
 
 Báo cáo hiện dần trên trang, được lưu lại (bấm **"Phân tích lại"** để viết bản mới). Chi phí ước tính **$0.2–0.5/lượt** (hiện kèm mỗi báo cáo). Cấu hình trong `appsettings.json`, mục `Anthropic` (`Model`, `Effort`, `MaxTokens`, `WebSearch`, `WebSearchMaxUses`).
+
+## Mốc kèo, lịch sử kèo & thông tin bên lề
+
+Tab **Lịch sử & bên lề** ở trang chi tiết trận (và thẻ cảnh báo ⚠ trên thẻ trận):
+
+- **Mốc kèo**: *Mở kèo* là bản kèo đầu tiên website ghi nhận (kèo theo giải lấy mỗi giờ nên thường trong vòng 1 giờ sau khi nhà cái mở). *Khi có đội hình*: website dò đội hình 5 phút/lần trong 75 phút trước trận, có đội hình là lấy kèo ngay. *5 phút trước trận*: chụp kèo lần cuối. Mỗi mốc ghi cả giờ nhà cái cập nhật để biết kèo có bị cũ không.
+- **Cảnh báo** khi kèo chấp hoặc tài xỉu dịch **từ 0.5 trở lên** (từ lúc mở, hoặc riêng đoạn sau khi có đội hình); khi kèo hôm nay lệch ≥ 0.5 so với **lần gặp gần nhất**; hoặc **biên độ** kèo của 5 lần gặp gần nhất > 0.5.
+- **Lịch sử kèo**: API-Football **không giữ kèo của trận đã đá**, nên kèo cũ lấy từ: (1) website tự ghi từ khi chạy, (2) nhập tay (nút ✎), (3) AI tra cứu web (nhãn **AI**, cần kiểm tra). Kèo nhập tay không bị AI ghi đè.
+- **Sân & thời tiết**: mặt sân và sức chứa từ API-Football; tọa độ, độ cao và dự báo giờ bóng lăn từ [Open-Meteo](https://open-meteo.com/) (miễn phí, không cần key; tắt bằng `OpenMeteo:Enabled = false` nếu máy không ra được mạng). Sân cao từ 2.000 m được cộng thêm lợi thế sân nhà trong kèo chấp dự phóng.
+- **Thông tin bên lề (AI)**: Claude (mặc định `claude-sonnet-5-5`, rẻ hơn Opus) tra web và điền lịch sử thù hận, động lực, tin bên lề, đặc điểm sân, thời tiết và kèo các trận cũ còn thiếu. Tự chạy cho các trận nhóm A/B trong 24 giờ tới (tối đa `SideInfoDailyBudgetUsd` = $3/ngày), hoặc bấm tay ở từng trận. Ước tính ~$0.05–0.15/trận. Cấu hình trong mục `Anthropic` (`SideInfoModel`, `SideInfoAuto`, `SideInfoDailyBudgetUsd`...).
 
 ## Giới hạn cần biết
 
