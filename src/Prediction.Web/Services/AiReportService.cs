@@ -1,0 +1,422 @@
+using System.Globalization;
+using System.Text;
+using System.Text.Json;
+using Anthropic;
+using Anthropic.Models.Beta.Messages;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
+using Prediction.Core.Engine;
+using Prediction.Core.Engine.Analysis;
+using Prediction.Core.Entities;
+using Prediction.Web.Data;
+
+namespace Prediction.Web.Services;
+
+public sealed class AiReportOptions
+{
+    public const string Section = "Anthropic";
+
+    /// <summary>API key Claude (console.anthropic.com). Đặt bằng user-secrets hoặc biến môi trường Anthropic__ApiKey.</summary>
+    public string? ApiKey { get; set; }
+
+    public string Model { get; set; } = "claude-opus-5-5";
+
+    /// <summary>low / medium / high / max: mức suy nghĩ (càng cao càng kỹ, càng tốn).</summary>
+    public string Effort { get; set; } = "high";
+
+    public int MaxTokens { get; set; } = 32000;
+
+    /// <summary>Cho phép Claude tra cứu web (tân binh, HLV, đội hình, chấn thương mới nhất).</summary>
+    public bool WebSearch { get; set; } = true;
+
+    public int WebSearchMaxUses { get; set; } = 5;
+
+    /// <summary>Để trống = API Anthropic chính thức (chỉ đổi khi đi qua proxy hoặc kiểm thử).</summary>
+    public string? BaseUrl { get; set; }
+
+    /// <summary>Thời gian chờ tối đa một báo cáo (phút).</summary>
+    public int TimeoutMinutes { get; set; } = 10;
+}
+
+/// <summary>Một cập nhật khi đang nhận báo cáo: đoạn văn bản mới hoặc trạng thái (vd đang tra cứu web).</summary>
+public sealed record AiReportUpdate(string? Text, string? Status);
+
+/// <summary>
+/// Báo cáo phân tích bằng Claude: system prompt là nguyên file kỹ năng (cache 1 giờ), tin nhắn là toàn bộ số liệu phân tích
+/// của trận dạng JSON. Nhận kết quả dạng streaming và lưu vào bảng AiReports.
+/// </summary>
+public sealed class AiReportService(
+    IOptions<AiReportOptions> options,
+    IDbContextFactory<AppDbContext> dbFactory,
+    AnalysisService analyses,
+    IWebHostEnvironment env,
+    TimeDisplay time,
+    TimeProvider clock,
+    ILogger<AiReportService> logger)
+{
+    // Giá Claude Opus 5.5 (USD / triệu token) và web search (USD / lượt) để ước tính chi phí.
+    private const decimal InputPrice = 4m;
+    private const decimal OutputPrice = 20m;
+    private const decimal CacheWrite1hPrice = 8m;
+    private const decimal CacheReadPrice = 0.20m;
+    private const decimal WebSearchPrice = 0.01m;
+
+    private const string AppInstructions = """
+        Bạn đang chạy bên trong website soi kèo cá nhân của người dùng (Blazor + API-Football). Mỗi yêu cầu gửi kèm số liệu
+        đã được website tính sẵn cho MỘT trận đấu (JSON): BXH trước trận, phong độ 10 trận gần nhất hoặc giai đoạn HLV/tân binh mới,
+        thống kê phạt góc/thẻ/sút/xG từ API-Football, kèo Bet365 (mở → hiện tại), DNA giải/đội do người dùng gắn nhãn,
+        HLV mới/tân binh, danh sách vắng mặt, kèo chấp dự phóng, cờ đỏ, bảng đối chiếu 3 lớp, mô hình Poisson và khuyến nghị
+        của website. Đây là nguồn định lượng chính: giữ nguyên các con số, không bịa thêm số liệu thống kê.
+
+        Quy ước kèo trong JSON: kèo chấp ghi theo đội nhà (âm = đội nhà chấp, vd -0.75 là đội nhà chấp 3/4 trái);
+        tài xỉu/góc/thẻ là mốc tổng. Xác suất là của mô hình website (Poisson cho bàn, nhị thức âm cho góc/thẻ).
+
+        Trả lời bằng tiếng Việt, định dạng Markdown (tiêu đề ##, bảng, gạch đầu dòng), đúng CẤU TRÚC KẾT QUẢ ĐẦU RA ở mục 9,
+        đi thẳng vào kết luận, không nhắc lại toàn bộ JSON. Khi dùng thông tin tra cứu web, ghi rõ nguồn.
+        Nếu thiếu dữ liệu (vd chưa có kèo góc, chưa có đội hình), nói rõ là thiếu thay vì đoán.
+        """;
+
+    private string? _skill;
+
+    public bool IsConfigured => !string.IsNullOrWhiteSpace(options.Value.ApiKey);
+
+    public string Model => options.Value.Model;
+
+    public async Task<AiReport?> LatestAsync(int fixtureId, CancellationToken ct = default)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        return await db.AiReports.AsNoTracking().Where(r => r.FixtureId == fixtureId).OrderByDescending(r => r.CreatedAtUtc).FirstOrDefaultAsync(ct);
+    }
+
+    /// <summary>Gọi Claude viết báo cáo cho trận, đẩy từng đoạn chữ qua <paramref name="onUpdate"/> và lưu kết quả.</summary>
+    public async Task<AiReport> GenerateAsync(int fixtureId, Func<AiReportUpdate, Task> onUpdate, CancellationToken ct)
+    {
+        if (!IsConfigured)
+        {
+            throw new InvalidOperationException("Chưa cấu hình Anthropic:ApiKey.");
+        }
+
+        var result = await analyses.ForFixtureAsync(fixtureId, ct) ?? throw new InvalidOperationException("Không tìm thấy trận.");
+        var o = options.Value;
+        var client = string.IsNullOrWhiteSpace(o.BaseUrl)
+            ? new AnthropicClient { ApiKey = o.ApiKey, Timeout = TimeSpan.FromMinutes(o.TimeoutMinutes) }
+            : new AnthropicClient { ApiKey = o.ApiKey, Timeout = TimeSpan.FromMinutes(o.TimeoutMinutes), BaseUrl = o.BaseUrl };
+
+        var tools = new List<BetaToolUnion>();
+        if (o.WebSearch)
+        {
+            tools.Add(new BetaWebSearchTool20260209 { MaxUses = o.WebSearchMaxUses });
+        }
+
+        var parameters = new MessageCreateParams
+        {
+            Model = o.Model,
+            MaxTokens = o.MaxTokens,
+            Betas = ["server-side-fallback-2026-07-01"],
+            Fallbacks = new Default(),
+            OutputConfig = new BetaOutputConfig { Effort = ParseEffort(o.Effort) },
+            System = new List<BetaTextBlockParam>
+            {
+                new() { Text = await SkillAsync(ct) },
+                new() { Text = AppInstructions, CacheControl = new BetaCacheControlEphemeral { Ttl = Ttl.Ttl1h } },
+            },
+            Tools = tools,
+            Messages = [new() { Role = Role.User, Content = UserMessage(result) }],
+        };
+
+        var text = new StringBuilder();
+        string? stopReason = null;
+        long input = 0, output = 0, cacheRead = 0, cacheWrite = 0, searches = 0;
+        var model = o.Model;
+
+        await foreach (var ev in client.Beta.Messages.CreateStreaming(parameters, ct))
+        {
+            if (ev.TryPickStart(out var start))
+            {
+                model = start.Message.Model;
+                input = start.Message.Usage.InputTokens;
+                cacheRead = start.Message.Usage.CacheReadInputTokens ?? 0;
+                cacheWrite = start.Message.Usage.CacheCreationInputTokens ?? 0;
+            }
+            else if (ev.TryPickContentBlockStart(out var blockStart))
+            {
+                if (blockStart.ContentBlock.TryPickBetaServerToolUse(out _))
+                {
+                    await onUpdate(new AiReportUpdate(null, "Đang tra cứu web…"));
+                }
+                else if (blockStart.ContentBlock.TryPickBetaText(out _) && text.Length > 0 && text[^1] != '\n')
+                {
+                    // Khối văn bản mới (sau một lượt tra cứu): xuống dòng để không dính chữ.
+                    text.Append("\n\n");
+                }
+            }
+            else if (ev.TryPickContentBlockDelta(out var delta) && delta.Delta.TryPickText(out var chunk))
+            {
+                text.Append(chunk.Text);
+                await onUpdate(new AiReportUpdate(chunk.Text, null));
+            }
+            else if (ev.TryPickDelta(out var messageDelta))
+            {
+                stopReason = messageDelta.Delta.StopReason?.ToString();
+                output = messageDelta.Usage.OutputTokens;
+                input = messageDelta.Usage.InputTokens ?? input;
+                cacheRead = messageDelta.Usage.CacheReadInputTokens ?? cacheRead;
+                cacheWrite = messageDelta.Usage.CacheCreationInputTokens ?? cacheWrite;
+                searches = messageDelta.Usage.ServerToolUse?.WebSearchRequests ?? searches;
+            }
+        }
+
+        var markdown = text.ToString().Trim();
+        if (stopReason == "refusal")
+        {
+            markdown += "\n\n> Claude đã từ chối hoàn thành yêu cầu này (stop_reason = refusal). Hãy thử lại sau.";
+        }
+        else if (stopReason == "max_tokens")
+        {
+            markdown += "\n\n> Báo cáo bị cắt do chạm giới hạn độ dài (Anthropic:MaxTokens).";
+        }
+        else if (stopReason == "pause_turn")
+        {
+            markdown += "\n\n> Claude dừng giữa chừng sau nhiều lượt tra cứu web. Bấm \"Phân tích lại\" nếu cần bản đầy đủ.";
+        }
+
+        var report = new AiReport
+        {
+            FixtureId = fixtureId,
+            Model = model,
+            Markdown = markdown,
+            StopReason = stopReason,
+            InputTokens = (int)input,
+            OutputTokens = (int)output,
+            CacheReadTokens = (int)cacheRead,
+            CacheWriteTokens = (int)cacheWrite,
+            WebSearches = (int)searches,
+            CostUsd = Math.Round((input * InputPrice + output * OutputPrice + cacheWrite * CacheWrite1hPrice + cacheRead * CacheReadPrice) / 1_000_000m
+                + searches * WebSearchPrice, 4),
+            CreatedAtUtc = clock.GetUtcNow().UtcDateTime,
+        };
+
+        await using (var db = await dbFactory.CreateDbContextAsync(CancellationToken.None))
+        {
+            db.AiReports.Add(report);
+            await db.SaveChangesAsync(CancellationToken.None);
+        }
+
+        logger.LogInformation("Báo cáo AI trận {Fixture}: {Input}+{CacheRead} cache đọc +{CacheWrite} cache ghi vào, {Output} ra, {Searches} lượt web, ~${Cost}",
+            fixtureId, input, cacheRead, cacheWrite, output, searches, report.CostUsd);
+        return report;
+    }
+
+    private static Effort ParseEffort(string value) => value.Trim().ToLowerInvariant() switch
+    {
+        "low" => Effort.Low,
+        "medium" => Effort.Medium,
+        "max" => Effort.Max,
+        _ => Effort.High,
+    };
+
+    private async Task<string> SkillAsync(CancellationToken ct)
+    {
+        if (_skill is null)
+        {
+            var path = Path.Combine(AppContext.BaseDirectory, "Ai", "bong-da-skill.md");
+            if (!File.Exists(path))
+            {
+                path = Path.Combine(env.ContentRootPath, "Ai", "bong-da-skill.md");
+            }
+
+            _skill = await File.ReadAllTextAsync(path, ct);
+        }
+
+        return _skill;
+    }
+
+    // ------------------------------------------------------------------ Dữ liệu gửi cho Claude
+
+    private static readonly JsonSerializerOptions Json = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
+        DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+    };
+
+    private string UserMessage(MatchAnalysisResult r)
+    {
+        var data = BuildData(r);
+        return $"""
+            Hãy phân tích trận {r.Home} – {r.Away} ({r.League?.Name}, {time.Full(r.Fixture.KickoffUtc)} giờ Việt Nam) theo đúng quy trình
+            và CẤU TRÚC KẾT QUẢ ĐẦU RA (mục 9) trong hướng dẫn.
+
+            Yêu cầu:
+            1. Dùng số liệu JSON bên dưới làm nguồn định lượng chính.
+            2. Dùng công cụ tìm kiếm web để kiểm tra những gì website không có: tân binh nổi bật, HLV mới và phong cách,
+               chấn thương/treo giò mới nhất, đội hình dự kiến, lịch thi đấu giữa tuần, động lực. Ghi rõ nguồn.
+            3. Đối chiếu kèo chấp dự phóng với kèo nhà cái, rà 5 cờ đỏ, bảng 3 lớp bàn thắng/phạt góc/chấp góc.
+            4. Có thể đồng ý hoặc không với khuyến nghị của website nhưng phải giải thích.
+            5. Kết thúc bằng bảng khuyến nghị xếp theo thang điểm 10 (Nhóm A/B/C, xác suất thắng ước tính) và kịch bản In-play.
+
+            ```json
+            {JsonSerializer.Serialize(data, Json)}
+            ```
+            """;
+    }
+
+    private static object BuildData(MatchAnalysisResult r)
+    {
+        var a = r.Analysis;
+        var i = r.Input;
+        var f = r.Fixture;
+        return new
+        {
+            TranDau = new
+            {
+                Giai = r.League?.Name,
+                QuocGia = r.League?.Country,
+                Vong = f.Round,
+                GioBongLanUtc = f.KickoffUtc.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture),
+                DoiNha = r.Home,
+                DoiKhach = r.Away,
+                TrangThai = f.Status,
+                TiSo = f.HomeGoals.HasValue ? $"{f.HomeGoals}-{f.AwayGoals}" : null,
+            },
+            Bxh = new
+            {
+                Nha = Standing(i.HomeStanding),
+                Khach = Standing(i.AwayStanding),
+                SoDoi = i.TableSize,
+            },
+            Dna = new
+            {
+                Giai = a.LeagueTags,
+                GiaiGhiChu = a.LeagueNotes,
+                Nha = a.HomeTags,
+                NhaGhiChu = a.HomeNotes,
+                Khach = a.AwayTags,
+                KhachGhiChu = a.AwayNotes,
+            },
+            NhanSu = new
+            {
+                Nha = Staff(a.HomeRegime, a.HomeAbsent, a.HomeRestDays),
+                Khach = Staff(a.AwayRegime, a.AwayAbsent, a.AwayRestDays),
+                GhiChu = "Danh sách vắng mặt từ API-Football (có thể chưa đủ); tân binh trụ cột chỉ có nếu người dùng nhập tay.",
+            },
+            Keo = new
+            {
+                ChapChauA = Market(i.Handicap),
+                TaiXiuBan = Market(i.Totals),
+                TaiXiuGoc = Market(i.Corners),
+                ChapGoc = Market(i.CornersHandicap),
+                TaiXiuThe = Market(i.Cards),
+            },
+            TrungBinhGiai = new { Ban = Round(i.League.Goals), Goc = Round(i.League.Corners), The = Round(i.League.Cards), SoTran = i.League.Matches, SoTranCoThongKe = i.League.StatMatches },
+            PhongDo = new { Nha = Form(a.HomeForm), Khach = Form(a.AwayForm) },
+            KeoChapDuPhong = new
+            {
+                PhanPhongDo = Round(a.Handicap.FormPart),
+                PhanBxh = a.Handicap.TablePart is { } t ? Round(t) : (double?)null,
+                LoiTheSan = Round(a.Handicap.HomeAdvantage),
+                LoiTheSanGhiChu = a.Handicap.HomeAdvantageNotes,
+                DoVuotTroiNha = Round(a.Handicap.Supremacy),
+                HExp = a.Handicap.HExp,
+                HMarket = a.Handicap.HMarket,
+                DeltaH = a.Handicap.Delta,
+                KeoLa = a.Handicap.IsAnomaly,
+                KichBan = a.Handicap.Scenario.ToString(),
+                NguyenNhanTimThay = a.Handicap.Causes,
+                NhanDinh = a.Handicap.Summary,
+            },
+            CoDo = a.Flags.Select(x => new { So = x.Number, x.Title, ChiTiet = x.Detail }),
+            DoiChieu3Lop = new[] { a.Goals, a.CornersRow, a.CornerHandicap, a.CardsRow }.Select(row => new
+            {
+                HangMuc = row.Name,
+                TbGiai = row.LeagueAverage is { } la ? Round(la) : (double?)null,
+                row.LeagueDnaText,
+                Nha = row.HomeText,
+                Khach = row.AwayText,
+                KyVong = row.Expected is { } e ? Round(e) : (double?)null,
+                MocKeo = row.MarketLine,
+                Delta = row.Delta is { } d ? Round(d) : (double?)null,
+                DanhGia = row.Verdict,
+            }),
+            MoHinh = new
+            {
+                LambdaNha = Round(a.LambdaHome),
+                LambdaKhach = Round(a.LambdaAway),
+                GocNha = Round(a.CornersHome),
+                GocKhach = Round(a.CornersAway),
+                The = Round(a.ExpectedCards),
+                NhaThang = Round(a.HomeWinProbability),
+                Hoa = Round(a.DrawProbability),
+                KhachThang = Round(a.AwayWinProbability),
+            },
+            KhuyenNghiWebsite = a.Picks.Select(p => new
+            {
+                Keo = p.Label,
+                Odds = p.Odds,
+                Nhom = p.Group.ToString(),
+                Diem = p.Score,
+                XacSuatThang = Round(p.Probability.Win),
+                XacSuatThangNua = Round(p.Probability.HalfWin),
+                XacSuatHoan = Round(p.Probability.Push),
+                XacSuatThuaNua = Round(p.Probability.HalfLoss),
+                XacSuatThua = Round(p.Probability.Loss),
+                Ev = Round(p.ExpectedValue),
+                CoDo = p.Flags,
+                LyDo = p.Reasons,
+            }),
+            KichBanInPlay = a.InPlayHints,
+            TuVanApiFootball = i.Advice is { } adv
+                ? new { adv.Advice, NhaPct = adv.PercentHome, HoaPct = adv.PercentDraw, KhachPct = adv.PercentAway, TaiXiu = adv.UnderOver }
+                : null,
+            QuyTacCuaNguoiDungDangChon = i.RuleSides.Select(s => s.ToString()),
+            DuLieuIt = a.LowData,
+        };
+    }
+
+    private static object? Standing(TeamSnapshot? s) => s is null
+        ? null
+        : new { Hang = s.Rank, Tran = s.Played, Diem = s.Points, HieuSo = s.GoalDiff, PhongDo5 = s.Form };
+
+    private static object Staff(RegimeStatus? regime, IReadOnlyList<FixtureInjury> absent, double? rest) => new
+    {
+        ThayDoi = regime is null
+            ? null
+            : new { Loai = regime.KindLabel, Ten = regime.PersonName, TuNgay = regime.StartDate.ToString("yyyy-MM-dd"), TranSapDaLaTranThu = regime.UpcomingMatchNumber, ChoOnDinh = regime.InBuffer },
+        Vang = absent.Select(x => new { x.PlayerName, x.Type, x.Reason }),
+        SoNgayNghi = rest is { } d ? Math.Round(d, 1) : (double?)null,
+    };
+
+    private static object? Market(MarketMovement? m) => m is null
+        ? null
+        : new
+        {
+            Mo = new { m.Open.Line, OddsA = m.Open.PriceA, OddsB = m.Open.PriceB },
+            HienTai = new { m.Current.Line, OddsA = m.Current.PriceA, OddsB = m.Current.PriceB },
+            SoLanDoi = m.Changes,
+        };
+
+    private static object Form(TeamForm f) => new
+    {
+        Mau = f.SampleLabel,
+        KetQua5 = f.Form,
+        Ghi = Round(f.GoalsFor),
+        Thung = Round(f.GoalsAgainst),
+        TiLeTai25 = Round(f.Over25Rate),
+        TiLeHoa = Round(f.DrawRate),
+        TiLeThang = Round(f.WinRate),
+        GocKiem = f.CornersFor is { } cf ? Round(cf) : (double?)null,
+        GocBi = f.CornersAgainst is { } ca ? Round(ca) : (double?)null,
+        GocKiemTheoSan = f.VenueCornersFor is { } vf ? Round(vf) : (double?)null,
+        GocBiTheoSan = f.VenueCornersAgainst is { } va ? Round(va) : (double?)null,
+        TiLeTaiGoc95 = f.Over95CornersRate is { } o ? Round(o) : (double?)null,
+        XgTao = f.XgFor is { } xf ? Round(xf) : (double?)null,
+        XgLot = f.XgAgainst is { } xa ? Round(xa) : (double?)null,
+        Sut = f.ShotsFor is { } sh ? Round(sh) : (double?)null,
+        TheNhan = f.CardsFor is { } kf ? Round(kf) : (double?)null,
+        TheDoiThu = f.CardsAgainst is { } ka ? Round(ka) : (double?)null,
+        TiLeThangKeoChap = f.AtsRate is { } ats ? Round(ats) : (double?)null,
+        SoTranCoKeo = f.AtsMatches,
+    };
+
+    private static double Round(double value) => Math.Round(value, 2);
+}

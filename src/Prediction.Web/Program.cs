@@ -23,6 +23,7 @@ builder.Services.AddDbContextFactory<AppDbContext>(o => o.UseSqlServer(connectio
 builder.Services.Configure<ApiFootballOptions>(builder.Configuration.GetSection(ApiFootballOptions.Section));
 builder.Services.Configure<SyncOptions>(builder.Configuration.GetSection(SyncOptions.Section));
 builder.Services.Configure<DisplayOptions>(builder.Configuration.GetSection(DisplayOptions.Section));
+builder.Services.Configure<AiReportOptions>(builder.Configuration.GetSection(AiReportOptions.Section));
 
 builder.Services.AddHttpClient<ApiFootballClient>((sp, client) =>
 {
@@ -40,6 +41,7 @@ builder.Services.AddSingleton<DemoDataSeeder>();
 builder.Services.AddSingleton<InsightService>();
 builder.Services.AddSingleton<BacktestService>();
 builder.Services.AddSingleton<AnalysisService>();
+builder.Services.AddSingleton<AiReportService>();
 builder.Services.AddScoped<DataSyncService>();
 builder.Services.AddHostedService<SyncBackgroundService>();
 

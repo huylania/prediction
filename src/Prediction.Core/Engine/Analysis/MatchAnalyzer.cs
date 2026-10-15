@@ -245,15 +245,15 @@ public static class MatchAnalyzer
             causes.AddRange(Causes(c, marketTowardHome));
             if (scenario == HandicapScenario.DeepLineCloseRanks && delta is { } agree && Math.Abs(agree) <= 0.25m)
             {
-                causes.Add($"phong độ gần đây ủng hộ mức chấp sâu (dự phóng {LineText.HandicapSentence(hExp, input.HomeName, input.AwayName).ToLowerInvariant()})");
+                causes.Add($"phong độ gần đây ủng hộ mức chấp sâu (dự phóng {Sentence(hExp, input)})");
             }
 
             verdict = causes.Count > 0 ? HandicapVerdict.RealStrength : HandicapVerdict.SuspectedTrap;
             var what = scenario switch
             {
                 HandicapScenario.DeepLineCloseRanks => $"Kịch bản A: hai đội xếp sát nhau (hạng {input.HomeStanding!.Rank} và {input.AwayStanding!.Rank}) nhưng kèo chấp sâu {LineText.Handicap(hMarket.Value)}",
-                HandicapScenario.ShallowLineForBetterHome => $"Kịch bản B: {input.HomeName} xếp trên (hạng {input.HomeStanding!.Rank} vs {input.AwayStanding!.Rank}) đá sân nhà nhưng kèo chỉ {(hMarket == 0 ? "đồng banh" : LineText.HandicapSentence(hMarket.Value, input.HomeName, input.AwayName).ToLowerInvariant())}",
-                _ => $"Kèo lạ: nhà cái {LineText.HandicapSentence(hMarket.Value, input.HomeName, input.AwayName).ToLowerInvariant()} so với dự phóng {LineText.HandicapSentence(hExp, input.HomeName, input.AwayName).ToLowerInvariant()}",
+                HandicapScenario.ShallowLineForBetterHome => $"Kịch bản B: {input.HomeName} xếp trên (hạng {input.HomeStanding!.Rank} vs {input.AwayStanding!.Rank}) đá sân nhà nhưng kèo chỉ {Sentence(hMarket.Value, input)}",
+                _ => $"Kèo lạ: nhà cái {Sentence(hMarket.Value, input)} so với dự phóng {Sentence(hExp, input)}",
             };
             var favouriteName = hMarket < 0 ? input.HomeName : input.AwayName;
             summary = verdict == HandicapVerdict.RealStrength
@@ -311,12 +311,12 @@ public static class MatchAnalyzer
 
         if (weakRegime is { InBuffer: true })
         {
-            causes.Add($"{weakName} đang lắp ghép {weakRegime.KindLabel.ToLowerInvariant()} ({weakRegime.PersonName}, trận thứ {weakRegime.UpcomingMatchNumber})");
+            causes.Add($"{weakName} đang lắp ghép {weakRegime.KindText} ({weakRegime.PersonName}, trận thứ {weakRegime.UpcomingMatchNumber})");
         }
 
         if (strongRegime is { InBuffer: false, UsesNewSample: true })
         {
-            causes.Add($"{strongName} đã qua giai đoạn ổn định với {strongRegime.KindLabel.ToLowerInvariant()} {strongRegime.PersonName} ({strongRegime.MatchesUnder} trận)");
+            causes.Add($"{strongName} đã qua giai đoạn ổn định với {strongRegime.KindText} {strongRegime.PersonName} ({strongRegime.MatchesUnder} trận)");
         }
 
         if (marketTowardHome)
@@ -658,7 +658,7 @@ public static class MatchAnalyzer
             if (regime is { InBuffer: true })
             {
                 flags.Add(new RedFlag(5, "Chờ ổn định 2–3 trận",
-                    $"{name}: {regime.KindLabel.ToLowerInvariant()} {regime.PersonName} (từ {regime.StartDate:dd/MM/yyyy}), đây là trận thứ {regime.UpcomingMatchNumber} — hệ thống đang lắp ghép → bỏ qua kèo trước trận, chỉ theo dõi In-play sau phút 20.",
+                    $"{name}: {regime.KindText} {regime.PersonName} (từ {regime.StartDate:dd/MM/yyyy}), đây là trận thứ {regime.UpcomingMatchNumber} — hệ thống đang lắp ghép → bỏ qua kèo trước trận, chỉ theo dõi In-play sau phút 20.",
                     allMarkets));
             }
         }
@@ -838,7 +838,7 @@ public static class MatchAnalyzer
             if (regime is { InBuffer: false, UsesNewSample: true })
             {
                 score += 0.5;
-                pick.Reasons.Add($"{name} đã qua 3 trận ổn định với {regime.KindLabel.ToLowerInvariant()} {regime.PersonName}: dùng dữ liệu giai đoạn mới (+0.5)");
+                pick.Reasons.Add($"{name} đã qua 3 trận ổn định với {regime.KindText} {regime.PersonName}: dùng dữ liệu giai đoạn mới (+0.5)");
                 break;
             }
         }
@@ -1041,7 +1041,7 @@ public static class MatchAnalyzer
         {
             if (regime is { InBuffer: true })
             {
-                hints.Add($"{name} ({regime.KindLabel.ToLowerInvariant()}, trận thứ {regime.UpcomingMatchNumber}): quan sát 20–25' đầu; chỉ vào lệnh nếu số cú sút/tấn công nguy hiểm áp đảo đúng triết lý mới.");
+                hints.Add($"{name} ({regime.KindText}, trận thứ {regime.UpcomingMatchNumber}): quan sát 20–25' đầu; chỉ vào lệnh nếu số cú sút/tấn công nguy hiểm áp đảo đúng triết lý mới.");
             }
         }
 
@@ -1100,6 +1100,10 @@ public static class MatchAnalyzer
     private static string Signed(decimal value) => LineText.Signed(value);
 
     private static string Pct(double value) => (value * 100).ToString("0", Vi) + "%";
+
+    /// <summary>"Chelsea chấp 1/4 trái" hoặc "đồng banh" để đặt giữa câu.</summary>
+    private static string Sentence(decimal homeLine, AnalysisInput input) =>
+        homeLine == 0 ? "đồng banh" : LineText.HandicapSentence(homeLine, input.HomeName, input.AwayName);
 
     private static string Capitalize(string text) => text.Length == 0 ? text : char.ToUpperInvariant(text[0]) + text[1..];
 

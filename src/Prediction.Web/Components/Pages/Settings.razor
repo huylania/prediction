@@ -11,6 +11,8 @@
 @inject DemoDataSeeder Demo
 @inject AdminAccountService Accounts
 @inject TimeDisplay Time
+@inject AiReportService AiReports
+@inject IOptions<AiReportOptions> AiOptions
 
 <PageTitle>Cài đặt</PageTitle>
 
@@ -69,6 +71,22 @@
                     chấn thương @SyncOpts.Value.InjuriesIntervalMinutes phút · HLV @SyncOpts.Value.CoachesIntervalMinutes phút.
                     Khi quota còn dưới @SyncOpts.Value.QuotaReserve request, các tác vụ phụ tạm dừng. Sửa trong <code>appsettings.json</code> mục <code>Sync</code>.
                 </div>
+            </div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-header">Claude (báo cáo AI)</div>
+            <div class="card-body small">
+                @if (AiReports.IsConfigured)
+                {
+                    <div>Đã cấu hình API key · model <code>@AiOptions.Value.Model</code> · effort <code>@AiOptions.Value.Effort</code> · tra cứu web: @(AiOptions.Value.WebSearch ? $"bật (tối đa {AiOptions.Value.WebSearchMaxUses} lượt)" : "tắt")</div>
+                    <div class="text-muted mt-1">Đã viết @_aiCount báo cáo, tổng chi phí ước tính ~$@_aiCost.ToString("0.00").</div>
+                }
+                else
+                {
+                    <div class="mb-1">Chưa cấu hình. Tùy chọn — chỉ cần nếu muốn dùng nút "Viết báo cáo AI" ở tab Phân tích chuyên sâu:</div>
+                    <pre class="bg-light p-2 mb-0">dotnet user-secrets set "Anthropic:ApiKey" "sk-ant-..."</pre>
+                }
             </div>
         </div>
 
@@ -214,6 +232,8 @@
     private string _currentPassword = "";
     private string _newPassword = "";
     private int _statsDone;
+    private int _aiCount;
+    private decimal _aiCost;
     private int _statsTotal;
 
     private string MaskedKey
@@ -252,6 +272,8 @@
             && (f.Status == "FT" || f.Status == "AET" || f.Status == "PEN"));
         _statsTotal = await finished.CountAsync();
         _statsDone = await finished.CountAsync(f => db.FixtureStats.Any(s => s.FixtureId == f.Id && s.IsFinal));
+        _aiCount = await db.AiReports.CountAsync();
+        _aiCost = _aiCount == 0 ? 0 : await db.AiReports.SumAsync(r => r.CostUsd);
     }
 
     private void Show(bool ok, string? message) => (_ok, _message) = (ok, message);

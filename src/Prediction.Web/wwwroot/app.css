@@ -235,3 +235,11 @@ h1:focus {
 .inplay-alert.warn .r { background: #ea580c; }
 .mc-stats { display: flex; flex-wrap: wrap; justify-content: center; gap: .35rem 1rem; margin-top: .55rem; font-size: .78rem; color: #475569; }
 .mc-stats strong { color: #0f172a; font-variant-numeric: tabular-nums; }
+.ai-report > h2 .num { width: auto; padding: 0 .45rem; border-radius: 6px; background: #7c3aed; }
+.ai-markdown { font-size: .92rem; line-height: 1.55; }
+.ai-markdown h1, .ai-markdown h2 { font-size: 1.1rem; font-weight: 800; margin: 1rem 0 .5rem; }
+.ai-markdown h3, .ai-markdown h4 { font-size: 1rem; font-weight: 700; margin: .85rem 0 .4rem; }
+.ai-markdown table { width: 100%; margin: .5rem 0 1rem; border-collapse: collapse; font-size: .82rem; display: block; overflow-x: auto; }
+.ai-markdown th, .ai-markdown td { border: 1px solid #e2e8f0; padding: .3rem .45rem; vertical-align: top; }
+.ai-markdown th { background: #f8fafc; }
+.ai-markdown blockquote { border-left: 4px solid #f59e0b; background: #fffbeb; padding: .4rem .7rem; margin: .5rem 0; }

@@ -47,6 +47,59 @@ namespace Prediction.Web.Data.Migrations
                     b.ToTable("AdminUsers");
                 });
 
+            modelBuilder.Entity("Prediction.Core.Entities.AiReport", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<int>("CacheReadTokens")
+                        .HasColumnType("int");
+
+                    b.Property<int>("CacheWriteTokens")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("CostUsd")
+                        .HasPrecision(10, 4)
+                        .HasColumnType("decimal(10,4)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("FixtureId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("InputTokens")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Markdown")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Model")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int>("OutputTokens")
+                        .HasColumnType("int");
+
+                    b.Property<string>("StopReason")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<int>("WebSearches")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FixtureId", "CreatedAtUtc");
+
+                    b.ToTable("AiReports");
+                });
+
             modelBuilder.Entity("Prediction.Core.Entities.AnalysisPick", b =>
                 {
                     b.Property<long>("Id")
@@ -1694,6 +1747,17 @@ namespace Prediction.Web.Data.Migrations
                             Tags = 128,
                             TeamName = "Empoli"
                         });
+                });
+
+            modelBuilder.Entity("Prediction.Core.Entities.AiReport", b =>
+                {
+                    b.HasOne("Prediction.Core.Entities.Fixture", "Fixture")
+                        .WithMany()
+                        .HasForeignKey("FixtureId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Fixture");
                 });
 
             modelBuilder.Entity("Prediction.Core.Entities.AnalysisPick", b =>

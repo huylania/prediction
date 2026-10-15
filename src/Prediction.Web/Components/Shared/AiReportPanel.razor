@@ -1,0 +1,123 @@
+@implements IDisposable
+@using Markdig
+@inject AiReportService Reports
+@inject TimeDisplay Time
+
+<div class="an-section ai-report">
+    <h2>
+        <span class="num">AI</span> Báo cáo Claude theo file kỹ năng
+        @if (_report is { } r && !_running)
+        {
+            <span class="small text-muted fw-normal ms-auto">@r.Model · @Time.Short(r.CreatedAtUtc) · @r.WebSearches lượt tra web · ~$@r.CostUsd.ToString("0.00")</span>
+        }
+    </h2>
+
+    @if (!Reports.IsConfigured)
+    {
+        <p class="small mb-1">Chưa cấu hình API key Claude. Lấy key ở <strong>console.anthropic.com</strong> rồi chạy trong thư mục <code>src/Prediction.Web</code>:</p>
+        <pre class="small bg-light p-2 mb-1">dotnet user-secrets set "Anthropic:ApiKey" "sk-ant-..."</pre>
+        <p class="hint mb-0">Khởi động lại website sau khi đặt key. Mỗi báo cáo tốn khoảng $0.2–0.5 (model @Reports.Model, có tra cứu web); lần sau trong 1 giờ rẻ hơn nhờ cache.</p>
+    }
+    else
+    {
+        <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
+            @if (_running)
+            {
+                <span class="spinner-border spinner-border-sm text-success"></span>
+                <span class="small">@(_status ?? "Claude đang phân tích…")</span>
+                <button class="btn btn-sm btn-outline-secondary" @onclick="Cancel">Dừng</button>
+            }
+            else
+            {
+                <button class="btn btn-sm btn-success" @onclick="GenerateAsync">@(_report is null ? "Viết báo cáo AI" : "Phân tích lại")</button>
+                <span class="hint">Claude đọc toàn bộ số liệu phân tích ở trên, tự tra cứu web (tân binh, HLV, đội hình, chấn thương) và viết theo mục 9 của file kỹ năng. Ước tính $0.2–0.5/lượt.</span>
+            }
+        </div>
+        @if (_error is not null)
+        {
+            <div class="alert alert-danger py-2 small">@_error</div>
+        }
+        @if (_running ? _buffer.Length > 0 : _report is not null)
+        {
+            <div class="ai-markdown">@((MarkupString)Markdown.ToHtml(_running ? _buffer.ToString() : _report!.Markdown, Pipeline))</div>
+        }
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public int FixtureId { get; set; }
+
+    private static readonly MarkdownPipeline Pipeline = new MarkdownPipelineBuilder().UseAdvancedExtensions().DisableHtml().Build();
+
+    private AiReport? _report;
+    private bool _running;
+    private string? _status;
+    private string? _error;
+    private readonly System.Text.StringBuilder _buffer = new();
+    private CancellationTokenSource? _cts;
+    private DateTime _lastRender;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Reports.IsConfigured)
+        {
+            _report = await Reports.LatestAsync(FixtureId);
+        }
+    }
+
+    private async Task GenerateAsync()
+    {
+        _cts = new CancellationTokenSource();
+        _running = true;
+        _error = null;
+        _status = null;
+        _buffer.Clear();
+        try
+        {
+            _report = await Reports.GenerateAsync(FixtureId, OnUpdateAsync, _cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            _error = "Đã dừng. Phần đã nhận không được lưu.";
+        }
+        catch (Exception ex)
+        {
+            _error = $"Lỗi khi gọi Claude: {ex.Message}";
+        }
+        finally
+        {
+            _running = false;
+            _cts?.Dispose();
+            _cts = null;
+        }
+    }
+
+    private async Task OnUpdateAsync(AiReportUpdate update)
+    {
+        if (update.Text is { } text)
+        {
+            _buffer.Append(text);
+            _status = "Claude đang viết…";
+        }
+
+        if (update.Status is { } status)
+        {
+            _status = status;
+        }
+
+        // Vẽ lại tối đa ~4 lần/giây để không nghẽn kết nối.
+        if (update.Status is not null || DateTime.UtcNow - _lastRender > TimeSpan.FromMilliseconds(250))
+        {
+            _lastRender = DateTime.UtcNow;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void Cancel() => _cts?.Cancel();
+
+    public void Dispose()
+    {
+        _cts?.Cancel();
+        _cts?.Dispose();
+    }
+}

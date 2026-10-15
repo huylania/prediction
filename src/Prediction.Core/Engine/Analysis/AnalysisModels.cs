@@ -139,6 +139,9 @@ public sealed record RegimeStatus(TeamChangeKind Kind, string PersonName, DateTi
     public bool UsesNewSample => !InBuffer && MatchesUnder < 10;
 
     public string KindLabel => Kind == TeamChangeKind.NewManager ? "HLV mới" : "Tân binh trụ cột";
+
+    /// <summary>Dạng đặt giữa câu.</summary>
+    public string KindText => Kind == TeamChangeKind.NewManager ? "HLV mới" : "tân binh trụ cột";
 }
 
 /// <summary>Thống kê mẫu phong độ của một đội (10 trận gần nhất hoặc giai đoạn HLV/tân binh mới).</summary>

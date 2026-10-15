@@ -5,6 +5,8 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Anthropic" Version="12.57.0" />
+    <PackageReference Include="Markdig" Version="1.4.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.12">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
@@ -19,5 +21,9 @@
     <BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
     <UserSecretsId>8b79a81d-1622-4d08-b631-713d8774e3d6</UserSecretsId>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Update="Ai\bong-da-skill.md" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 
 </Project>

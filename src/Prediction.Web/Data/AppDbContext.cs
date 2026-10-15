@@ -20,6 +20,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<LeagueDna> LeagueDnas => Set<LeagueDna>();
     public DbSet<TeamDna> TeamDnas => Set<TeamDna>();
     public DbSet<AnalysisPick> AnalysisPicks => Set<AnalysisPick>();
+    public DbSet<AiReport> AiReports => Set<AiReport>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -169,6 +170,15 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.HasOne(x => x.Fixture).WithMany().HasForeignKey(x => x.FixtureId).OnDelete(DeleteBehavior.Cascade);
             e.HasIndex(x => new { x.FixtureId, x.Market }).IsUnique();
             e.HasIndex(x => x.Outcome);
+        });
+
+        b.Entity<AiReport>(e =>
+        {
+            e.Property(x => x.Model).HasMaxLength(100);
+            e.Property(x => x.StopReason).HasMaxLength(50);
+            e.Property(x => x.CostUsd).HasPrecision(10, 4);
+            e.HasOne(x => x.Fixture).WithMany().HasForeignKey(x => x.FixtureId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => new { x.FixtureId, x.CreatedAtUtc });
         });
 
         SeedData.Apply(b);
