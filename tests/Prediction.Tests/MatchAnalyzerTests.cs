@@ -469,6 +469,80 @@ public class MatchAnalyzerTests
     }
 
     [Fact]
+    public void League_handicap_tags_score_favourite_and_underdog()
+    {
+        // Nhà chấp sâu −1.25: giải "tín kèo trên" cộng, giải "cửa dưới hay ăn" trừ.
+        AnalysisPickResult Favourite(DnaTag league) => MatchAnalyzer.Analyze(Input(home: History(10, 3, 0), away: History(10, 0, 2), ah: -1.25m, league: league,
+            homeStanding: Standing(HomeId, 1, 20), awayStanding: Standing(AwayId, 16, -12))).Picks.Single(p => p.Market == Market.AsianHandicap);
+
+        var deep = Favourite(DnaTag.BullyWeak);
+        Assert.Equal(-1.25m, deep.Line);
+        Assert.Contains(deep.Reasons, r => r.Contains("phân hóa lớn, tín kèo trên chấp sâu"));
+        Assert.Contains(Favourite(DnaTag.UnderdogCover).Reasons, r => r.Contains("cửa dưới hay ăn (kỵ chấp sâu)"));
+        Assert.Contains(Favourite(DnaTag.Pragmatic).Reasons, r => r.Contains("vua hòa, khó thắng cách biệt"));
+
+        // Hai đội ngang nhau mà nhà cái cho khách được chấp +1.5: cửa dưới được cộng ở giải đồng đều.
+        var dog = MatchAnalyzer.Analyze(Input(home: History(10, 1, 1), away: History(10, 1, 1), ah: -1.5m, league: DnaTag.UnderdogCover))
+            .Picks.Single(p => p.Market == Market.AsianHandicap);
+        Assert.Equal(PickSide.Away, dog.Side);
+        Assert.Contains(dog.Reasons, r => r.Contains("trình độ đồng đều, cửa dưới hay ăn"));
+    }
+
+    [Fact]
+    public void League_draw_and_cards_tags_score_totals()
+    {
+        var under = MatchAnalyzer.Analyze(Input(home: History(10, 1, 0), away: History(10, 0, 1), ou: 2.5m, league: DnaTag.Pragmatic))
+            .Picks.Single(p => p.Market == Market.OverUnder);
+        Assert.Equal(PickSide.Under, under.Side);
+        Assert.Contains(under.Reasons, r => r.Contains("vua hòa, thắng sát nút"));
+
+        var input = Input(league: DnaTag.HeavyCards);
+        var a = MatchAnalyzer.Analyze(new AnalysisInput
+        {
+            Fixture = input.Fixture, HomeName = input.HomeName, AwayName = input.AwayName, LeagueName = input.LeagueName, LeagueDna = input.LeagueDna,
+            TableSize = input.TableSize, HomeHistory = input.HomeHistory, AwayHistory = input.AwayHistory, League = input.League,
+            HomeChanges = [], Injuries = [], Cards = Line(Market.CardsOverUnder, 3.5m),
+        });
+        Assert.Contains(a.Picks.Single(p => p.Market == Market.CardsOverUnder).Reasons, r => r.Contains("giải mưa thẻ"));
+        Assert.Equal("Mưa thẻ (thẻ đỏ, pen)", a.CardsRow.LeagueDnaText);
+    }
+
+    [Fact]
+    public void League_profile_averages_fill_in_when_database_is_thin()
+    {
+        var thin = new LeagueBaseline(5, 3.5, 0, null, null) { ProfileGoals = 1.96, ProfileCorners = 8.4, ProfileCards = 5.1 };
+        Assert.Equal(1.96, thin.Goals);
+        Assert.Equal(8.4, thin.Corners);
+        Assert.Equal(5.1, thin.Cards);
+        Assert.True(thin.GoalsFromProfile);
+
+        var full = new LeagueBaseline(30, 3.5, 30, 9.0, 4.0) { ProfileGoals = 1.96, ProfileCorners = 8.4, ProfileCards = 5.1 };
+        Assert.Equal(3.5, full.Goals);
+        Assert.False(full.CornersFromProfile);
+        Assert.Equal(LeagueBaseline.DefaultGoals, LeagueBaseline.Empty.Goals);
+
+        var input = Input(ou: 2.5m);
+        var a = MatchAnalyzer.Analyze(new AnalysisInput
+        {
+            Fixture = input.Fixture, HomeName = input.HomeName, AwayName = input.AwayName, LeagueName = input.LeagueName,
+            TableSize = input.TableSize, HomeHistory = input.HomeHistory, AwayHistory = input.AwayHistory, League = thin,
+            HomeChanges = [], Injuries = [], Totals = input.Totals,
+        });
+        Assert.Equal(1.96, a.Goals.LeagueAverage);
+        Assert.Contains("hồ sơ 1 năm", a.Goals.LeagueDnaText);
+    }
+
+    [Fact]
+    public void League_tag_labels_cover_all_eleven_traits()
+    {
+        Assert.Equal(11, DnaTagText.LeagueTags.Length);
+        Assert.Equal(11, DnaTagText.LeagueTags.Select(DnaTagText.ShortLeague).Distinct().Count());
+        Assert.Equal("Vua hòa / thắng sát nút", DnaTagText.Label(DnaTag.Pragmatic, false));
+        Assert.Equal("Thực dụng / phá lối chơi", DnaTagText.Label(DnaTag.Pragmatic, true));
+        Assert.Contains(MatchAnalyzer.Analyze(Input(league: DnaTag.FastStart)).InPlayHints, h => h.StartsWith("Giải hay nổ sớm hiệp 1"));
+    }
+
+    [Fact]
     public void Fast_start_and_late_goal_teams_add_in_play_hints()
     {
         var a = MatchAnalyzer.Analyze(Input(homeTags: DnaTag.FastStart, awayTags: DnaTag.LateGoals));

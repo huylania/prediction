@@ -189,6 +189,24 @@ Trang **DNA & nhân sự** cho sửa nhãn DNA của giải/đội (đã nhập 
   - Đá rát thẻ: Tài thẻ ±0.5.
   - Đánh phủ đầu / Bùng nổ H2: thêm gợi ý In-play.
 
+**DNA giải đấu 46 giải (số liệu 1 năm)** — `scripts/dna/`:
+- **11 đặc điểm giải** (tab Giải đấu ở trang DNA): Tài bàn, Xỉu bàn, Thánh địa sân nhà, Tài góc, Xỉu góc, Bàn muộn, Cửa dưới hay ăn (đồng đều), Phân hóa lớn / tín kèo trên, Vua hòa / thắng sát nút, Nổ sớm H1, Mưa thẻ.
+- Mỗi giải có thêm hồ sơ 1 năm: TB bàn, % Tài 2.5, % hòa, % chủ nhà thắng, TB góc, % có bàn H1, % bàn sau phút 75, TB thẻ, tóm tắt và lý do. Hồ sơ hiện ở trang DNA và mục 1 của trang phân tích.
+- **Cách nạp vào CSDL:**
+  1. Cập nhật và chạy website bản mới ít nhất 1 lần (migration `LeagueDnaProfile` thêm cột và **bật theo dõi** 16 giải chưa có).
+     - 16 giải: Europa League, Conference League, Championship, Süper Lig, 1. Lig, Nga, Ukraine, Argentina hạng 2, Malaysia, J3, K3, K4, Saudi hạng 1, Libertadores, Sudamericana, Copa America.
+     - Tắt giải nào không cần ở Cài đặt.
+  2. Chạy `scripts/dna/league_dna_46_giai.sql` bằng SSMS, hoặc `sqlcmd -S <máy> -d <CSDL> -U <user> -P <mật khẩu> -f 65001 -i scripts/dna/league_dna_46_giai.sql`.
+  - Giải đã có DNA giữ tích cũ và ghi chú, chỉ cộng thêm tích từ file. Chạy lại nhiều lần không bị nhân đôi.
+  - File CSV mới: thay `dna_giai_dau_46_giai_1nam.csv` rồi chạy `python3 scripts/dna/gen_league_dna_sql.py` (CSV đã có id giải, không cần gọi API).
+- **Ảnh hưởng chấm điểm** (tổng DNA vẫn kẹp ±1; mức chấp tính theo cửa được chọn):
+  - Cửa dưới hay ăn: cửa được chấp +0.5; cửa chấp từ 0.75 trở lên −0.5.
+  - Phân hóa lớn / tín kèo trên: cửa chấp từ 1 trái +0.5; cửa được chấp từ 1 trái −0.5.
+  - Vua hòa / thắng sát nút: Xỉu bàn +0.25 (Tài −0.25); cửa được chấp ≥ 0.25 +0.25; cửa chấp từ 0.75 trở lên −0.25.
+  - Mưa thẻ: Tài thẻ +0.5, Xỉu thẻ −0.5.
+  - Nổ sớm H1 / Bàn muộn: gợi ý In-play kèm % từ hồ sơ.
+- **TB giải dự phòng:** khi CSDL chưa đủ 20 trận của giải (giải mới theo dõi), mốc "TB giải" (bàn / góc / thẻ) lấy từ hồ sơ 1 năm thay vì số mặc định 2.7 / 10 / 4.2.
+
 **Cảnh báo In-play** hiện trên thẻ trận đang đá: bàn siêu sớm (≤ 15'), hạ nhịp săn Tài ở trận DNA Tài có mốc ≥ 3.25, kiểm chứng HLV/tân binh mới ở phút 20–25, bế tắc hiệp 1 (0-0, sút trúng đích ≤ 1), bàn muộn ở giải đuối sức cuối trận. Kèo chấp/tài xỉu live hiện ngay trên thẻ trận để đối chiếu (xem mục "Kèo live").
 
 ### Báo cáo AI (Claude)

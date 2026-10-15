@@ -163,6 +163,18 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(x => x.LeagueId).ValueGeneratedNever();
             e.Property(x => x.LeagueName).HasMaxLength(200);
             e.Property(x => x.Notes).HasMaxLength(1000);
+            e.Property(x => x.Country).HasMaxLength(100);
+            e.Property(x => x.Summary).HasMaxLength(500);
+            e.Property(x => x.Analysis).HasMaxLength(2000);
+            foreach (var p in new[] { nameof(LeagueDna.AvgGoals), nameof(LeagueDna.AvgCorners), nameof(LeagueDna.AvgCards) })
+            {
+                e.Property<decimal?>(p).HasPrecision(5, 2);
+            }
+
+            foreach (var p in new[] { nameof(LeagueDna.Over25Pct), nameof(LeagueDna.DrawPct), nameof(LeagueDna.HomeWinPct), nameof(LeagueDna.FirstHalfGoalPct), nameof(LeagueDna.LateGoalPct) })
+            {
+                e.Property<decimal?>(p).HasPrecision(5, 1);
+            }
         });
 
         b.Entity<TeamDna>(e =>

@@ -56,6 +56,14 @@
                 @if (a.LeagueTags.Count == 0) { <span class="small text-muted">chưa gắn DNA</span> }
                 @foreach (var t in a.LeagueTags) { <span class="dna-tag league">@t</span> }
                 @if (a.LeagueNotes is { } ln) { <div class="hint">@ln</div> }
+                @if (R.Input.LeagueDna is { AvgGoals: not null } lp)
+                {
+                    <div class="dna-profile">
+                        Hồ sơ 1 năm: TB @N((double?)lp.AvgGoals) bàn · Tài 2.5 @N((double?)lp.Over25Pct)% · Hòa @N((double?)lp.DrawPct)% · chủ nhà thắng @N((double?)lp.HomeWinPct)%
+                        · @N((double?)lp.AvgCorners) góc · có bàn H1 @N((double?)lp.FirstHalfGoalPct)% · bàn sau 75' @N((double?)lp.LateGoalPct)% · @N((double?)lp.AvgCards) thẻ
+                    </div>
+                    @if (!string.IsNullOrWhiteSpace(lp.Summary)) { <div class="dna-summary">@lp.Summary</div> }
+                }
             </div>
             <div class="row g-2 small">
                 <div class="col-md-6">

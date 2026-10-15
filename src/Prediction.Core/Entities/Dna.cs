@@ -27,10 +27,10 @@ public enum DnaTag
     /// <summary>Hàng thủ đuối sức cuối trận, hay có bàn muộn (MLS, Úc, Brazil B).</summary>
     LateGoals = 64,
 
-    /// <summary>Đội thực dụng / phá lối chơi.</summary>
+    /// <summary>Đội thực dụng / phá lối chơi. Giải: vua hòa, thắng sát nút.</summary>
     Pragmatic = 128,
 
-    /// <summary>Đội: bắt nạt đội yếu, thắng được kèo chấp sâu.</summary>
+    /// <summary>Đội: bắt nạt đội yếu, thắng được kèo chấp sâu. Giải: phân hóa lớn, tín kèo trên chấp sâu.</summary>
     BullyWeak = 256,
 
     /// <summary>Đội: công làm thủ phá — hay có cả hai đội ghi bàn (BTTS).</summary>
@@ -39,16 +39,23 @@ public enum DnaTag
     /// <summary>Đội: xả góc / hay phải chịu nhiều phạt góc.</summary>
     ConcedesCorners = 1024,
 
-    /// <summary>Đội: đánh phủ đầu, hay có bàn trong hiệp 1.</summary>
+    /// <summary>Đội: đánh phủ đầu, hay có bàn trong hiệp 1. Giải: nổ sớm hiệp 1.</summary>
     FastStart = 2048,
 
-    /// <summary>Đội: đá rát, nhiều thẻ phạt.</summary>
+    /// <summary>Đội: đá rát, nhiều thẻ phạt. Giải: mưa thẻ, dễ có thẻ đỏ / penalty.</summary>
     HeavyCards = 4096,
+
+    /// <summary>Giải: trình độ đồng đều, cửa dưới hay ăn kèo.</summary>
+    UnderdogCover = 8192,
 }
 
 public static class DnaTagText
 {
-    public static readonly DnaTag[] LeagueTags = [DnaTag.OverGoals, DnaTag.UnderGoals, DnaTag.HomeFortress, DnaTag.OverCorners, DnaTag.UnderCorners, DnaTag.LateGoals];
+    public static readonly DnaTag[] LeagueTags =
+    [
+        DnaTag.OverGoals, DnaTag.UnderGoals, DnaTag.HomeFortress, DnaTag.OverCorners, DnaTag.UnderCorners, DnaTag.LateGoals,
+        DnaTag.UnderdogCover, DnaTag.BullyWeak, DnaTag.Pragmatic, DnaTag.FastStart, DnaTag.HeavyCards,
+    ];
 
     public static readonly DnaTag[] TeamTags =
     [
@@ -65,13 +72,31 @@ public static class DnaTagText
         DnaTag.OverCorners => team ? "Cày góc" : "Tài góc",
         DnaTag.UnderCorners => "Xỉu góc",
         DnaTag.LateGoals => team ? "Bùng nổ cuối trận (H2)" : "Bàn muộn (đuối sức cuối trận)",
-        DnaTag.Pragmatic => "Thực dụng / phá lối chơi",
-        DnaTag.BullyWeak => "Bắt nạt đội yếu / chấp sâu",
+        DnaTag.Pragmatic => team ? "Thực dụng / phá lối chơi" : "Vua hòa / thắng sát nút",
+        DnaTag.BullyWeak => team ? "Bắt nạt đội yếu / chấp sâu" : "Phân hóa lớn, tín kèo trên",
         DnaTag.Btts => "Công làm thủ phá (BTTS)",
         DnaTag.ConcedesCorners => "Xả góc / chịu góc",
-        DnaTag.FastStart => "Đánh phủ đầu (Tài H1)",
-        DnaTag.HeavyCards => "Đá rát / nhiều thẻ",
+        DnaTag.FastStart => team ? "Đánh phủ đầu (Tài H1)" : "Nổ sớm hiệp 1",
+        DnaTag.HeavyCards => team ? "Đá rát / nhiều thẻ" : "Mưa thẻ (thẻ đỏ, pen)",
+        DnaTag.UnderdogCover => "Cửa dưới hay ăn (đồng đều)",
         _ => tag.ToString(),
+    };
+
+    /// <summary>Tên ngắn cho tiêu đề cột trên trang DNA (giải).</summary>
+    public static string ShortLeague(DnaTag tag) => tag switch
+    {
+        DnaTag.OverGoals => "Tài bàn",
+        DnaTag.UnderGoals => "Xỉu bàn",
+        DnaTag.HomeFortress => "Thánh địa",
+        DnaTag.OverCorners => "Tài góc",
+        DnaTag.UnderCorners => "Xỉu góc",
+        DnaTag.LateGoals => "Bàn muộn",
+        DnaTag.UnderdogCover => "Cửa dưới",
+        DnaTag.BullyWeak => "Tín kèo trên",
+        DnaTag.Pragmatic => "Vua hòa",
+        DnaTag.FastStart => "Nổ sớm H1",
+        DnaTag.HeavyCards => "Mưa thẻ",
+        _ => Label(tag, false),
     };
 
     /// <summary>Tên ngắn cho tiêu đề cột trên trang DNA (đội).</summary>
@@ -105,6 +130,38 @@ public class LeagueDna
     public DnaTag Tags { get; set; }
 
     public string? Notes { get; set; }
+
+    /// <summary>Hồ sơ 1 năm (từ file DNA giải nhập vào).</summary>
+    public string? Country { get; set; }
+
+    public decimal? AvgGoals { get; set; }
+
+    /// <summary>% trận Tài 2.5.</summary>
+    public decimal? Over25Pct { get; set; }
+
+    public decimal? DrawPct { get; set; }
+
+    public decimal? HomeWinPct { get; set; }
+
+    /// <summary>TB tổng phạt góc mỗi trận.</summary>
+    public decimal? AvgCorners { get; set; }
+
+    /// <summary>% trận có bàn trong hiệp 1.</summary>
+    public decimal? FirstHalfGoalPct { get; set; }
+
+    /// <summary>% trận có bàn sau phút 75.</summary>
+    public decimal? LateGoalPct { get; set; }
+
+    /// <summary>TB thẻ vàng + đỏ mỗi trận.</summary>
+    public decimal? AvgCards { get; set; }
+
+    /// <summary>Tóm tắt đặc điểm (ghi chú của file DNA).</summary>
+    public string? Summary { get; set; }
+
+    /// <summary>Phân tích lý do chọn từng đặc điểm.</summary>
+    public string? Analysis { get; set; }
+
+    public DateTime? ProfileUpdatedAtUtc { get; set; }
 }
 
 public class TeamDna

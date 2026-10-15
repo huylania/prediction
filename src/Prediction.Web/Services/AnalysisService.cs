@@ -96,7 +96,14 @@ public sealed class AnalysisService(IDbContextFactory<AppDbContext> dbFactory, T
         var baselines = new Dictionary<(int, int), LeagueBaseline>();
         foreach (var key in fixtures.Select(f => (f.LeagueId, f.Season)).Distinct())
         {
-            baselines[key] = await BaselineAsync(db, key.LeagueId, key.Season, ct);
+            // CSDL chưa đủ trận thì dùng TB trong hồ sơ 1 năm của giải (file DNA giải) trước số mặc định.
+            var profile = leagueDna.GetValueOrDefault(key.LeagueId);
+            baselines[key] = await BaselineAsync(db, key.LeagueId, key.Season, ct) with
+            {
+                ProfileGoals = (double?)profile?.AvgGoals,
+                ProfileCorners = (double?)profile?.AvgCorners,
+                ProfileCards = (double?)profile?.AvgCards,
+            };
         }
 
         foreach (var fixture in fixtures)

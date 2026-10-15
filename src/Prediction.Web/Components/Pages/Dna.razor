@@ -98,16 +98,38 @@ else if (_tab == 1)
         <table class="table table-sm bg-white border small">
             <thead>
                 <tr>
-                    <th>Giải</th>
-                    @foreach (var t in DnaTagText.LeagueTags) { <th class="text-center">@DnaTagText.Label(t, false)</th> }
-                    <th style="min-width: 260px">Ghi chú</th><th></th>
+                    <th style="min-width: 260px">Giải</th>
+                    @foreach (var t in DnaTagText.LeagueTags) { <th class="text-center dna-tag-col" title="@DnaTagText.Label(t, false)">@DnaTagText.ShortLeague(t)</th> }
+                    <th style="min-width: 220px">Ghi chú</th><th></th>
                 </tr>
             </thead>
             <tbody>
                 @foreach (var l in _leagues)
                 {
                     <tr>
-                        <td class="fw-semibold">@l.LeagueName @if (!l.Tracked) { <span class="text-muted fw-normal">(chưa theo dõi)</span> }</td>
+                        <td>
+                            <div class="fw-semibold">@l.LeagueName @if (!l.Tracked) { <span class="text-muted fw-normal">(chưa theo dõi)</span> }</div>
+                            @if (l.Profile is { AvgGoals: not null } d)
+                            {
+                                <div class="dna-profile">
+                                    @(string.IsNullOrEmpty(d.Country) ? "" : d.Country + " · ")TB @Num(d.AvgGoals) bàn · Tài 2.5 @Num(d.Over25Pct)% · Hòa @Num(d.DrawPct)%
+                                    · chủ nhà thắng @Num(d.HomeWinPct)% · @Num(d.AvgCorners) góc · có bàn H1 @Num(d.FirstHalfGoalPct)%
+                                    · bàn sau 75' @Num(d.LateGoalPct)% · @Num(d.AvgCards) thẻ
+                                </div>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(l.Profile?.Summary))
+                            {
+                                <div class="dna-summary">@l.Profile.Summary</div>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(l.Profile?.Analysis))
+                            {
+                                <button class="btn btn-link btn-sm p-0 small" @onclick="() => ToggleLeague(l.LeagueId)">@(_expandedLeagues.Contains(l.LeagueId) ? "Ẩn lý do" : "Xem lý do")</button>
+                                @if (_expandedLeagues.Contains(l.LeagueId))
+                                {
+                                    <div class="dna-analysis">@l.Profile.Analysis</div>
+                                }
+                            }
+                        </td>
                         @foreach (var t in DnaTagText.LeagueTags)
                         {
                             <td class="text-center"><input type="checkbox" class="form-check-input" checked="@l.Tags.HasFlag(t)" @onchange="e => l.Tags = Toggle(l.Tags, t, (bool)e.Value!)" /></td>
@@ -227,6 +249,7 @@ else
     private string _leagueFilter = "";
     private bool _showAll;
     private readonly HashSet<int> _expanded = [];
+    private readonly HashSet<int> _expandedLeagues = [];
     private const string NoProfile = "__none__";
     private const int PageSize = 150;
 
@@ -249,6 +272,14 @@ else
     private string OtherLeagues(TeamDna d) => string.Join(", ", _fileLeagues.GetValueOrDefault(d.TeamId, [])
         .Where(l => l.LeagueId != d.SourceLeagueId)
         .Select(l => l.Matches is { } m ? $"{l.LeagueName} {m} trận" : l.LeagueName));
+
+    private void ToggleLeague(int leagueId)
+    {
+        if (!_expandedLeagues.Add(leagueId))
+        {
+            _expandedLeagues.Remove(leagueId);
+        }
+    }
 
     private void ToggleExpanded(int teamId)
     {
@@ -283,8 +314,10 @@ else
             {
                 Tags = dna.GetValueOrDefault(l.Id)?.Tags ?? DnaTag.None,
                 Notes = dna.GetValueOrDefault(l.Id)?.Notes,
+                Profile = dna.GetValueOrDefault(l.Id),
             })
-            .Concat(dna.Values.Where(d => tracked.All(l => l.Id != d.LeagueId)).Select(d => new LeagueRow(d.LeagueId, d.LeagueName, false) { Tags = d.Tags, Notes = d.Notes }))
+            .Concat(dna.Values.Where(d => tracked.All(l => l.Id != d.LeagueId))
+                .Select(d => new LeagueRow(d.LeagueId, d.LeagueName, false) { Tags = d.Tags, Notes = d.Notes, Profile = d }))
             .OrderByDescending(l => l.Tracked).ThenBy(l => l.LeagueName)
             .ToList();
         _teams = await db.TeamDnas.AsNoTracking().OrderBy(d => d.TeamName).ToListAsync();
@@ -423,6 +456,9 @@ else
         public bool Tracked { get; } = tracked;
         public DnaTag Tags { get; set; }
         public string? Notes { get; set; }
+
+        /// <summary>Hồ sơ 1 năm của giải (file DNA giải), nếu đã nạp.</summary>
+        public LeagueDna? Profile { get; init; }
     }
 
     private sealed class NewChange

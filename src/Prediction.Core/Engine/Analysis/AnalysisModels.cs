@@ -34,11 +34,24 @@ public sealed record LeagueBaseline(int Matches, double? AvgGoals, int StatMatch
 
     public static readonly LeagueBaseline Empty = new(0, null, 0, null, null);
 
-    public double Goals => Matches >= 20 && AvgGoals is { } g ? g : DefaultGoals;
+    /// <summary>TB của giải theo hồ sơ 1 năm (file DNA giải): dùng khi CSDL chưa đủ 20 trận, trước số mặc định.</summary>
+    public double? ProfileGoals { get; init; }
 
-    public double Corners => StatMatches >= 20 && AvgCorners is { } c ? c : DefaultCorners;
+    public double? ProfileCorners { get; init; }
 
-    public double Cards => StatMatches >= 20 && AvgCards is { } c ? c : DefaultCards;
+    public double? ProfileCards { get; init; }
+
+    public bool GoalsFromProfile => !(Matches >= 20 && AvgGoals.HasValue) && ProfileGoals.HasValue;
+
+    public bool CornersFromProfile => !(StatMatches >= 20 && AvgCorners.HasValue) && ProfileCorners.HasValue;
+
+    public bool CardsFromProfile => !(StatMatches >= 20 && AvgCards.HasValue) && ProfileCards.HasValue;
+
+    public double Goals => Matches >= 20 && AvgGoals is { } g ? g : ProfileGoals ?? DefaultGoals;
+
+    public double Corners => StatMatches >= 20 && AvgCorners is { } c ? c : ProfileCorners ?? DefaultCorners;
+
+    public double Cards => StatMatches >= 20 && AvgCards is { } c ? c : ProfileCards ?? DefaultCards;
 }
 
 /// <summary>Mọi dữ liệu cần để phân tích trước trận một trận đấu.</summary>
