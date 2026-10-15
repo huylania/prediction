@@ -33,6 +33,38 @@ public sealed class FixtureItem
 
     /// <summary>Chỉ có khi lấy theo id (fixtures?id= / ?ids=).</summary>
     public List<TeamStatistics>? Statistics { get; set; }
+
+    /// <summary>Đội hình ra sân (chỉ có khi lấy theo id, sau khi API công bố ~1 giờ trước trận).</summary>
+    public List<TeamLineup>? Lineups { get; set; }
+}
+
+public sealed class TeamLineup
+{
+    public TeamRef Team { get; set; } = new();
+    public string? Formation { get; set; }
+    public LineupCoach? Coach { get; set; }
+
+    [System.Text.Json.Serialization.JsonPropertyName("startXI")]
+    public List<LineupEntry> StartXI { get; set; } = [];
+}
+
+public sealed class LineupCoach
+{
+    public int? Id { get; set; }
+    public string? Name { get; set; }
+}
+
+public sealed class LineupEntry
+{
+    public LineupPlayer Player { get; set; } = new();
+}
+
+public sealed class LineupPlayer
+{
+    public int? Id { get; set; }
+    public string Name { get; set; } = "";
+    public int? Number { get; set; }
+    public string? Pos { get; set; }
 }
 
 public sealed class FixtureEvent
@@ -106,6 +138,27 @@ public sealed class FixtureInfo
     public int Id { get; set; }
     public DateTimeOffset Date { get; set; }
     public StatusInfo Status { get; set; } = new();
+    public VenueRef? Venue { get; set; }
+}
+
+public sealed class VenueRef
+{
+    public int? Id { get; set; }
+    public string? Name { get; set; }
+    public string? City { get; set; }
+}
+
+// --- /venues ---
+
+public sealed class VenueItem
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = "";
+    public string? Address { get; set; }
+    public string? City { get; set; }
+    public string? Country { get; set; }
+    public int? Capacity { get; set; }
+    public string? Surface { get; set; }
 }
 
 public sealed class StatusInfo

@@ -24,6 +24,8 @@ builder.Services.Configure<ApiFootballOptions>(builder.Configuration.GetSection(
 builder.Services.Configure<SyncOptions>(builder.Configuration.GetSection(SyncOptions.Section));
 builder.Services.Configure<DisplayOptions>(builder.Configuration.GetSection(DisplayOptions.Section));
 builder.Services.Configure<AiReportOptions>(builder.Configuration.GetSection(AiReportOptions.Section));
+builder.Services.Configure<OpenMeteoOptions>(builder.Configuration.GetSection(OpenMeteoOptions.Section));
+builder.Services.AddHttpClient<OpenMeteoClient>(client => client.Timeout = TimeSpan.FromSeconds(20));
 
 builder.Services.AddHttpClient<ApiFootballClient>((sp, client) =>
 {

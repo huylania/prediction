@@ -21,6 +21,14 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<TeamDna> TeamDnas => Set<TeamDna>();
     public DbSet<AnalysisPick> AnalysisPicks => Set<AnalysisPick>();
     public DbSet<AiReport> AiReports => Set<AiReport>();
+    public DbSet<OddsCheckpoint> OddsCheckpoints => Set<OddsCheckpoint>();
+    public DbSet<FixtureLineup> FixtureLineups => Set<FixtureLineup>();
+    public DbSet<Venue> Venues => Set<Venue>();
+    public DbSet<FixtureWeather> FixtureWeathers => Set<FixtureWeather>();
+    public DbSet<H2HMeeting> H2HMeetings => Set<H2HMeeting>();
+    public DbSet<H2HCheck> H2HChecks => Set<H2HCheck>();
+    public DbSet<ClosingLine> ClosingLines => Set<ClosingLine>();
+    public DbSet<MatchSideInfo> MatchSideInfos => Set<MatchSideInfo>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -51,6 +59,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.HasOne(x => x.AwayTeam).WithMany().HasForeignKey(x => x.AwayTeamId).OnDelete(DeleteBehavior.Restrict);
             e.HasIndex(x => new { x.LeagueId, x.Season });
             e.HasIndex(x => x.KickoffUtc);
+            e.Property(x => x.VenueName).HasMaxLength(200);
         });
 
         b.Entity<OddsSnapshot>(e =>
@@ -179,6 +188,91 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(x => x.CostUsd).HasPrecision(10, 4);
             e.HasOne(x => x.Fixture).WithMany().HasForeignKey(x => x.FixtureId).OnDelete(DeleteBehavior.Cascade);
             e.HasIndex(x => new { x.FixtureId, x.CreatedAtUtc });
+        });
+
+        b.Entity<OddsCheckpoint>(e =>
+        {
+            foreach (var p in new[] { nameof(OddsCheckpoint.HandicapLine), nameof(OddsCheckpoint.TotalLine) })
+            {
+                e.Property(p).HasPrecision(6, 2);
+            }
+
+            foreach (var p in new[] { nameof(OddsCheckpoint.HandicapHome), nameof(OddsCheckpoint.HandicapAway), nameof(OddsCheckpoint.Over), nameof(OddsCheckpoint.Under) })
+            {
+                e.Property(p).HasPrecision(8, 3);
+            }
+
+            e.HasOne(x => x.Fixture).WithMany().HasForeignKey(x => x.FixtureId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => new { x.FixtureId, x.Kind }).IsUnique();
+        });
+
+        b.Entity<FixtureLineup>(e =>
+        {
+            e.HasKey(x => x.FixtureId);
+            e.HasOne(x => x.Fixture).WithOne().HasForeignKey<FixtureLineup>(x => x.FixtureId).OnDelete(DeleteBehavior.Cascade);
+            e.Property(x => x.HomeFormation).HasMaxLength(20);
+            e.Property(x => x.AwayFormation).HasMaxLength(20);
+            e.Property(x => x.HomeStartXI).HasMaxLength(1000);
+            e.Property(x => x.AwayStartXI).HasMaxLength(1000);
+            e.Property(x => x.HomeCoach).HasMaxLength(150);
+            e.Property(x => x.AwayCoach).HasMaxLength(150);
+        });
+
+        b.Entity<Venue>(e =>
+        {
+            e.Property(x => x.Id).ValueGeneratedNever();
+            e.Property(x => x.Name).HasMaxLength(200);
+            e.Property(x => x.City).HasMaxLength(150);
+            e.Property(x => x.Country).HasMaxLength(100);
+            e.Property(x => x.Surface).HasMaxLength(50);
+            e.Property(x => x.GeoSource).HasMaxLength(30);
+        });
+
+        b.Entity<FixtureWeather>(e =>
+        {
+            e.HasKey(x => x.FixtureId);
+            e.HasOne(x => x.Fixture).WithOne().HasForeignKey<FixtureWeather>(x => x.FixtureId).OnDelete(DeleteBehavior.Cascade);
+            e.Property(x => x.Source).HasMaxLength(30);
+        });
+
+        b.Entity<H2HMeeting>(e =>
+        {
+            e.HasKey(x => x.FixtureId);
+            e.Property(x => x.FixtureId).ValueGeneratedNever();
+            e.Property(x => x.PairKey).HasMaxLength(30);
+            e.Property(x => x.LeagueName).HasMaxLength(200);
+            e.HasIndex(x => x.PairKey);
+        });
+
+        b.Entity<H2HCheck>(e =>
+        {
+            e.HasKey(x => x.PairKey);
+            e.Property(x => x.PairKey).HasMaxLength(30);
+        });
+
+        b.Entity<ClosingLine>(e =>
+        {
+            e.HasKey(x => x.FixtureId);
+            e.Property(x => x.FixtureId).ValueGeneratedNever();
+            e.Property(x => x.HandicapLine).HasPrecision(6, 2);
+            e.Property(x => x.TotalLine).HasPrecision(6, 2);
+            e.Property(x => x.Note).HasMaxLength(500);
+        });
+
+        b.Entity<MatchSideInfo>(e =>
+        {
+            e.HasKey(x => x.FixtureId);
+            e.HasOne(x => x.Fixture).WithOne().HasForeignKey<MatchSideInfo>(x => x.FixtureId).OnDelete(DeleteBehavior.Cascade);
+            e.Property(x => x.Rivalry).HasMaxLength(2000);
+            e.Property(x => x.Motivation).HasMaxLength(2000);
+            e.Property(x => x.News).HasMaxLength(3000);
+            e.Property(x => x.VenueNotes).HasMaxLength(1000);
+            e.Property(x => x.Weather).HasMaxLength(500);
+            e.Property(x => x.Surface).HasMaxLength(50);
+            e.Property(x => x.Sources).HasMaxLength(3000);
+            e.Property(x => x.Model).HasMaxLength(100);
+            e.Property(x => x.CostUsd).HasPrecision(10, 4);
+            e.HasIndex(x => x.CreatedAtUtc);
         });
 
         SeedData.Apply(b);

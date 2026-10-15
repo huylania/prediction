@@ -23,4 +23,8 @@
     <ProjectReference Include="..\..\src\Prediction.Web\Prediction.Web.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Update="Data\*.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

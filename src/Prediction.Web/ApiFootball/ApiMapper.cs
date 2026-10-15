@@ -50,8 +50,61 @@ public static class ApiMapper
         target.HomeGoals = ft?.Home ?? item.Goals.Home;
         target.AwayGoals = ft?.Away ?? item.Goals.Away;
         target.Elapsed = FixtureStatus.IsLive(target.Status) ? item.Fixture.Status.Elapsed : null;
+        if (item.Fixture.Venue is { Id: { } venueId } venue)
+        {
+            target.VenueId = venueId;
+            target.VenueName = Truncate(venue.Name, 200);
+        }
+
         target.UpdatedAtUtc = nowUtc;
     }
+
+    /// <summary>Đội hình ra sân; false nếu API chưa công bố đủ đội hình hai đội.</summary>
+    public static bool ApplyLineup(FixtureLineup target, FixtureItem item, DateTime nowUtc)
+    {
+        var lineups = item.Lineups ?? [];
+        var home = lineups.FirstOrDefault(l => l.Team.Id == item.Teams.Home.Id);
+        var away = lineups.FirstOrDefault(l => l.Team.Id == item.Teams.Away.Id);
+        if (home is null || away is null || home.StartXI.Count < 11 || away.StartXI.Count < 11)
+        {
+            return false;
+        }
+
+        target.FixtureId = item.Fixture.Id;
+        target.DetectedAtUtc = nowUtc;
+        target.HomeFormation = Truncate(home.Formation, 20);
+        target.AwayFormation = Truncate(away.Formation, 20);
+        target.HomeStartXI = Truncate(string.Join(", ", home.StartXI.Select(p => p.Player.Name)), 1000) ?? "";
+        target.AwayStartXI = Truncate(string.Join(", ", away.StartXI.Select(p => p.Player.Name)), 1000) ?? "";
+        target.HomeCoach = Truncate(home.Coach?.Name, 150);
+        target.AwayCoach = Truncate(away.Coach?.Name, 150);
+        return true;
+    }
+
+    public static void Apply(Venue target, VenueItem item, DateTime nowUtc)
+    {
+        target.Id = item.Id;
+        target.Name = Truncate(item.Name, 200) ?? "";
+        target.City = Truncate(item.City, 150);
+        target.Country = Truncate(item.Country, 100);
+        target.Capacity = item.Capacity;
+        target.Surface = Truncate(item.Surface, 50);
+        target.UpdatedAtUtc = nowUtc;
+    }
+
+    public static H2HMeeting ToMeeting(FixtureItem item) => new()
+    {
+        FixtureId = item.Fixture.Id,
+        PairKey = H2HMeeting.Key(item.Teams.Home.Id, item.Teams.Away.Id),
+        KickoffUtc = item.Fixture.Date.UtcDateTime,
+        LeagueName = Truncate(item.League.Name, 200),
+        HomeTeamId = item.Teams.Home.Id,
+        AwayTeamId = item.Teams.Away.Id,
+        HomeGoals = item.Score?.Fulltime?.Home ?? item.Goals.Home,
+        AwayGoals = item.Score?.Fulltime?.Away ?? item.Goals.Away,
+        HalftimeHome = item.Score?.Halftime?.Home,
+        HalftimeAway = item.Score?.Halftime?.Away,
+    };
 
     public static void Apply(ApiAdvice target, PredictionItem item, DateTime nowUtc)
     {

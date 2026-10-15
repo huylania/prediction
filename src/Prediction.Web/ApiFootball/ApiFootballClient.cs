@@ -75,6 +75,13 @@ public sealed class ApiFootballClient(HttpClient http, IOptions<ApiFootballOptio
     public Task<List<InjuryItem>> GetInjuriesAsync(int fixtureId, CancellationToken ct) =>
         GetListAsync<InjuryItem>($"injuries?fixture={fixtureId}", ct);
 
+    /// <summary>Các lần đối đầu gần nhất giữa hai đội (mọi giải, cúp).</summary>
+    public Task<List<FixtureItem>> GetHeadToHeadAsync(int teamA, int teamB, int last, CancellationToken ct) =>
+        GetListAsync<FixtureItem>($"fixtures/headtohead?h2h={teamA}-{teamB}&last={last}", ct);
+
+    public async Task<VenueItem?> GetVenueAsync(int venueId, CancellationToken ct) =>
+        (await GetListAsync<VenueItem>($"venues?id={venueId}", ct)).FirstOrDefault();
+
     public Task<List<CoachItem>> GetCoachesAsync(int teamId, CancellationToken ct) =>
         GetListAsync<CoachItem>($"coachs?team={teamId}", ct);
 

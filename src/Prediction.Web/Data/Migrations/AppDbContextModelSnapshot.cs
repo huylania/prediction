@@ -254,6 +254,34 @@ namespace Prediction.Web.Data.Migrations
                     b.ToTable("ApiAdvices");
                 });
 
+            modelBuilder.Entity("Prediction.Core.Entities.ClosingLine", b =>
+                {
+                    b.Property<int>("FixtureId")
+                        .HasColumnType("int");
+
+                    b.Property<decimal?>("HandicapLine")
+                        .HasPrecision(6, 2)
+                        .HasColumnType("decimal(6,2)");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int>("Source")
+                        .HasColumnType("int");
+
+                    b.Property<decimal?>("TotalLine")
+                        .HasPrecision(6, 2)
+                        .HasColumnType("decimal(6,2)");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("FixtureId");
+
+                    b.ToTable("ClosingLines");
+                });
+
             modelBuilder.Entity("Prediction.Core.Entities.Fixture", b =>
                 {
                     b.Property<int>("Id")
@@ -297,6 +325,13 @@ namespace Prediction.Web.Data.Migrations
 
                     b.Property<DateTime>("UpdatedAtUtc")
                         .HasColumnType("datetime2");
+
+                    b.Property<int?>("VenueId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("VenueName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
 
                     b.HasKey("Id");
 
@@ -344,6 +379,45 @@ namespace Prediction.Web.Data.Migrations
                     b.HasIndex("FixtureId");
 
                     b.ToTable("FixtureInjuries");
+                });
+
+            modelBuilder.Entity("Prediction.Core.Entities.FixtureLineup", b =>
+                {
+                    b.Property<int>("FixtureId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("AwayCoach")
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<string>("AwayFormation")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("AwayStartXI")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<DateTime>("DetectedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("HomeCoach")
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<string>("HomeFormation")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("HomeStartXI")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.HasKey("FixtureId");
+
+                    b.ToTable("FixtureLineups");
                 });
 
             modelBuilder.Entity("Prediction.Core.Entities.FixtureStats", b =>
@@ -416,6 +490,98 @@ namespace Prediction.Web.Data.Migrations
                     b.HasIndex("IsFinal");
 
                     b.ToTable("FixtureStats");
+                });
+
+            modelBuilder.Entity("Prediction.Core.Entities.FixtureWeather", b =>
+                {
+                    b.Property<int>("FixtureId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("FetchedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("HumidityPercent")
+                        .HasColumnType("int");
+
+                    b.Property<double?>("PrecipitationMm")
+                        .HasColumnType("float");
+
+                    b.Property<int?>("PrecipitationProbability")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<double?>("TemperatureC")
+                        .HasColumnType("float");
+
+                    b.Property<int?>("WeatherCode")
+                        .HasColumnType("int");
+
+                    b.Property<double?>("WindKph")
+                        .HasColumnType("float");
+
+                    b.HasKey("FixtureId");
+
+                    b.ToTable("FixtureWeathers");
+                });
+
+            modelBuilder.Entity("Prediction.Core.Entities.H2HCheck", b =>
+                {
+                    b.Property<string>("PairKey")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<DateTime>("CheckedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("PairKey");
+
+                    b.ToTable("H2HChecks");
+                });
+
+            modelBuilder.Entity("Prediction.Core.Entities.H2HMeeting", b =>
+                {
+                    b.Property<int>("FixtureId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("AwayGoals")
+                        .HasColumnType("int");
+
+                    b.Property<int>("AwayTeamId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("HalftimeAway")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("HalftimeHome")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("HomeGoals")
+                        .HasColumnType("int");
+
+                    b.Property<int>("HomeTeamId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("KickoffUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("LeagueName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("PairKey")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.HasKey("FixtureId");
+
+                    b.HasIndex("PairKey");
+
+                    b.ToTable("H2HMeetings");
                 });
 
             modelBuilder.Entity("Prediction.Core.Entities.League", b =>
@@ -896,6 +1062,116 @@ namespace Prediction.Web.Data.Migrations
                             Notes = "Cặp giằng co trung lộ: thiên hướng Xỉu góc.",
                             Tags = 32
                         });
+                });
+
+            modelBuilder.Entity("Prediction.Core.Entities.MatchSideInfo", b =>
+                {
+                    b.Property<int>("FixtureId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("AltitudeM")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("CostUsd")
+                        .HasPrecision(10, 4)
+                        .HasColumnType("decimal(10,4)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsAuto")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Model")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Motivation")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("News")
+                        .HasMaxLength(3000)
+                        .HasColumnType("nvarchar(3000)");
+
+                    b.Property<string>("Rivalry")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("Sources")
+                        .HasMaxLength(3000)
+                        .HasColumnType("nvarchar(3000)");
+
+                    b.Property<string>("Surface")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("VenueNotes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("Weather")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.HasKey("FixtureId");
+
+                    b.HasIndex("CreatedAtUtc");
+
+                    b.ToTable("MatchSideInfos");
+                });
+
+            modelBuilder.Entity("Prediction.Core.Entities.OddsCheckpoint", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("AtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("BookmakerUpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("FixtureId")
+                        .HasColumnType("int");
+
+                    b.Property<decimal?>("HandicapAway")
+                        .HasPrecision(8, 3)
+                        .HasColumnType("decimal(8,3)");
+
+                    b.Property<decimal?>("HandicapHome")
+                        .HasPrecision(8, 3)
+                        .HasColumnType("decimal(8,3)");
+
+                    b.Property<decimal?>("HandicapLine")
+                        .HasPrecision(6, 2)
+                        .HasColumnType("decimal(6,2)");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("int");
+
+                    b.Property<decimal?>("Over")
+                        .HasPrecision(8, 3)
+                        .HasColumnType("decimal(8,3)");
+
+                    b.Property<decimal?>("TotalLine")
+                        .HasPrecision(6, 2)
+                        .HasColumnType("decimal(6,2)");
+
+                    b.Property<decimal?>("Under")
+                        .HasPrecision(8, 3)
+                        .HasColumnType("decimal(8,3)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FixtureId", "Kind")
+                        .IsUnique();
+
+                    b.ToTable("OddsCheckpoints");
                 });
 
             modelBuilder.Entity("Prediction.Core.Entities.OddsSnapshot", b =>
@@ -1749,6 +2025,55 @@ namespace Prediction.Web.Data.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Prediction.Core.Entities.Venue", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("Capacity")
+                        .HasColumnType("int");
+
+                    b.Property<string>("City")
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<string>("Country")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int?>("ElevationM")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("GeoCheckedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("GeoSource")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<double?>("Latitude")
+                        .HasColumnType("float");
+
+                    b.Property<double?>("Longitude")
+                        .HasColumnType("float");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Surface")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Venues");
+                });
+
             modelBuilder.Entity("Prediction.Core.Entities.AiReport", b =>
                 {
                     b.HasOne("Prediction.Core.Entities.Fixture", "Fixture")
@@ -1820,11 +2145,55 @@ namespace Prediction.Web.Data.Migrations
                     b.Navigation("Fixture");
                 });
 
+            modelBuilder.Entity("Prediction.Core.Entities.FixtureLineup", b =>
+                {
+                    b.HasOne("Prediction.Core.Entities.Fixture", "Fixture")
+                        .WithOne()
+                        .HasForeignKey("Prediction.Core.Entities.FixtureLineup", "FixtureId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Fixture");
+                });
+
             modelBuilder.Entity("Prediction.Core.Entities.FixtureStats", b =>
                 {
                     b.HasOne("Prediction.Core.Entities.Fixture", "Fixture")
                         .WithOne()
                         .HasForeignKey("Prediction.Core.Entities.FixtureStats", "FixtureId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Fixture");
+                });
+
+            modelBuilder.Entity("Prediction.Core.Entities.FixtureWeather", b =>
+                {
+                    b.HasOne("Prediction.Core.Entities.Fixture", "Fixture")
+                        .WithOne()
+                        .HasForeignKey("Prediction.Core.Entities.FixtureWeather", "FixtureId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Fixture");
+                });
+
+            modelBuilder.Entity("Prediction.Core.Entities.MatchSideInfo", b =>
+                {
+                    b.HasOne("Prediction.Core.Entities.Fixture", "Fixture")
+                        .WithOne()
+                        .HasForeignKey("Prediction.Core.Entities.MatchSideInfo", "FixtureId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Fixture");
+                });
+
+            modelBuilder.Entity("Prediction.Core.Entities.OddsCheckpoint", b =>
+                {
+                    b.HasOne("Prediction.Core.Entities.Fixture", "Fixture")
+                        .WithMany()
+                        .HasForeignKey("FixtureId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 

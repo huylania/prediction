@@ -21,9 +21,14 @@ public static class SyncJobs
     public const string Coaches = "coaches";
     public const string Injuries = "injuries";
     public const string Analysis = "analysis";
+    public const string Lineups = "lineups";
+    public const string PreKickoff = "pre-kickoff";
+    public const string HeadToHead = "h2h";
+    public const string Venues = "venues";
+    public const string Weather = "weather";
 
     /// <summary>Tác vụ phụ: tạm dừng khi quota trong ngày sắp hết.</summary>
-    public static bool IsLowPriority(string job) => job is Stats or Coaches or Injuries or Advice;
+    public static bool IsLowPriority(string job) => job is Stats or Coaches or Injuries or Advice or HeadToHead or Venues;
 
     public static string Label(string job) => job switch
     {
@@ -40,6 +45,11 @@ public static class SyncJobs
         Coaches => "HLV",
         Injuries => "Chấn thương",
         Analysis => "Phân tích chuyên sâu",
+        Lineups => "Đội hình",
+        PreKickoff => "Kèo 5 phút trước trận",
+        HeadToHead => "Lịch sử đối đầu",
+        Venues => "Sân vận động",
+        Weather => "Thời tiết",
         _ => job,
     };
 }
@@ -136,6 +146,11 @@ public sealed class SyncCoordinator(
         SyncJobs.Coaches => RunAsync(job, (s, c) => s.SyncCoachesAsync(c), ct),
         SyncJobs.Injuries => RunAsync(job, (s, c) => s.SyncInjuriesAsync(c), ct),
         SyncJobs.Analysis => RunAsync(job, (_, c) => analysis.RefreshPicksAsync(c), ct),
+        SyncJobs.Lineups => RunAsync(job, (s, c) => s.SyncLineupsAsync(c), ct),
+        SyncJobs.PreKickoff => RunAsync(job, (s, c) => s.SyncPreKickoffOddsAsync(c), ct),
+        SyncJobs.HeadToHead => RunAsync(job, (s, c) => s.SyncHeadToHeadAsync(c), ct),
+        SyncJobs.Venues => RunAsync(job, (s, c) => s.SyncVenuesAsync(c), ct),
+        SyncJobs.Weather => RunAsync(job, (s, c) => s.SyncWeatherAsync(c), ct),
         _ => throw new ArgumentOutOfRangeException(nameof(job)),
     };
 }
@@ -213,11 +228,17 @@ public sealed class SyncBackgroundService(
             yield return (SyncJobs.ClosingOdds, o.ClosingOddsIntervalMinutes);
             yield return (SyncJobs.Advice, o.AdviceIntervalMinutes);
             yield return (SyncJobs.AdviceFinal, 15);
+            yield return (SyncJobs.PreKickoff, o.PreKickoffIntervalMinutes);
+            yield return (SyncJobs.Lineups, o.LineupsIntervalMinutes);
             yield return (SyncJobs.Live, o.LiveIntervalMinutes);
             yield return (SyncJobs.Injuries, o.InjuriesIntervalMinutes);
             yield return (SyncJobs.Coaches, o.CoachesIntervalMinutes);
             yield return (SyncJobs.Stats, o.StatsIntervalMinutes);
+            yield return (SyncJobs.HeadToHead, o.H2HIntervalMinutes);
+            yield return (SyncJobs.Venues, o.VenuesIntervalMinutes);
         }
+
+        yield return (SyncJobs.Weather, o.WeatherIntervalMinutes);
 
         yield return (SyncJobs.Suggestions, o.SuggestionsIntervalMinutes);
         yield return (SyncJobs.Analysis, o.AnalysisIntervalMinutes);

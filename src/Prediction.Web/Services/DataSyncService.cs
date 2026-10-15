@@ -34,6 +34,18 @@ public sealed class SyncOptions
     /// <summary>Cập nhật khuyến nghị phân tích chuyên sâu (không tốn request API).</summary>
     public int AnalysisIntervalMinutes { get; set; } = 10;
 
+    /// <summary>Dò đội hình ra sân (khi có đội hình thì lấy kèo ngay): chu kỳ và khoảng trước giờ bóng lăn.</summary>
+    public int LineupsIntervalMinutes { get; set; } = 5;
+    public int LineupsWindowMinutes { get; set; } = 75;
+
+    /// <summary>Chụp kèo khoảng <see cref="PreKickoffMinutes"/> phút trước giờ bóng lăn.</summary>
+    public int PreKickoffIntervalMinutes { get; set; } = 1;
+    public int PreKickoffMinutes { get; set; } = 5;
+
+    public int H2HIntervalMinutes { get; set; } = 360;
+    public int VenuesIntervalMinutes { get; set; } = 360;
+    public int WeatherIntervalMinutes { get; set; } = 180;
+
     /// <summary>Còn ít hơn số request này trong ngày thì tạm dừng các tác vụ phụ (thống kê, HLV, chấn thương, tư vấn).</summary>
     public int QuotaReserve { get; set; } = 1000;
 }
@@ -42,6 +54,7 @@ public sealed class SyncOptions
 public sealed class DataSyncService(
     AppDbContext db,
     ApiFootballClient api,
+    OpenMeteoClient openMeteo,
     IOptions<SyncOptions> options,
     TimeProvider clock,
     ILogger<DataSyncService> logger)
@@ -436,6 +449,289 @@ public sealed class DataSyncService(
         }
 
         return $"Chấn thương/treo giò: {ids.Count} trận, {players} cầu thủ.";
+    }
+
+    /// <summary>
+    /// Dò đội hình ra sân của các trận sắp bóng lăn (20 trận/request). Trận vừa có đội hình thì lưu đội hình,
+    /// lấy kèo ngay và chụp mốc "khi có đội hình".
+    /// </summary>
+    public async Task<string?> SyncLineupsAsync(CancellationToken ct)
+    {
+        var now = Now;
+        var until = now.AddMinutes(options.Value.LineupsWindowMinutes);
+        var ids = await db.Fixtures.AsNoTracking()
+            .Where(f => f.KickoffUtc > now && f.KickoffUtc <= until && (f.Status == "NS" || f.Status == "TBD")
+                && f.League!.IsTracked && !f.League.IsDemo && !db.FixtureLineups.Any(l => l.FixtureId == f.Id))
+            .Select(f => f.Id)
+            .ToListAsync(ct);
+        if (ids.Count == 0)
+        {
+            return null;
+        }
+
+        var found = new List<int>();
+        foreach (var chunk in ids.Chunk(20))
+        {
+            foreach (var item in await api.GetFixturesByIdsAsync(chunk, ct))
+            {
+                var lineup = new FixtureLineup();
+                if (ApiMapper.ApplyLineup(lineup, item, now))
+                {
+                    db.FixtureLineups.Add(lineup);
+                    found.Add(item.Fixture.Id);
+                }
+            }
+        }
+
+        await db.SaveChangesAsync(ct);
+        foreach (var id in found)
+        {
+            var odds = await api.GetFixtureOddsAsync(id, ct);
+            await StoreOddsAsync(odds, ct);
+            await CheckpointAsync(id, OddsCheckpointKind.Lineups, odds, ct);
+        }
+
+        return found.Count == 0 ? null : $"Đội hình: {found.Count} trận vừa có đội hình, đã chụp kèo.";
+    }
+
+    /// <summary>Chụp kèo ~5 phút trước giờ bóng lăn cho từng trận.</summary>
+    public async Task<string?> SyncPreKickoffOddsAsync(CancellationToken ct)
+    {
+        var now = Now;
+        var minutes = options.Value.PreKickoffMinutes;
+        var from = now.AddMinutes(Math.Max(1, minutes - 3));
+        var until = now.AddMinutes(minutes + 3);
+        var ids = await db.Fixtures.AsNoTracking()
+            .Where(f => f.KickoffUtc > from && f.KickoffUtc <= until && (f.Status == "NS" || f.Status == "TBD")
+                && f.League!.IsTracked && !f.League.IsDemo
+                && !db.OddsCheckpoints.Any(c => c.FixtureId == f.Id && c.Kind == OddsCheckpointKind.PreKickoff))
+            .Select(f => f.Id)
+            .ToListAsync(ct);
+        foreach (var id in ids)
+        {
+            var odds = await api.GetFixtureOddsAsync(id, ct);
+            await StoreOddsAsync(odds, ct);
+            await CheckpointAsync(id, OddsCheckpointKind.PreKickoff, odds, ct);
+        }
+
+        return ids.Count == 0 ? null : $"Kèo {minutes} phút trước trận: {ids.Count} trận.";
+    }
+
+    /// <summary>Ghi mốc kèo (giữ bản đầu tiên). Không có kèo trong phản hồi thì dùng bản ghi kèo gần nhất trong CSDL.</summary>
+    private async Task CheckpointAsync(int fixtureId, OddsCheckpointKind kind, IReadOnlyCollection<OddsItem> items, CancellationToken ct)
+    {
+        if (await db.OddsCheckpoints.AnyAsync(c => c.FixtureId == fixtureId && c.Kind == kind, ct))
+        {
+            return;
+        }
+
+        var item = items.FirstOrDefault(i => i.Fixture.Id == fixtureId);
+        var quotes = item is null ? [] : OddsParser.Parse(item, api.BookmakerId);
+        async Task<(decimal? Line, decimal? A, decimal? B)> Quote(Market market)
+        {
+            if (quotes.FirstOrDefault(q => q.Market == market) is { } q)
+            {
+                return (q.Line, q.PriceA, q.PriceB);
+            }
+
+            var last = await db.OddsSnapshots.AsNoTracking()
+                .Where(x => x.FixtureId == fixtureId && x.Market == market)
+                .OrderByDescending(x => x.FetchedAtUtc).ThenByDescending(x => x.Id)
+                .FirstOrDefaultAsync(ct);
+            return (last?.Line, last?.PriceA, last?.PriceB);
+        }
+
+        var ah = await Quote(Market.AsianHandicap);
+        var ou = await Quote(Market.OverUnder);
+        if (ah.Line is null && ou.Line is null)
+        {
+            return;
+        }
+
+        db.OddsCheckpoints.Add(new OddsCheckpoint
+        {
+            FixtureId = fixtureId,
+            Kind = kind,
+            AtUtc = Now,
+            BookmakerUpdatedAtUtc = item?.Update?.UtcDateTime,
+            HandicapLine = ah.Line,
+            HandicapHome = ah.A,
+            HandicapAway = ah.B,
+            TotalLine = ou.Line,
+            Over = ou.A,
+            Under = ou.B,
+        });
+        await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>5 lần đối đầu gần nhất của các cặp đấu trong 3 ngày tới (mỗi cặp lấy lại tối đa 1 lần/tuần).</summary>
+    public async Task<string?> SyncHeadToHeadAsync(CancellationToken ct)
+    {
+        var now = Now;
+        var pairs = (await db.Fixtures.AsNoTracking()
+                .Where(f => f.KickoffUtc > now && f.KickoffUtc <= now.AddDays(3) && f.League!.IsTracked && !f.League.IsDemo)
+                .Select(f => new { f.HomeTeamId, f.AwayTeamId })
+                .ToListAsync(ct))
+            .Select(p => (p.HomeTeamId, p.AwayTeamId, Key: H2HMeeting.Key(p.HomeTeamId, p.AwayTeamId)))
+            .DistinctBy(p => p.Key)
+            .ToList();
+        var keys = pairs.Select(p => p.Key).ToList();
+        var fresh = await db.H2HChecks.AsNoTracking()
+            .Where(c => keys.Contains(c.PairKey) && c.CheckedAtUtc > now.AddDays(-7))
+            .Select(c => c.PairKey)
+            .ToListAsync(ct);
+        var todo = pairs.Where(p => !fresh.Contains(p.Key)).Take(100).ToList();
+        var meetings = 0;
+        foreach (var (home, away, _) in todo)
+        {
+            if (QuotaLow(options.Value))
+            {
+                break;
+            }
+
+            meetings += await FetchHeadToHeadAsync(home, away, ct);
+        }
+
+        return todo.Count == 0 ? null : $"Đối đầu: {todo.Count} cặp, {meetings} trận.";
+    }
+
+    /// <summary>Lấy (và lưu) 5 lần đối đầu gần nhất của một cặp đội. Trả về số trận nhận được.</summary>
+    public async Task<int> FetchHeadToHeadAsync(int teamA, int teamB, CancellationToken ct)
+    {
+        var key = H2HMeeting.Key(teamA, teamB);
+        var items = (await api.GetHeadToHeadAsync(teamA, teamB, 5, ct))
+            .Where(i => FixtureStatus.IsFinished(i.Fixture.Status.Short))
+            .ToList();
+        var ids = items.Select(i => i.Fixture.Id).ToList();
+        var existing = await db.H2HMeetings.Where(m => ids.Contains(m.FixtureId)).ToDictionaryAsync(m => m.FixtureId, ct);
+        foreach (var item in items)
+        {
+            var meeting = ApiMapper.ToMeeting(item);
+            if (existing.TryGetValue(meeting.FixtureId, out var row))
+            {
+                db.Entry(row).CurrentValues.SetValues(meeting);
+            }
+            else
+            {
+                db.H2HMeetings.Add(meeting);
+            }
+        }
+
+        var check = await db.H2HChecks.FindAsync([key], ct);
+        if (check is null)
+        {
+            db.H2HChecks.Add(new H2HCheck { PairKey = key, CheckedAtUtc = Now });
+        }
+        else
+        {
+            check.CheckedAtUtc = Now;
+        }
+
+        await db.SaveChangesAsync(ct);
+        return items.Count;
+    }
+
+    /// <summary>Thông tin sân (mặt sân, sức chứa) của các trận trong 3 ngày tới, rồi tọa độ + độ cao qua Open-Meteo.</summary>
+    public async Task<string?> SyncVenuesAsync(CancellationToken ct)
+    {
+        var now = Now;
+        var venueIds = await db.Fixtures.AsNoTracking()
+            .Where(f => f.VenueId != null && f.KickoffUtc > now.AddHours(-3) && f.KickoffUtc <= now.AddDays(3) && f.League!.IsTracked)
+            .Select(f => f.VenueId!.Value)
+            .Distinct()
+            .ToListAsync(ct);
+        var known = await db.Venues.Where(v => venueIds.Contains(v.Id)).ToDictionaryAsync(v => v.Id, ct);
+        var added = 0;
+        foreach (var id in venueIds.Where(id => !known.ContainsKey(id)).Take(60))
+        {
+            if (QuotaLow(options.Value))
+            {
+                break;
+            }
+
+            if (await api.GetVenueAsync(id, ct) is { } item)
+            {
+                var venue = new Venue();
+                ApiMapper.Apply(venue, item, now);
+                db.Venues.Add(venue);
+                known[id] = venue;
+                added++;
+            }
+        }
+
+        await db.SaveChangesAsync(ct);
+
+        var geocoded = 0;
+        if (openMeteo.Enabled)
+        {
+            foreach (var venue in known.Values.Where(v => v.GeoCheckedAtUtc is null && !string.IsNullOrWhiteSpace(v.City)))
+            {
+                venue.GeoCheckedAtUtc = now;
+                if (await openMeteo.GeocodeAsync(venue.City!, venue.Country, ct) is { } point)
+                {
+                    venue.Latitude = point.Latitude;
+                    venue.Longitude = point.Longitude;
+                    venue.ElevationM = point.ElevationM;
+                    venue.GeoSource = "Open-Meteo";
+                    geocoded++;
+                }
+            }
+
+            await db.SaveChangesAsync(ct);
+        }
+
+        return added == 0 && geocoded == 0 ? null : $"Sân: thêm {added} sân, định vị {geocoded} sân.";
+    }
+
+    /// <summary>Dự báo thời tiết giờ bóng lăn (Open-Meteo) cho các trận trong 48 giờ tới.</summary>
+    public async Task<string?> SyncWeatherAsync(CancellationToken ct)
+    {
+        if (!openMeteo.Enabled)
+        {
+            return null;
+        }
+
+        var now = Now;
+        var rows = await db.Fixtures.AsNoTracking()
+            .Where(f => f.KickoffUtc > now && f.KickoffUtc <= now.AddHours(48) && (f.Status == "NS" || f.Status == "TBD")
+                && f.League!.IsTracked && !f.League.IsDemo && f.VenueId != null)
+            .Join(db.Venues.Where(v => v.Latitude != null && v.Longitude != null), f => f.VenueId, v => v.Id,
+                (f, v) => new { f.Id, f.KickoffUtc, Lat = v.Latitude!.Value, Lon = v.Longitude!.Value })
+            .ToListAsync(ct);
+        if (rows.Count == 0)
+        {
+            return null;
+        }
+
+        var ids = rows.Select(r => r.Id).ToList();
+        var existing = await db.FixtureWeathers.Where(w => ids.Contains(w.FixtureId)).ToDictionaryAsync(w => w.FixtureId, ct);
+        var updated = 0;
+        foreach (var r in rows)
+        {
+            if (await openMeteo.ForecastAsync(r.Lat, r.Lon, r.KickoffUtc, ct) is not { } w)
+            {
+                continue;
+            }
+
+            if (!existing.TryGetValue(r.Id, out var row))
+            {
+                row = new FixtureWeather { FixtureId = r.Id };
+                db.FixtureWeathers.Add(row);
+            }
+
+            row.TemperatureC = w.TemperatureC;
+            row.HumidityPercent = w.HumidityPercent;
+            row.PrecipitationMm = w.PrecipitationMm;
+            row.PrecipitationProbability = w.PrecipitationProbability;
+            row.WindKph = w.WindKph;
+            row.WeatherCode = w.WeatherCode;
+            row.Source = "Open-Meteo";
+            row.FetchedAtUtc = now;
+            updated++;
+        }
+
+        await db.SaveChangesAsync(ct);
+        return updated == 0 ? null : $"Thời tiết: {updated} trận.";
     }
 
     /// <summary>Còn quá ít request trong ngày: dừng các tác vụ phụ để dành cho kèo và trực tiếp.</summary>

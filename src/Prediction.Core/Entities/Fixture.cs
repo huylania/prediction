@@ -33,6 +33,11 @@ public class Fixture
     /// <summary>Trận thuộc giai đoạn có bảng xếp hạng (vòng đấu thường / league phase C1).</summary>
     public bool HasTable { get; set; } = true;
 
+    /// <summary>Sân thi đấu (id API-Football) — có thể là sân trung lập.</summary>
+    public int? VenueId { get; set; }
+
+    public string? VenueName { get; set; }
+
     public DateTime UpdatedAtUtc { get; set; }
 
     public bool IsFinished => FixtureStatus.IsFinished(Status) && HomeGoals.HasValue && AwayGoals.HasValue;

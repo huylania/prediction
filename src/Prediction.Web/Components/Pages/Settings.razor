@@ -68,7 +68,9 @@
                     kèo sát giờ @SyncOpts.Value.ClosingOddsIntervalMinutes phút (trong @SyncOpts.Value.ClosingWindowMinutes phút trước trận) ·
                     tư vấn API @SyncOpts.Value.AdviceIntervalMinutes phút · tỉ số và thống kê trực tiếp @SyncOpts.Value.LiveIntervalMinutes phút (chỉ khi có trận đang đá) ·
                     thống kê trận đã đá @SyncOpts.Value.StatsIntervalMinutes phút (tối đa @SyncOpts.Value.StatsMaxRequests request/lần) ·
-                    chấn thương @SyncOpts.Value.InjuriesIntervalMinutes phút · HLV @SyncOpts.Value.CoachesIntervalMinutes phút.
+                    chấn thương @SyncOpts.Value.InjuriesIntervalMinutes phút · HLV @SyncOpts.Value.CoachesIntervalMinutes phút ·
+                    dò đội hình @SyncOpts.Value.LineupsIntervalMinutes phút (trong @SyncOpts.Value.LineupsWindowMinutes phút trước trận, có đội hình là chụp kèo) ·
+                    chụp kèo @SyncOpts.Value.PreKickoffMinutes phút trước trận · đối đầu & sân @SyncOpts.Value.H2HIntervalMinutes phút · thời tiết @SyncOpts.Value.WeatherIntervalMinutes phút (Open-Meteo, miễn phí).
                     Khi quota còn dưới @SyncOpts.Value.QuotaReserve request, các tác vụ phụ tạm dừng. Sửa trong <code>appsettings.json</code> mục <code>Sync</code>.
                 </div>
             </div>
@@ -98,7 +100,7 @@
                     <div class="alert alert-info py-2 small">Đang chạy: @SyncJobs.Label(job)…</div>
                 }
                 <div class="d-flex flex-wrap gap-2">
-                    @foreach (var j in new[] { SyncJobs.Leagues, SyncJobs.Fixtures, SyncJobs.Live, SyncJobs.Odds, SyncJobs.ClosingOdds, SyncJobs.Advice, SyncJobs.Stats, SyncJobs.Injuries, SyncJobs.Coaches })
+                    @foreach (var j in new[] { SyncJobs.Leagues, SyncJobs.Fixtures, SyncJobs.Live, SyncJobs.Odds, SyncJobs.ClosingOdds, SyncJobs.Advice, SyncJobs.Stats, SyncJobs.Injuries, SyncJobs.Coaches, SyncJobs.Lineups, SyncJobs.HeadToHead, SyncJobs.Venues, SyncJobs.Weather })
                     {
                         <button class="btn btn-sm btn-outline-primary" disabled="@(Sync.CurrentJob is not null || !Api.IsConfigured)" @onclick="() => RunJobAsync(j)">@SyncJobs.Label(j)</button>
                     }
