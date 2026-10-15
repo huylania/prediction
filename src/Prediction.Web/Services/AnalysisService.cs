@@ -1,0 +1,379 @@
+using Microsoft.EntityFrameworkCore;
+using Prediction.Core.Engine;
+using Prediction.Core.Engine.Analysis;
+using Prediction.Core.Entities;
+using Prediction.Web.Data;
+
+namespace Prediction.Web.Services;
+
+/// <summary>Kết quả phân tích chuyên sâu của một trận, kèm dữ liệu đầu vào để hiển thị.</summary>
+public sealed class MatchAnalysisResult
+{
+    public required Fixture Fixture { get; init; }
+    public required League? League { get; init; }
+    public required string Home { get; init; }
+    public required string Away { get; init; }
+    public Team? HomeTeam { get; init; }
+    public Team? AwayTeam { get; init; }
+    public required AnalysisInput Input { get; init; }
+    public required MatchAnalysis Analysis { get; init; }
+}
+
+/// <summary>
+/// Dựng dữ liệu đầu vào (phong độ, thống kê góc/thẻ, DNA, nhân sự, chấn thương, kèo) và chạy <see cref="MatchAnalyzer"/>;
+/// lưu khuyến nghị để chốt theo kèo trước giờ bóng lăn và chấm thành tích.
+/// </summary>
+public sealed class AnalysisService(IDbContextFactory<AppDbContext> dbFactory, TimeProvider clock)
+{
+    /// <summary>Phân tích các trận sắp đá trong khoảng này.</summary>
+    public static readonly TimeSpan Lookahead = TimeSpan.FromDays(3);
+
+    private const int HistoryPerTeam = 20;
+    private const int Chunk = 500;
+
+    public DateTime UtcNow => clock.GetUtcNow().UtcDateTime;
+
+    public async Task<MatchAnalysisResult?> ForFixtureAsync(int fixtureId, CancellationToken ct = default)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        var fixture = await db.Fixtures.AsNoTracking().FirstOrDefaultAsync(f => f.Id == fixtureId, ct);
+        return fixture is null ? null : (await AnalyzeAsync(db, [fixture], ct)).GetValueOrDefault(fixture.Id);
+    }
+
+    /// <summary>Phân tích các trận sắp đá (chưa bóng lăn) trong <paramref name="window"/> tới.</summary>
+    public async Task<List<MatchAnalysisResult>> UpcomingAsync(TimeSpan window, int? leagueId, CancellationToken ct = default)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        var now = UtcNow;
+        var until = now + window;
+        var fixtures = await db.Fixtures.AsNoTracking()
+            .Where(f => f.KickoffUtc > now && f.KickoffUtc <= until && (f.Status == "NS" || f.Status == "TBD")
+                && f.League!.IsTracked && (leagueId == null || f.LeagueId == leagueId))
+            .OrderBy(f => f.KickoffUtc).ThenBy(f => f.Id)
+            .ToListAsync(ct);
+        var results = await AnalyzeAsync(db, fixtures, ct);
+        return fixtures.Select(f => results[f.Id]).ToList();
+    }
+
+    public async Task<Dictionary<int, MatchAnalysisResult>> AnalyzeAsync(AppDbContext db, IReadOnlyCollection<Fixture> fixtures, CancellationToken ct)
+    {
+        var result = new Dictionary<int, MatchAnalysisResult>();
+        if (fixtures.Count == 0)
+        {
+            return result;
+        }
+
+        var now = UtcNow;
+        var contexts = await ContextLoader.LoadAsync(db, fixtures, now, ct);
+        var ids = fixtures.Select(f => f.Id).ToList();
+        var leagueIds = fixtures.Select(f => f.LeagueId).Distinct().ToList();
+        var teamIds = fixtures.SelectMany(f => new[] { f.HomeTeamId, f.AwayTeamId }).Distinct().ToList();
+
+        var leagues = await db.Leagues.AsNoTracking().Where(l => leagueIds.Contains(l.Id)).ToDictionaryAsync(l => l.Id, ct);
+        var leagueDna = await db.LeagueDnas.AsNoTracking().Where(d => leagueIds.Contains(d.LeagueId)).ToDictionaryAsync(d => d.LeagueId, ct);
+        var teamDna = await db.TeamDnas.AsNoTracking().Where(d => teamIds.Contains(d.TeamId)).ToDictionaryAsync(d => d.TeamId, ct);
+        var changes = (await db.TeamChanges.AsNoTracking().Where(c => teamIds.Contains(c.TeamId)).ToListAsync(ct))
+            .ToLookup(c => c.TeamId);
+        var injuries = (await db.FixtureInjuries.AsNoTracking().Where(i => ids.Contains(i.FixtureId)).ToListAsync(ct))
+            .ToLookup(i => i.FixtureId);
+        var ruleSides = (await db.Suggestions.AsNoTracking()
+                .Where(s => ids.Contains(s.FixtureId) && (s.CurrentlyMatches || s.IsFrozen) && s.Rule!.IsActive)
+                .Select(s => new { s.FixtureId, s.Side })
+                .ToListAsync(ct))
+            .ToLookup(s => s.FixtureId, s => s.Side);
+
+        var history = await LoadHistoryAsync(db, teamIds, fixtures.Min(f => f.KickoffUtc).AddDays(-400), fixtures.Max(f => f.KickoffUtc), ct);
+        var baselines = new Dictionary<(int, int), LeagueBaseline>();
+        foreach (var key in fixtures.Select(f => (f.LeagueId, f.Season)).Distinct())
+        {
+            baselines[key] = await BaselineAsync(db, key.LeagueId, key.Season, ct);
+        }
+
+        foreach (var fixture in fixtures)
+        {
+            var ctx = contexts.Contexts[fixture.Id];
+            var league = leagues.GetValueOrDefault(fixture.LeagueId);
+            var home = contexts.TeamName(fixture.HomeTeamId);
+            var away = contexts.TeamName(fixture.AwayTeamId);
+            var input = new AnalysisInput
+            {
+                Fixture = fixture,
+                HomeName = home,
+                AwayName = away,
+                LeagueName = league?.Name,
+                LeagueType = league?.Type,
+                LeagueDna = leagueDna.GetValueOrDefault(fixture.LeagueId),
+                HomeDna = teamDna.GetValueOrDefault(fixture.HomeTeamId),
+                AwayDna = teamDna.GetValueOrDefault(fixture.AwayTeamId),
+                HomeStanding = ctx.Home,
+                AwayStanding = ctx.Away,
+                TableSize = contexts.TableSizes.GetValueOrDefault((fixture.LeagueId, fixture.Season)),
+                HomeHistory = TeamHistory(history, fixture.HomeTeamId, fixture.KickoffUtc),
+                AwayHistory = TeamHistory(history, fixture.AwayTeamId, fixture.KickoffUtc),
+                League = baselines[(fixture.LeagueId, fixture.Season)],
+                Handicap = ctx.Handicap,
+                Totals = ctx.Totals,
+                Corners = ctx.Corners,
+                CornersHandicap = ctx.CornersHandicap,
+                Cards = ctx.Cards,
+                HomeChanges = changes[fixture.HomeTeamId].ToList(),
+                AwayChanges = changes[fixture.AwayTeamId].ToList(),
+                Injuries = injuries[fixture.Id].ToList(),
+                Advice = ctx.Advice,
+                RuleSides = ruleSides[fixture.Id].Distinct().ToList(),
+            };
+
+            result[fixture.Id] = new MatchAnalysisResult
+            {
+                Fixture = fixture,
+                League = league,
+                Home = home,
+                Away = away,
+                HomeTeam = contexts.Teams.GetValueOrDefault(fixture.HomeTeamId),
+                AwayTeam = contexts.Teams.GetValueOrDefault(fixture.AwayTeamId),
+                Input = input,
+                Analysis = MatchAnalyzer.Analyze(input),
+            };
+        }
+
+        return result;
+    }
+
+    /// <summary>Các trận đã đá của các đội (mọi giải có trong CSDL), kèm thống kê và kèo chấp đóng.</summary>
+    private static async Task<List<HistoryRow>> LoadHistoryAsync(AppDbContext db, List<int> teamIds, DateTime fromUtc, DateTime untilUtc, CancellationToken ct)
+    {
+        var rows = new List<HistoryRow>();
+        foreach (var chunk in teamIds.Chunk(200))
+        {
+            rows.AddRange(await db.Fixtures.AsNoTracking()
+                .Where(f => (chunk.Contains(f.HomeTeamId) || chunk.Contains(f.AwayTeamId))
+                    && f.KickoffUtc >= fromUtc && f.KickoffUtc < untilUtc
+                    && f.HomeGoals != null && f.AwayGoals != null
+                    && (f.Status == "FT" || f.Status == "AET" || f.Status == "PEN"))
+                .Select(f => new HistoryRow(f.Id, f.KickoffUtc, f.HomeTeamId, f.AwayTeamId, f.HomeGoals!.Value, f.AwayGoals!.Value))
+                .ToListAsync(ct));
+        }
+
+        rows = rows.DistinctBy(r => r.Id).ToList();
+        var ids = rows.Select(r => r.Id).ToList();
+        var stats = new Dictionary<int, FixtureStats>();
+        var closing = new Dictionary<int, decimal>();
+        foreach (var chunk in ids.Chunk(Chunk))
+        {
+            foreach (var s in await db.FixtureStats.AsNoTracking().Where(s => chunk.Contains(s.FixtureId)).ToListAsync(ct))
+            {
+                stats[s.FixtureId] = s;
+            }
+
+            var lines = await db.OddsSnapshots.AsNoTracking()
+                .Where(s => chunk.Contains(s.FixtureId) && s.Market == Market.AsianHandicap && s.FetchedAtUtc <= s.Fixture!.KickoffUtc)
+                .GroupBy(s => s.FixtureId)
+                .Select(g => g.OrderByDescending(s => s.FetchedAtUtc).ThenByDescending(s => s.Id).Select(s => new { s.FixtureId, s.Line }).First())
+                .ToListAsync(ct);
+            foreach (var l in lines)
+            {
+                closing[l.FixtureId] = l.Line;
+            }
+        }
+
+        foreach (var row in rows)
+        {
+            row.Stats = stats.GetValueOrDefault(row.Id);
+            row.ClosingHomeLine = closing.TryGetValue(row.Id, out var line) ? line : null;
+        }
+
+        return rows;
+    }
+
+    private static List<TeamMatch> TeamHistory(List<HistoryRow> rows, int teamId, DateTime beforeUtc) =>
+        rows.Where(r => (r.HomeTeamId == teamId || r.AwayTeamId == teamId) && r.KickoffUtc < beforeUtc)
+            .OrderByDescending(r => r.KickoffUtc)
+            .Take(HistoryPerTeam)
+            .Select(r => r.For(teamId))
+            .ToList();
+
+    /// <summary>Trung bình bàn / góc / thẻ của giải ở mùa này và mùa trước.</summary>
+    private static async Task<LeagueBaseline> BaselineAsync(AppDbContext db, int leagueId, int season, CancellationToken ct)
+    {
+        var finished = db.Fixtures.AsNoTracking().Where(f => f.LeagueId == leagueId && f.Season >= season - 1 && f.Season <= season
+            && f.HomeGoals != null && f.AwayGoals != null && (f.Status == "FT" || f.Status == "AET" || f.Status == "PEN"));
+        var goals = await finished.GroupBy(_ => 1)
+            .Select(g => new { Count = g.Count(), Avg = g.Average(f => (double)(f.HomeGoals!.Value + f.AwayGoals!.Value)) })
+            .FirstOrDefaultAsync(ct);
+        var stats = await db.FixtureStats.AsNoTracking()
+            .Where(s => s.HomeCorners != null && s.AwayCorners != null && finished.Any(f => f.Id == s.FixtureId))
+            .GroupBy(_ => 1)
+            .Select(g => new
+            {
+                Count = g.Count(),
+                Corners = g.Average(s => (double)(s.HomeCorners!.Value + s.AwayCorners!.Value)),
+                Cards = g.Average(s => (double)((s.HomeYellow ?? 0) + (s.AwayYellow ?? 0) + (s.HomeRed ?? 0) + (s.AwayRed ?? 0))),
+            })
+            .FirstOrDefaultAsync(ct);
+
+        return new LeagueBaseline(goals?.Count ?? 0, goals?.Avg, stats?.Count ?? 0, stats?.Corners, stats?.Cards);
+    }
+
+    // ------------------------------------------------------------------ Lưu & chấm khuyến nghị
+
+    /// <summary>
+    /// Cập nhật khuyến nghị của các trận sắp đá (bản cuối trước giờ bóng lăn là bản chốt) và chấm các khuyến nghị đã có kết quả.
+    /// </summary>
+    public async Task<string?> RefreshPicksAsync(CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        var now = UtcNow;
+        var until = now + Lookahead;
+        var fixtures = await db.Fixtures.AsNoTracking()
+            .Where(f => f.KickoffUtc > now && f.KickoffUtc <= until && (f.Status == "NS" || f.Status == "TBD") && f.League!.IsTracked)
+            .ToListAsync(ct);
+        var analyses = await AnalyzeAsync(db, fixtures, ct);
+        var ids = fixtures.Select(f => f.Id).ToList();
+        var stored = (await db.AnalysisPicks.Where(p => ids.Contains(p.FixtureId)).ToListAsync(ct))
+            .ToDictionary(p => (p.FixtureId, p.Market));
+
+        var upserted = 0;
+        foreach (var (fixtureId, a) in analyses)
+        {
+            var markets = new HashSet<Market>();
+            foreach (var pick in a.Analysis.Picks)
+            {
+                markets.Add(pick.Market);
+                if (!stored.TryGetValue((fixtureId, pick.Market), out var row))
+                {
+                    row = new AnalysisPick { FixtureId = fixtureId, Market = pick.Market, CreatedAtUtc = now };
+                    db.AnalysisPicks.Add(row);
+                }
+
+                row.Side = pick.Side;
+                row.Line = pick.Line;
+                row.Odds = pick.Odds;
+                row.Score = (decimal)pick.Score;
+                row.Group = pick.Group;
+                row.WinProbability = Math.Round((decimal)pick.Probability.WinAny, 4);
+                row.ExpectedValue = Math.Round((decimal)pick.ExpectedValue, 4);
+                row.Label = pick.Label.Length > 200 ? pick.Label[..200] : pick.Label;
+                row.Flags = pick.Flags.Count == 0 ? null : string.Join(",", pick.Flags.Distinct());
+                row.UpdatedAtUtc = now;
+                row.Outcome = BetOutcome.Pending;
+                upserted++;
+            }
+
+            foreach (var gone in stored.Values.Where(p => p.FixtureId == fixtureId && !markets.Contains(p.Market)))
+            {
+                db.AnalysisPicks.Remove(gone);
+            }
+        }
+
+        await db.SaveChangesAsync(ct);
+        var settled = await SettleAsync(db, now, ct);
+        return upserted == 0 && settled == 0 ? null : $"Phân tích chuyên sâu: {analyses.Count} trận, {upserted} khuyến nghị; chấm {settled} khuyến nghị.";
+    }
+
+    private static async Task<int> SettleAsync(AppDbContext db, DateTime now, CancellationToken ct)
+    {
+        var pending = await db.AnalysisPicks
+            .Include(p => p.Fixture)
+            .Where(p => p.Outcome == BetOutcome.Pending && p.Fixture!.KickoffUtc <= now)
+            .ToListAsync(ct);
+        if (pending.Count == 0)
+        {
+            return 0;
+        }
+
+        var ids = pending.Select(p => p.FixtureId).Distinct().ToList();
+        var stats = await db.FixtureStats.AsNoTracking().Where(s => ids.Contains(s.FixtureId)).ToDictionaryAsync(s => s.FixtureId, ct);
+        var settled = 0;
+        foreach (var pick in pending)
+        {
+            var f = pick.Fixture!;
+            BetOutcome? outcome = null;
+            decimal profit = 0;
+            if (f.IsCancelled || f.Status == "PST" && f.KickoffUtc < now.AddDays(-2))
+            {
+                outcome = BetOutcome.Void;
+            }
+            else if (f.IsFinished)
+            {
+                var (home, away) = pick.Market switch
+                {
+                    Market.CornersOverUnder or Market.CornersHandicap => (stats.GetValueOrDefault(f.Id)?.HomeCorners, stats.GetValueOrDefault(f.Id)?.AwayCorners),
+                    Market.CardsOverUnder => (Cards(stats.GetValueOrDefault(f.Id), true), Cards(stats.GetValueOrDefault(f.Id), false)),
+                    _ => (f.HomeGoals, f.AwayGoals),
+                };
+
+                if (home is { } h && away is { } a)
+                {
+                    var r = Settlement.Settle(pick.Side, pick.Line, pick.Odds, h, a);
+                    (outcome, profit) = (r.Outcome, r.Profit);
+                }
+                else if (stats.GetValueOrDefault(f.Id) is { IsFinal: true } || f.KickoffUtc < now.AddDays(-3))
+                {
+                    outcome = BetOutcome.Void; // không có số liệu góc/thẻ để chấm
+                }
+            }
+
+            if (outcome is { } o)
+            {
+                pick.Outcome = o;
+                pick.Profit = profit;
+                pick.SettledAtUtc = now;
+                settled++;
+            }
+        }
+
+        await db.SaveChangesAsync(ct);
+        return settled;
+    }
+
+    private static int? Cards(FixtureStats? s, bool home) => s is null
+        ? null
+        : home ? s.HomeYellow + (s.HomeRed ?? 0) : s.AwayYellow + (s.AwayRed ?? 0);
+
+    /// <summary>Khuyến nghị đã lưu (tốt nhất mỗi trận) để gắn nhãn A/B/C lên thẻ trận.</summary>
+    public static async Task<Dictionary<int, AnalysisPick>> BestPicksAsync(AppDbContext db, IReadOnlyCollection<int> fixtureIds, CancellationToken ct)
+    {
+        var picks = new List<AnalysisPick>();
+        foreach (var chunk in fixtureIds.Chunk(Chunk))
+        {
+            picks.AddRange(await db.AnalysisPicks.AsNoTracking().Where(p => chunk.Contains(p.FixtureId)).ToListAsync(ct));
+        }
+
+        return picks.GroupBy(p => p.FixtureId)
+            .ToDictionary(g => g.Key, g => g.OrderBy(p => p.Group).ThenByDescending(p => p.Score).First());
+    }
+
+    private sealed class HistoryRow(int id, DateTime kickoffUtc, int homeTeamId, int awayTeamId, int homeGoals, int awayGoals)
+    {
+        public int Id { get; } = id;
+        public DateTime KickoffUtc { get; } = kickoffUtc;
+        public int HomeTeamId { get; } = homeTeamId;
+        public int AwayTeamId { get; } = awayTeamId;
+        public int HomeGoals { get; } = homeGoals;
+        public int AwayGoals { get; } = awayGoals;
+        public FixtureStats? Stats { get; set; }
+        public decimal? ClosingHomeLine { get; set; }
+
+        public TeamMatch For(int teamId)
+        {
+            var home = teamId == HomeTeamId;
+            var s = Stats;
+            return new TeamMatch(
+                Id,
+                KickoffUtc,
+                home,
+                home ? AwayTeamId : HomeTeamId,
+                home ? HomeGoals : AwayGoals,
+                home ? AwayGoals : HomeGoals,
+                home ? s?.HomeCorners : s?.AwayCorners,
+                home ? s?.AwayCorners : s?.HomeCorners,
+                Cards(s, home),
+                Cards(s, !home),
+                home ? s?.HomeXg : s?.AwayXg,
+                home ? s?.AwayXg : s?.HomeXg,
+                home ? s?.HomeShots : s?.AwayShots,
+                home ? s?.HomeShotsOnTarget : s?.AwayShotsOnTarget,
+                ClosingHomeLine is { } l ? (home ? l : -l) : null);
+        }
+    }
+}

@@ -18,6 +18,9 @@ public sealed class MatchInsight
     public Team? HomeTeam { get; init; }
     public Team? AwayTeam { get; init; }
 
+    /// <summary>Khuyến nghị tốt nhất của phân tích chuyên sâu (đã lưu), nếu có.</summary>
+    public AnalysisPick? Analysis { get; init; }
+
     public bool HasPicks => Advice.Picks.Count > 0;
 }
 
@@ -69,6 +72,7 @@ public sealed class InsightService(IDbContextFactory<AppDbContext> dbFactory, Ti
         var records = await ContextLoader.LoadRecordsAsync(db, ct);
         var leagueIds = fixtures.Select(f => f.LeagueId).Distinct().ToList();
         var leagues = await db.Leagues.AsNoTracking().Where(l => leagueIds.Contains(l.Id)).ToDictionaryAsync(l => l.Id, ct);
+        var analyses = await AnalysisService.BestPicksAsync(db, fixtures.Select(f => f.Id).ToList(), ct);
 
         var result = new List<MatchInsight>(fixtures.Count);
         foreach (var fixture in fixtures)
@@ -92,6 +96,7 @@ public sealed class InsightService(IDbContextFactory<AppDbContext> dbFactory, Ti
                 AwayTeam = contexts.Teams.GetValueOrDefault(fixture.AwayTeamId),
                 Advice = MatchAdvisor.Advise(ctx, picks, home, away),
                 Snapshots = contexts.Snapshots.GetValueOrDefault(fixture.Id) ?? [],
+                Analysis = analyses.GetValueOrDefault(fixture.Id),
             });
         }
 

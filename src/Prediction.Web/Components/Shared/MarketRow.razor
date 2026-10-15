@@ -1,0 +1,37 @@
+<tr>
+    <td>@Name @if (Note is not null) { <div class="hint">@Note</div> }</td>
+    @if (M is null)
+    {
+        <td colspan="4" class="text-muted">Chưa có kèo</td>
+    }
+    else
+    {
+        <td>@Line(M.Open.Line)</td>
+        <td class="fw-semibold">@Line(M.Current.Line)</td>
+        <td>@LineText.Odds(M.Current.PriceA) / @LineText.Odds(M.Current.PriceB)</td>
+        <td>
+            @if (Math.Abs(M.LineDelta) >= 0.5m)
+            {
+                <span class="flag-pill">nhảy @LineText.Signed(M.LineDelta)</span>
+            }
+            else if (M.LineDelta != 0)
+            {
+                <span class="text-muted">@LineText.Signed(M.LineDelta)</span>
+            }
+        </td>
+    }
+</tr>
+
+@code {
+    [Parameter, EditorRequired] public string Name { get; set; } = "";
+
+    [Parameter] public MarketMovement? M { get; set; }
+
+    [Parameter] public bool Handicap { get; set; }
+
+    [Parameter] public string Home { get; set; } = "";
+
+    [Parameter] public string? Note { get; set; }
+
+    private string Line(decimal line) => Handicap ? $"{Home} {LineText.Signed(line)}" : LineText.Number(line);
+}

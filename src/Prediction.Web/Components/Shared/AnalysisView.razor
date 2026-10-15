@@ -1,0 +1,230 @@
+@using System.Globalization
+@inject TimeDisplay Time
+@{
+    var a = R.Analysis;
+    var h = a.Handicap;
+    var input = R.Input;
+}
+
+@if (a.LowData)
+{
+    <div class="alert alert-warning py-2 small">
+        Dữ liệu phong độ còn ít (@a.HomeForm.Matches / @a.AwayForm.Matches trận): số liệu được kéo về trung bình giải, chỉ nên tham khảo.
+        Tải thêm mùa cũ và thống kê trận trong <a href="cai-dat">Cài đặt</a>.
+    </div>
+}
+
+<div class="an-section">
+    <h2><span class="num">6</span> Khuyến nghị theo thang điểm 10</h2>
+    @if (a.Picks.Count == 0)
+    {
+        <div class="text-muted small">Chưa có kèo nhà cái để chấm điểm (cần kèo chấp, tài xỉu, góc hoặc thẻ).</div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-sm mb-0">
+                <thead><tr><th>Nhóm</th><th>Khuyến nghị</th><th>Odds</th><th style="min-width: 190px">Xác suất (mô hình)</th><th>EV</th><th>Lý do</th></tr></thead>
+                <tbody>
+                    @foreach (var p in a.Picks)
+                    {
+                        <tr class="reco-row">
+                            <td><AnalysisBadge Group="p.Group" Score="p.Score" HasFlags="p.Flags.Count > 0" /></td>
+                            <td class="fw-semibold text-nowrap">@p.Label<div class="small text-muted fw-normal">@MarketName(p.Market)</div></td>
+                            <td>@LineText.Odds(p.Odds)</td>
+                            <td><ProbSplit P="p.Probability" /></td>
+                            <td class="@(p.ExpectedValue >= 0 ? "text-success" : "text-danger") text-nowrap">@Signed(p.ExpectedValue)</td>
+                            <td><ul class="reco-reasons">@foreach (var r in p.Reasons) { <li>@r</li> }</ul></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <div class="hint mt-2">
+            Nhóm A (8.0–10): khả dụng trước trận · Nhóm B (6.0–7.9): chỉ vào lệnh In-play sau phút 15–20 khi thế trận xác nhận ·
+            Nhóm C (&lt; 6 hoặc dính cờ đỏ): đứng ngoài. Luôn kiểm tra đội hình ra sân trước khi vào tiền.
+        </div>
+    }
+</div>
+
+<div class="row g-3">
+    <div class="col-xl-6">
+        <div class="an-section">
+            <h2><span class="num">1</span> DNA, nhân sự & bảng kèo</h2>
+            <div class="mb-2">
+                <span class="small text-muted me-1">Giải:</span>
+                @if (a.LeagueTags.Count == 0) { <span class="small text-muted">chưa gắn DNA</span> }
+                @foreach (var t in a.LeagueTags) { <span class="dna-tag league">@t</span> }
+                @if (a.LeagueNotes is { } ln) { <div class="hint">@ln</div> }
+            </div>
+            <div class="row g-2 small">
+                <div class="col-md-6">
+                    <div class="fw-semibold">@R.Home</div>
+                    @if (a.HomeTags.Count == 0) { <span class="text-muted">chưa gắn DNA</span> }
+                    @foreach (var t in a.HomeTags) { <span class="dna-tag">@t</span> }
+                    @if (a.HomeNotes is { } hn) { <div class="hint">@hn</div> }
+                    <Staffing Regime="a.HomeRegime" Absent="a.HomeAbsent" RestDays="a.HomeRestDays" />
+                </div>
+                <div class="col-md-6">
+                    <div class="fw-semibold">@R.Away</div>
+                    @if (a.AwayTags.Count == 0) { <span class="text-muted">chưa gắn DNA</span> }
+                    @foreach (var t in a.AwayTags) { <span class="dna-tag">@t</span> }
+                    @if (a.AwayNotes is { } an) { <div class="hint">@an</div> }
+                    <Staffing Regime="a.AwayRegime" Absent="a.AwayAbsent" RestDays="a.AwayRestDays" />
+                </div>
+            </div>
+            <div class="hint mt-1">Tân binh trụ cột không lấy được từ API: thêm tay ở trang <a href="dna">DNA & nhân sự</a>.</div>
+
+            <table class="table table-sm small mt-3 mb-0">
+                <thead><tr><th>Kèo</th><th>Mở</th><th>Hiện tại / đóng</th><th>Odds</th><th></th></tr></thead>
+                <tbody>
+                    <MarketRow Name="Chấp châu Á" M="input.Handicap" Handicap="true" Home="@R.Home" />
+                    <MarketRow Name="Tài xỉu bàn" M="input.Totals" />
+                    <MarketRow Name="Tài xỉu góc" M="input.Corners" Note="không xét dòng tiền" />
+                    <MarketRow Name="Chấp góc" M="input.CornersHandicap" Handicap="true" Home="@R.Home" Note="không xét dòng tiền" />
+                    <MarketRow Name="Tài xỉu thẻ" M="input.Cards" />
+                </tbody>
+            </table>
+        </div>
+
+        <div class="an-section">
+            <h2><span class="num">2</span> Kèo chấp dự phóng & kèo lạ</h2>
+            <table class="table table-sm small mb-2">
+                <tbody>
+                    <tr><td>Phong độ (λ nhà − λ khách)</td><td class="text-end">@Signed(h.FormPart)</td></tr>
+                    <tr><td>BXH (chênh hiệu số/trận ÷ 2)</td><td class="text-end">@(h.TablePart is { } tp ? Signed(tp) : "chưa đủ 3 trận")</td></tr>
+                    <tr><td>Lợi thế sân <span class="text-muted">(@string.Join(", ", h.HomeAdvantageNotes))</span></td><td class="text-end">@Signed(h.HomeAdvantage)</td></tr>
+                    <tr class="fw-semibold"><td>Độ vượt trội đội nhà = @(h.TablePart is null ? "phong độ" : "0.6 × phong độ + 0.4 × BXH") + sân</td><td class="text-end">@Signed(h.Supremacy)</td></tr>
+                    <tr class="fw-semibold"><td>Kèo chấp dự phóng H<sub>exp</sub></td><td class="text-end">@LineText.HandicapSentence(h.HExp, R.Home, R.Away) (@LineText.Signed(h.HExp))</td></tr>
+                    <tr><td>Kèo nhà cái H<sub>market</sub></td><td class="text-end">@(h.HMarket is { } hm ? $"{LineText.HandicapSentence(hm, R.Home, R.Away)} ({LineText.Signed(hm)})" : "—")</td></tr>
+                    <tr><td>Δ<sub>H</sub> = H<sub>market</sub> − H<sub>exp</sub></td><td class="text-end @(h.Delta is { } d && Math.Abs(d) >= 0.5m ? "text-danger fw-bold" : "")">@(h.Delta is { } dd ? LineText.Signed(dd) : "—")</td></tr>
+                    @if (h.LineMove is { } mv && mv != 0)
+                    {
+                        <tr><td>Kèo chấp dịch từ lúc mở</td><td class="text-end @(Math.Abs(mv) >= 0.5m ? "text-danger fw-bold" : "")">@LineText.Signed(mv)</td></tr>
+                    }
+                </tbody>
+            </table>
+            <div class="verdict @(h.Verdict switch { HandicapVerdict.SuspectedTrap => "trap", HandicapVerdict.RealStrength => "real", _ => "" })">
+                @h.Summary
+                @if (h.Causes.Count > 0)
+                {
+                    <ul class="mb-0 mt-1">@foreach (var c in h.Causes) { <li>@c</li> }</ul>
+                }
+            </div>
+            <div class="hint mt-2">
+                Website chỉ thấy được chấn thương, lịch thi đấu, HLV/tân binh và DNA sân. Đội hình xoay tua, động lực, nội bộ cần bạn kiểm tra thêm (đội hình ra sân ~1 giờ trước trận).
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-6">
+        <div class="an-section">
+            <h2><span class="num">3</span> Bộ lọc 5 cờ đỏ</h2>
+            @if (a.Flags.Count == 0)
+            {
+                <div class="text-success small fw-semibold">✓ Không dính cờ đỏ nào.</div>
+            }
+            else
+            {
+                @foreach (var flag in a.Flags)
+                {
+                    <div class="mb-2 small">
+                        <span class="flag-pill">Cờ đỏ @flag.Number</span><strong>@flag.Title</strong>
+                        <div>@flag.Detail</div>
+                    </div>
+                }
+            }
+        </div>
+
+        <div class="an-section">
+            <h2><span class="num">5</span> Kịch bản In-play</h2>
+            @if (a.InPlayHints.Count == 0)
+            {
+                <div class="text-muted small">Không có kịch bản đặc biệt.</div>
+            }
+            else
+            {
+                <ul class="small mb-0">@foreach (var hint in a.InPlayHints) { <li>@hint</li> }</ul>
+            }
+            <div class="hint mt-2">Khi trận diễn ra, cảnh báo In-play tự động hiện trên thẻ trận ở tab "Đang đá".</div>
+        </div>
+
+        <div class="an-section">
+            <h2>Mô hình xác suất (Poisson)</h2>
+            <div class="small mb-1">Bàn kỳ vọng: @R.Home <strong>@N(a.LambdaHome)</strong> – <strong>@N(a.LambdaAway)</strong> @R.Away · Góc kỳ vọng @N(a.CornersHome) – @N(a.CornersAway) · Thẻ @N(a.ExpectedCards)</div>
+            <div class="prob-split">
+                <div style="width:@W(a.HomeWinProbability); background:#16a34a">@P(a.HomeWinProbability)</div>
+                <div style="width:@W(a.DrawProbability); background:#64748b">@P(a.DrawProbability)</div>
+                <div style="width:@W(a.AwayWinProbability); background:#dc2626">@P(a.AwayWinProbability)</div>
+            </div>
+            <div class="d-flex justify-content-between small text-muted"><span>@R.Home thắng</span><span>Hòa</span><span>@R.Away thắng</span></div>
+        </div>
+    </div>
+</div>
+
+<div class="an-section">
+    <h2><span class="num">4</span> Đối chiếu 3 lớp: DNA giải · 10 trận gần nhất · mốc kèo</h2>
+    <div class="small text-muted mb-2">
+        Mẫu: @R.Home — @a.HomeForm.SampleLabel (@a.HomeForm.Form) · @R.Away — @a.AwayForm.SampleLabel (@a.AwayForm.Form).
+        @if (a.HomeForm.AtsRate is not null || a.AwayForm.AtsRate is not null)
+        {
+            <span>Thắng kèo chấp: @Ats(a.HomeForm) / @Ats(a.AwayForm).</span>
+        }
+        @if (a.HomeForm.XgFor is not null || a.AwayForm.XgFor is not null)
+        {
+            <span>xG tạo ra/để lọt: @N(a.HomeForm.XgFor)/@N(a.HomeForm.XgAgainst) · @N(a.AwayForm.XgFor)/@N(a.AwayForm.XgAgainst).</span>
+        }
+    </div>
+    <div class="table-responsive">
+        <table class="table table-sm layer-table mb-0">
+            <thead>
+                <tr><th>Hạng mục</th><th>TB & DNA giải</th><th>@R.Home</th><th>@R.Away</th><th>Kỳ vọng</th><th>Mốc kèo</th><th>Δ</th><th>Đánh giá</th></tr>
+            </thead>
+            <tbody>
+                @foreach (var row in new[] { a.Goals, a.CornersRow, a.CornerHandicap, a.CardsRow })
+                {
+                    <tr>
+                        <td class="fw-semibold">@row.Name</td>
+                        <td>@(row.LeagueAverage is { } la ? N(la) : "—")@if (!string.IsNullOrEmpty(row.LeagueDnaText)) { <div class="hint">@row.LeagueDnaText</div> }</td>
+                        <td>@row.HomeText</td>
+                        <td>@row.AwayText</td>
+                        <td>@(row.Name == "Chấp góc" && row.Expected is { } gap ? $"Chênh {Signed(gap)}" : N(row.Expected))</td>
+                        <td class="text-nowrap">@row.MarketText</td>
+                        <td>@(row.Delta is { } rowDelta ? Signed(rowDelta) : "—")</td>
+                        <td class="@(row.Lean is null ? "" : "lean")">@row.Verdict</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    <div class="hint mt-2">
+        Kỳ vọng bàn = ((Ghi nhà + Thủng khách) + (Ghi khách + Thủng nhà)) / 2; tương tự với góc (trộn 50/50 số liệu chung và theo sân).
+        Ngưỡng: Tài/Xỉu bàn |Δ| ≥ 0.40 cùng chiều TB giải; góc |Δ| ≥ 1.2 + phong cách; chấp góc chênh ≥ 2.0 góc/trận. Mẫu dưới 5 trận được kéo về TB giải.
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public MatchAnalysisResult R { get; set; } = default!;
+
+    private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
+
+    private static string N(double? v) => v is { } x ? x.ToString("0.##", Inv) : "—";
+
+    private static string Signed(double v) => (v >= 0 ? "+" : "−") + Math.Abs(v).ToString("0.00", Inv);
+
+    private static string P(double v) => v < 0.06 ? "" : (v * 100).ToString("0", Inv) + "%";
+
+    private static string W(double v) => (v * 100).ToString("0.##", Inv) + "%";
+
+    private static string Ats(TeamForm f) => f.AtsRate is { } r ? $"{(r * 100).ToString("0", Inv)}% ({f.AtsMatches} trận)" : "—";
+
+    public static string MarketName(Market m) => m switch
+    {
+        Market.AsianHandicap => "Chấp châu Á",
+        Market.OverUnder => "Tài xỉu bàn",
+        Market.CornersOverUnder => "Tài xỉu góc",
+        Market.CornersHandicap => "Chấp góc",
+        Market.CardsOverUnder => "Tài xỉu thẻ",
+        _ => m.ToString(),
+    };
+}

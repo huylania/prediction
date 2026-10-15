@@ -1,0 +1,19 @@
+<span class="grp grp-@AnalysisGroupText.Short(Group)" title="@AnalysisGroupText.Label(Group)">
+    @AnalysisGroupText.Short(Group)
+    @if (Score is { } s)
+    {
+        <span>@s.ToString("0.0")</span>
+    }
+    @if (HasFlags)
+    {
+        <span class="grp-flag" title="Dính cờ đỏ">cờ đỏ</span>
+    }
+</span>
+
+@code {
+    [Parameter] public AnalysisGroup Group { get; set; }
+
+    [Parameter] public double? Score { get; set; }
+
+    [Parameter] public bool HasFlags { get; set; }
+}

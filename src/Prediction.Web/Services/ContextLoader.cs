@@ -14,6 +14,9 @@ public sealed class ContextSet
 
     public Dictionary<int, List<OddsSnapshot>> Snapshots { get; } = [];
 
+    /// <summary>Số đội của từng giải-mùa (kích thước BXH).</summary>
+    public Dictionary<(int LeagueId, int Season), int> TableSizes { get; } = [];
+
     public string TeamName(int id) => Teams.TryGetValue(id, out var t) ? t.Name : $"#{id}";
 }
 
@@ -41,6 +44,7 @@ public static class ContextLoader
                 .Where(f => f.LeagueId == key.LeagueId && f.Season == key.Season)
                 .ToListAsync(ct);
             timelines[key] = StandingsTimeline.Build(season);
+            set.TableSizes[key] = season.Where(f => f.HasTable).SelectMany(f => new[] { f.HomeTeamId, f.AwayTeamId }).Distinct().Count();
         }
 
         var ids = targets.Select(f => f.Id).ToList();

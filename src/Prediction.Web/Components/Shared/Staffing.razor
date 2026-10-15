@@ -1,0 +1,36 @@
+@inject TimeDisplay Time
+@if (Regime is { } r)
+{
+    <div class="mt-1 @(r.InBuffer ? "text-danger" : "text-success")">
+        @r.KindLabel: <strong>@r.PersonName</strong> từ @r.StartDate.ToString("dd/MM/yyyy") — trận thứ @r.UpcomingMatchNumber
+        @(r.InBuffer ? "(chưa qua ngưỡng 2–3 trận ổn định → bỏ qua pre-match)" : "(đã ổn định, dùng dữ liệu giai đoạn mới)")
+    </div>
+}
+@if (RestDays is { } d)
+{
+    <div class="mt-1 @(d < 4 ? "text-warning fw-semibold" : "text-muted")">Nghỉ @d.ToString("0.#") ngày từ trận trước@(d < 4 ? " (lịch dày)" : "")</div>
+}
+@if (Absent.Count > 0)
+{
+    <div class="mt-1">
+        Vắng: @string.Join(", ", Absent.Where(i => i.IsMissing).Select(Name))
+        @if (Absent.Any(i => !i.IsMissing))
+        {
+            <span class="text-muted"> · Bỏ ngỏ: @string.Join(", ", Absent.Where(i => !i.IsMissing).Select(Name))</span>
+        }
+    </div>
+}
+else
+{
+    <div class="mt-1 text-muted">Chưa có danh sách chấn thương (API cập nhật trong 24 giờ trước trận).</div>
+}
+
+@code {
+    [Parameter] public RegimeStatus? Regime { get; set; }
+
+    [Parameter] public IReadOnlyList<FixtureInjury> Absent { get; set; } = [];
+
+    [Parameter] public double? RestDays { get; set; }
+
+    private static string Name(FixtureInjury i) => string.IsNullOrEmpty(i.Reason) ? i.PlayerName : $"{i.PlayerName} ({i.Reason})";
+}

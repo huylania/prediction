@@ -85,6 +85,7 @@
                         <button class="btn btn-sm btn-outline-primary" disabled="@(Sync.CurrentJob is not null || !Api.IsConfigured)" @onclick="() => RunJobAsync(j)">@SyncJobs.Label(j)</button>
                     }
                     <button class="btn btn-sm btn-outline-secondary" disabled="@(Sync.CurrentJob is not null)" @onclick="() => RunJobAsync(SyncJobs.Suggestions)">Cập nhật gợi ý</button>
+                    <button class="btn btn-sm btn-outline-secondary" disabled="@(Sync.CurrentJob is not null)" @onclick="() => RunJobAsync(SyncJobs.Analysis)">Cập nhật phân tích chuyên sâu</button>
                 </div>
                 <div class="small text-muted mt-2">
                     Thống kê góc/thẻ/sút đã tải: <strong>@_statsDone</strong> / @_statsTotal trận đã đá (mùa hiện tại + @SyncOpts.Value.StatsPreviousSeasons mùa trước, giải thật).

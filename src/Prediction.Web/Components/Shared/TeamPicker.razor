@@ -1,0 +1,58 @@
+@inject IDbContextFactory<AppDbContext> DbFactory
+<div class="position-relative">
+    <input class="form-control form-control-sm" placeholder="Gõ tên đội…" value="@_text" @oninput="OnInputAsync" />
+    @if (_results.Count > 0)
+    {
+        <div class="list-group position-absolute w-100 shadow-sm" style="z-index: 10; max-height: 260px; overflow-y: auto;">
+            @foreach (var t in _results)
+            {
+                <button type="button" class="list-group-item list-group-item-action py-1 small" @onclick="() => PickAsync(t)">@t.Name <span class="text-muted">#@t.Id</span></button>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public int? TeamId { get; set; }
+
+    [Parameter] public EventCallback<int?> TeamIdChanged { get; set; }
+
+    private string _text = "";
+    private List<Team> _results = [];
+
+    private bool _picked;
+
+    protected override void OnParametersSet()
+    {
+        // Trang cha xóa lựa chọn (vd sau khi thêm) thì xóa luôn ô nhập.
+        if (TeamId is null && _picked)
+        {
+            _text = "";
+            _picked = false;
+        }
+    }
+
+    private async Task OnInputAsync(ChangeEventArgs e)
+    {
+        _text = e.Value?.ToString() ?? "";
+        _picked = false;
+        await TeamIdChanged.InvokeAsync(null);
+        if (_text.Trim().Length < 2)
+        {
+            _results = [];
+            return;
+        }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var q = _text.Trim();
+        _results = await db.Teams.AsNoTracking().Where(t => t.Name.Contains(q)).OrderBy(t => t.Name).Take(12).ToListAsync();
+    }
+
+    private async Task PickAsync(Team team)
+    {
+        _text = team.Name;
+        _results = [];
+        _picked = true;
+        await TeamIdChanged.InvokeAsync(team.Id);
+    }
+}

@@ -873,6 +873,11 @@ public static class MatchAnalyzer
             score -= 1.0;
             pick.Reasons.Add($"Mẫu dữ liệu ít ({sample} trận): giảm độ tin cậy (−1)");
         }
+        else if (sample < 8)
+        {
+            score -= 0.5;
+            pick.Reasons.Add($"Mẫu còn ngắn ({sample} trận): giảm nhẹ độ tin cậy (−0.5)");
+        }
 
         var capB = false;
         if (pick.Market == Market.CardsOverUnder)
@@ -898,6 +903,11 @@ public static class MatchAnalyzer
         if (capB)
         {
             score = Math.Min(score, 7.5);
+        }
+        else if (!pick.MeetsRule)
+        {
+            // Chưa đạt ngưỡng khuyến nghị của file kỹ năng: không vượt ngưỡng nhóm A dù giá đẹp.
+            score = Math.Min(score, 7.9);
         }
 
         pick.Score = score;

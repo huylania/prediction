@@ -4,6 +4,7 @@
 @inject InsightService Insights
 @inject IDbContextFactory<AppDbContext> DbFactory
 @inject SuggestionService Suggestions
+@inject AnalysisService Analyses
 @inject TimeDisplay Time
 
 <PageTitle>@(_m is null ? "Trận đấu" : $"{_m.Home} – {_m.Away}")</PageTitle>
@@ -34,6 +35,32 @@ else
         <span class="badge bg-light text-dark border fs-6 align-middle">@FixtureStatus.Label(f.Status)</span>
     </h1>
 
+    <ul class="nav mc-tabs gap-2 mb-3">
+        <li class="nav-item"><a class="nav-link @(IsAnalysisTab ? "" : "active")" href="tran-dau/@Id">Tổng quan & kèo</a></li>
+        <li class="nav-item">
+            <a class="nav-link @(IsAnalysisTab ? "active" : "")" href="tran-dau/@Id?tab=phan-tich">
+                Phân tích chuyên sâu
+                @if (_m.Analysis is { } best)
+                {
+                    <AnalysisBadge Group="best.Group" Score="(double)best.Score" HasFlags="best.Flags is not null" />
+                }
+            </a>
+        </li>
+    </ul>
+
+    @if (IsAnalysisTab)
+    {
+        @if (_analysis is null)
+        {
+            <p class="text-muted">Đang phân tích…</p>
+        }
+        else
+        {
+            <AnalysisView R="_analysis" />
+        }
+    }
+    else
+    {
     <div class="row g-3">
         <div class="col-lg-5">
             <div class="card mb-3">
@@ -199,10 +226,17 @@ else
             </div>
         </div>
     </div>
+    }
 }
 
 @code {
     [Parameter] public int Id { get; set; }
+
+    [SupplyParameterFromQuery(Name = "tab")] public string? Tab { get; set; }
+
+    private bool IsAnalysisTab => Tab == "phan-tich";
+
+    private MatchAnalysisResult? _analysis;
 
     private bool _loading = true;
     private MatchInsight? _m;
@@ -228,6 +262,7 @@ else
     {
         _loading = true;
         _m = await Insights.ForFixtureAsync(Id);
+        _analysis = IsAnalysisTab && _m is not null ? await Analyses.ForFixtureAsync(Id) : null;
         await using var db = await DbFactory.CreateDbContextAsync();
         _suggestions = await db.Suggestions.AsNoTracking().Include(s => s.Rule).Where(s => s.FixtureId == Id).OrderBy(s => s.Rule!.Name).ToListAsync();
         _loading = false;

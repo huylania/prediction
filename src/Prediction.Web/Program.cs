@@ -39,6 +39,7 @@ builder.Services.AddSingleton<AdminAccountService>();
 builder.Services.AddSingleton<DemoDataSeeder>();
 builder.Services.AddSingleton<InsightService>();
 builder.Services.AddSingleton<BacktestService>();
+builder.Services.AddSingleton<AnalysisService>();
 builder.Services.AddScoped<DataSyncService>();
 builder.Services.AddHostedService<SyncBackgroundService>();
 

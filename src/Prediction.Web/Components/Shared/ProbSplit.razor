@@ -1,0 +1,19 @@
+@using System.Globalization
+<div class="prob-split" title="Thắng @T(P.Win) · thắng nửa @T(P.HalfWin) · hoàn @T(P.Push) · thua nửa @T(P.HalfLoss) · thua @T(P.Loss)">
+    <div style="width:@W(P.Win); background:#16a34a">@L(P.Win)</div>
+    <div style="width:@W(P.HalfWin); background:#86efac; color:#14532d">@L(P.HalfWin)</div>
+    <div style="width:@W(P.Push); background:#94a3b8">@L(P.Push)</div>
+    <div style="width:@W(P.HalfLoss); background:#fca5a5; color:#7f1d1d">@L(P.HalfLoss)</div>
+    <div style="width:@W(P.Loss); background:#dc2626">@L(P.Loss)</div>
+</div>
+<div class="small text-muted">Thắng @T(P.WinAny) · Thua @T(P.LossAny)</div>
+
+@code {
+    [Parameter, EditorRequired] public PickProbability P { get; set; } = default!;
+
+    private static string W(double v) => (v * 100).ToString("0.##", CultureInfo.InvariantCulture) + "%";
+
+    private static string T(double v) => (v * 100).ToString("0", CultureInfo.InvariantCulture) + "%";
+
+    private static string L(double v) => v < 0.12 ? "" : T(v);
+}

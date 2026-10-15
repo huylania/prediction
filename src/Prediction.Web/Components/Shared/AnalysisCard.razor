@@ -1,0 +1,57 @@
+@inject TimeDisplay Time
+@{
+    var a = R.Analysis;
+    var best = a.Best;
+    var f = R.Fixture;
+}
+<div class="an-card">
+    <div class="top">
+        <span class="fw-bold text-dark">@Time.Weekday(f.KickoffUtc) @Time.ToLocal(f.KickoffUtc).ToString("dd/MM HH:mm")</span>
+        <span class="mc-league">@R.League?.Name</span>
+        <a class="details" href="tran-dau/@f.Id?tab=phan-tich">Chi tiết →</a>
+    </div>
+    <div class="teams">
+        @R.Home @if (R.Input.HomeStanding?.Rank is { } hr) { <span class="rank-pill">#@hr</span> }
+        <span class="text-muted fw-normal mx-1">vs</span>
+        @R.Away @if (R.Input.AwayStanding?.Rank is { } ar) { <span class="rank-pill">#@ar</span> }
+    </div>
+    @if (best is null)
+    {
+        <div class="meta">Chưa có kèo để chấm điểm.</div>
+    }
+    else
+    {
+        <div class="pick">
+            <span>@best.Label <span class="text-muted fw-normal">@@@LineText.Odds(best.Odds)</span></span>
+            <AnalysisBadge Group="best.Group" Score="best.Score" HasFlags="best.Flags.Count > 0" />
+        </div>
+        <div class="meta">Thắng @Pct(best.Probability.WinAny) · thua @Pct(best.Probability.LossAny) · EV @Signed(best.ExpectedValue)</div>
+        @if (a.Flags.Count > 0)
+        {
+            <div class="mt-1">
+                @foreach (var flag in a.Flags.DistinctBy(x => (x.Number, x.Title)))
+                {
+                    <span class="flag-pill" title="@flag.Detail">Cờ @flag.Number: @flag.Title</span>
+                }
+            </div>
+        }
+        <ul>
+            @foreach (var reason in best.Reasons.Skip(1).Take(2))
+            {
+                <li>@reason</li>
+            }
+        </ul>
+        @foreach (var other in a.Picks.Skip(1).Where(p => p.Group != AnalysisGroup.C).Take(2))
+        {
+            <div class="meta mt-1">+ @other.Label @@@LineText.Odds(other.Odds) <AnalysisBadge Group="other.Group" Score="other.Score" /></div>
+        }
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public MatchAnalysisResult R { get; set; } = default!;
+
+    private static string Pct(double v) => (v * 100).ToString("0", System.Globalization.CultureInfo.InvariantCulture) + "%";
+
+    private static string Signed(double v) => (v >= 0 ? "+" : "−") + Math.Abs(v).ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
+}

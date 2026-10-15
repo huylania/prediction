@@ -109,6 +109,10 @@ public sealed class DemoDataSeeder(IDbContextFactory<AppDbContext> dbFactory, Su
                     }
 
                     db.Fixtures.Add(fixture);
+                    if (fixture.HomeGoals.HasValue)
+                    {
+                        AddStats(db, random, fixture, strength[home] - strength[away], lambdaHome, lambdaAway, now);
+                    }
 
                     // Mùa trước không có kèo (giống thực tế API chỉ giữ kèo ~7 ngày); mùa này có kèo + tư vấn.
                     if (season == 2026 && r < 11)
@@ -119,6 +123,23 @@ public sealed class DemoDataSeeder(IDbContextFactory<AppDbContext> dbFactory, Su
                 }
             }
         }
+
+        // DNA, HLV mới và chấn thương mẫu để xem thử phần phân tích chuyên sâu.
+        db.LeagueDnas.Add(new LeagueDna { LeagueId = LeagueId, LeagueName = "Giải Demo", Tags = DnaTag.OverCorners, Notes = "Dữ liệu giả lập: thiên hướng Tài góc." });
+        db.TeamDnas.AddRange(
+            new TeamDna { TeamId = TeamBase + 1, TeamName = TeamNames[0], Tags = DnaTag.OverGoals | DnaTag.OverCorners, Notes = "Demo: pressing tầm cao, đôi công." },
+            new TeamDna { TeamId = TeamBase + 4, TeamName = TeamNames[3], Tags = DnaTag.HomeFortress | DnaTag.AwayFragile, Notes = "Demo: khôn nhà dại chợ." },
+            new TeamDna { TeamId = TeamBase + 12, TeamName = TeamNames[11], Tags = DnaTag.Pragmatic, Notes = "Demo: lùi sâu, phá lối chơi." });
+        db.TeamChanges.Add(new TeamChange
+        {
+            TeamId = TeamBase + 5,
+            Kind = TeamChangeKind.NewManager,
+            PersonName = "HLV Demo",
+            StartDate = now.Date.AddDays(-10),
+            Source = TeamChangeSource.Manual,
+            Notes = "Dữ liệu giả lập",
+            UpdatedAtUtc = now,
+        });
 
         db.Rules.AddRange(
             new Rule
@@ -156,6 +177,19 @@ public sealed class DemoDataSeeder(IDbContextFactory<AppDbContext> dbFactory, Su
             });
 
         await db.SaveChangesAsync(ct);
+
+        var nextMatch = await db.Fixtures.Where(f => f.LeagueId == LeagueId && f.KickoffUtc > now && f.Status == FixtureStatus.NotStarted)
+            .OrderBy(f => f.KickoffUtc).FirstOrDefaultAsync(ct);
+        if (nextMatch is not null)
+        {
+            foreach (var (name, type) in new[] { ("Cầu thủ A", "Missing Fixture"), ("Cầu thủ B", "Missing Fixture"), ("Cầu thủ C", "Missing Fixture"), ("Cầu thủ D", "Questionable") })
+            {
+                db.FixtureInjuries.Add(new FixtureInjury { FixtureId = nextMatch.Id, TeamId = nextMatch.HomeTeamId, PlayerName = name, Type = type, Reason = "Demo" });
+            }
+
+            await db.SaveChangesAsync(ct);
+        }
+
         await suggestions.BackfillAsync(LeagueId, ct);
         await suggestions.RefreshAsync(ct);
         return "Đã tạo dữ liệu demo.";
@@ -167,6 +201,8 @@ public sealed class DemoDataSeeder(IDbContextFactory<AppDbContext> dbFactory, Su
         await db.Rules.Where(r => r.LeagueId == LeagueId).ExecuteDeleteAsync(ct);
         await db.Fixtures.Where(f => f.LeagueId == LeagueId).ExecuteDeleteAsync(ct);
         await db.Teams.Where(t => t.Id > TeamBase && t.Id <= TeamBase + TeamNames.Length).ExecuteDeleteAsync(ct);
+        await db.TeamDnas.Where(t => t.TeamId > TeamBase && t.TeamId <= TeamBase + TeamNames.Length).ExecuteDeleteAsync(ct);
+        await db.LeagueDnas.Where(l => l.LeagueId == LeagueId).ExecuteDeleteAsync(ct);
         await db.Leagues.Where(l => l.Id == LeagueId).ExecuteDeleteAsync(ct);
         return "Đã xóa dữ liệu demo.";
     }
@@ -217,6 +253,52 @@ public sealed class DemoDataSeeder(IDbContextFactory<AppDbContext> dbFactory, Su
             db.OddsSnapshots.Add(Snapshot(fixture.Id, Market.AsianHandicap, homeLine, homePrice, fetched));
             db.OddsSnapshots.Add(Snapshot(fixture.Id, Market.OverUnder, totalLine, overPrice, fetched));
         }
+
+        // Kèo góc và thẻ: một mức duy nhất (thị trường góc không xét biến động).
+        var diff = lambdaHome - lambdaAway;
+        var cornerLine = Math.Floor((decimal)(9.6 + Math.Abs(diff) * 0.8 + (random.NextDouble() - 0.5) * 2)) + 0.5m;
+        var cornerHandicap = Quarter(-diff * 1.6, -3.5m, 3.5m);
+        cornerHandicap = Math.Floor(cornerHandicap) + 0.5m;
+        db.OddsSnapshots.Add(Snapshot(fixture.Id, Market.CornersOverUnder, cornerLine, 1.83m, lastAllowed));
+        db.OddsSnapshots.Add(Snapshot(fixture.Id, Market.CornersHandicap, cornerHandicap, 1.90m, lastAllowed));
+        db.OddsSnapshots.Add(Snapshot(fixture.Id, Market.CardsOverUnder, random.NextDouble() < 0.5 ? 3.5m : 4.5m, 1.90m, lastAllowed));
+    }
+
+    /// <summary>Thống kê giả lập: góc, sút, xG, thẻ và phút ghi bàn.</summary>
+    private static void AddStats(AppDbContext db, Random random, Fixture fixture, double strengthDiff, double lambdaHome, double lambdaAway, DateTime now)
+    {
+        var share = fixture.IsFinished ? 1.0 : (fixture.Elapsed ?? 45) / 90.0;
+        var homeCorners = Poisson(random, Math.Max(1.5, 5.3 + 2.4 * strengthDiff) * share);
+        var awayCorners = Poisson(random, Math.Max(1.5, 4.4 - 2.4 * strengthDiff) * share);
+        var minutes = (int)(90 * share);
+        var goals = Enumerable.Repeat('H', fixture.HomeGoals ?? 0).Concat(Enumerable.Repeat('A', fixture.AwayGoals ?? 0))
+            .Select(side => (Minute: random.Next(1, Math.Max(2, minutes + 1)), Side: side))
+            .OrderBy(g => g.Minute)
+            .ToList();
+
+        db.FixtureStats.Add(new FixtureStats
+        {
+            FixtureId = fixture.Id,
+            HomeCorners = homeCorners,
+            AwayCorners = awayCorners,
+            HomeShots = Poisson(random, (9 + 6 * lambdaHome) * share),
+            AwayShots = Poisson(random, (9 + 6 * lambdaAway) * share),
+            HomeShotsOnTarget = Poisson(random, (2 + 2 * lambdaHome) * share),
+            AwayShotsOnTarget = Poisson(random, (2 + 2 * lambdaAway) * share),
+            HomeXg = Math.Round((decimal)(lambdaHome * share * (0.8 + random.NextDouble() * 0.4)), 2),
+            AwayXg = Math.Round((decimal)(lambdaAway * share * (0.8 + random.NextDouble() * 0.4)), 2),
+            HomePossession = (int)Math.Clamp(50 + strengthDiff * 15, 30, 70),
+            AwayPossession = 100 - (int)Math.Clamp(50 + strengthDiff * 15, 30, 70),
+            HomeYellow = Poisson(random, 1.9 * share),
+            AwayYellow = Poisson(random, 2.1 * share),
+            HomeRed = random.NextDouble() < 0.04 ? 1 : 0,
+            AwayRed = random.NextDouble() < 0.05 ? 1 : 0,
+            HalftimeHome = goals.Count(g => g.Side == 'H' && g.Minute <= 45),
+            HalftimeAway = goals.Count(g => g.Side == 'A' && g.Minute <= 45),
+            GoalTimeline = goals.Count == 0 ? null : string.Join(",", goals.Select(g => $"{g.Minute}{g.Side}")),
+            IsFinal = fixture.IsFinished,
+            UpdatedAtUtc = now,
+        });
     }
 
     private static OddsSnapshot Snapshot(int fixtureId, Market market, decimal line, decimal priceA, DateTime at) => new()

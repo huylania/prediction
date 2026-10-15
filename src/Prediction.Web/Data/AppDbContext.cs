@@ -19,6 +19,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<TeamChange> TeamChanges => Set<TeamChange>();
     public DbSet<LeagueDna> LeagueDnas => Set<LeagueDna>();
     public DbSet<TeamDna> TeamDnas => Set<TeamDna>();
+    public DbSet<AnalysisPick> AnalysisPicks => Set<AnalysisPick>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -153,6 +154,21 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(x => x.TeamId).ValueGeneratedNever();
             e.Property(x => x.TeamName).HasMaxLength(200);
             e.Property(x => x.Notes).HasMaxLength(1000);
+        });
+
+        b.Entity<AnalysisPick>(e =>
+        {
+            e.Property(x => x.Line).HasPrecision(6, 2);
+            e.Property(x => x.Odds).HasPrecision(8, 3);
+            e.Property(x => x.Score).HasPrecision(4, 1);
+            e.Property(x => x.WinProbability).HasPrecision(5, 4);
+            e.Property(x => x.ExpectedValue).HasPrecision(8, 4);
+            e.Property(x => x.Profit).HasPrecision(10, 4);
+            e.Property(x => x.Label).HasMaxLength(200);
+            e.Property(x => x.Flags).HasMaxLength(50);
+            e.HasOne(x => x.Fixture).WithMany().HasForeignKey(x => x.FixtureId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => new { x.FixtureId, x.Market }).IsUnique();
+            e.HasIndex(x => x.Outcome);
         });
 
         SeedData.Apply(b);

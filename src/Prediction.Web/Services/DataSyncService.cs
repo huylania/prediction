@@ -31,6 +31,9 @@ public sealed class SyncOptions
     public int CoachesIntervalMinutes { get; set; } = 1440;
     public int InjuriesIntervalMinutes { get; set; } = 360;
 
+    /// <summary>Cập nhật khuyến nghị phân tích chuyên sâu (không tốn request API).</summary>
+    public int AnalysisIntervalMinutes { get; set; } = 10;
+
     /// <summary>Còn ít hơn số request này trong ngày thì tạm dừng các tác vụ phụ (thống kê, HLV, chấn thương, tư vấn).</summary>
     public int QuotaReserve { get; set; } = 1000;
 }

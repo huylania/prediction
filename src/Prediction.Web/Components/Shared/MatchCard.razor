@@ -77,6 +77,22 @@
         <MarketBox Outlook="Handicap" Match="Match" />
         <MarketBox Outlook="Totals" Match="Match" />
     </div>
+
+    @if (Match.Analysis is not null || ExtraMarkets is not null)
+    {
+        <div class="mc-analysis">
+            @if (Match.Analysis is { } best)
+            {
+                <a href="tran-dau/@f.Id?tab=phan-tich" title="Phân tích chuyên sâu"><AnalysisBadge Group="best.Group" Score="(double)best.Score" HasFlags="best.Flags is not null" /></a>
+                <span>Phân tích: <span class="pick">@best.Label</span> @@@LineText.Odds(best.Odds)</span>
+                <span class="text-muted">· thắng @Fmt.Pct(best.WinProbability) · EV @Fmt.Profit(best.ExpectedValue)</span>
+            }
+            @if (ExtraMarkets is { } extra)
+            {
+                <span class="mc-extra">@extra</span>
+            }
+        </div>
+    }
 </div>
 
 @code {
@@ -86,6 +102,31 @@
     [Parameter] public bool Standalone { get; set; }
 
     private MarketOutlook Handicap => MatchAdvisor.Outlook(Match.Context, Match.Advice, Market.AsianHandicap, Match.Home, Match.Away);
+
+    /// <summary>Dòng kèo phụ: tài xỉu góc, chấp góc, thẻ.</summary>
+    private string? ExtraMarkets
+    {
+        get
+        {
+            var parts = new List<string>();
+            if (Match.Context.Corners is { } c)
+            {
+                parts.Add($"Góc {LineText.Number(c.Current.Line)}");
+            }
+
+            if (Match.Context.CornersHandicap is { } ch)
+            {
+                parts.Add($"Chấp góc {(ch.Current.Line <= 0 ? Match.Home : Match.Away)} {LineText.Signed(-Math.Abs(ch.Current.Line))}");
+            }
+
+            if (Match.Context.Cards is { } k)
+            {
+                parts.Add($"Thẻ {LineText.Number(k.Current.Line)}");
+            }
+
+            return parts.Count == 0 ? null : string.Join(" · ", parts);
+        }
+    }
 
     private MarketOutlook Totals => MatchAdvisor.Outlook(Match.Context, Match.Advice, Market.OverUnder, Match.Home, Match.Away);
 

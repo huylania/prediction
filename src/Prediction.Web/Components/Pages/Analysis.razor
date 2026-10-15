@@ -1,0 +1,200 @@
+@page "/phan-tich"
+@rendermode InteractiveServer
+@inject AnalysisService Analyses
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject TimeDisplay Time
+
+<PageTitle>Phân tích chuyên sâu</PageTitle>
+
+<h1 class="h3 mb-1">Phân tích chuyên sâu</h1>
+<p class="text-muted small mb-3">
+    Theo file kỹ năng: DNA giải/đội → quy tắc chờ ổn định 2–3 trận → kèo chấp dự phóng & kèo lạ → 5 cờ đỏ → đối chiếu 3 lớp bàn/góc/thẻ → thang điểm 10.
+    Khuyến nghị được chốt theo kèo cuối trước giờ bóng lăn và chấm sau trận.
+</p>
+
+@if (_loading)
+{
+    <p class="text-muted">Đang phân tích các trận sắp đá…</p>
+}
+else
+{
+    <div class="d-flex flex-wrap gap-2 mb-2">
+        @foreach (var d in new[] { 1, 2, 3 })
+        {
+            <button class="chip @(_days == d ? "active" : "")" @onclick="() => _days = d">@(d == 1 ? "24 giờ tới" : $"{d} ngày tới")</button>
+        }
+        <span class="mx-1"></span>
+        <button class="chip @(_league is null ? "active" : "")" @onclick="() => _league = null">Tất cả giải</button>
+        @foreach (var g in InWindow.GroupBy(r => r.Fixture.LeagueId).OrderByDescending(g => g.Count()))
+        {
+            var id = g.Key;
+            <button class="chip @(_league == id ? "active" : "")" @onclick="() => _league = id">@(g.First().League?.Name ?? $"#{id}") <span class="text-muted">@g.Count()</span></button>
+        }
+    </div>
+
+    @if (Visible.Count == 0)
+    {
+        <div class="empty-state">Không có trận nào sắp đá trong khoảng này. Đồng bộ lịch thi đấu trong <a href="cai-dat">Cài đặt</a>.</div>
+    }
+    else
+    {
+        <div class="an-cols mt-3">
+            @foreach (var group in new[] { AnalysisGroup.A, AnalysisGroup.B, AnalysisGroup.C })
+            {
+                var items = Visible.Where(r => r.Analysis.Group == group).OrderByDescending(r => r.Analysis.Best?.Score ?? 0).ToList();
+                <div class="an-col @AnalysisGroupText.Short(group)">
+                    <div class="an-col-head">
+                        <h2>@AnalysisGroupText.Label(group)</h2>
+                        <span class="sub">@items.Count trận</span>
+                    </div>
+                    <div class="hint mb-2">
+                        @(group switch
+                        {
+                            AnalysisGroup.A => "Đồng thuận DNA + số liệu, vượt bộ lọc cờ đỏ: có thể vào trước trận (vẫn kiểm tra đội hình).",
+                            AnalysisGroup.B => "Có cơ sở nhưng còn rủi ro: cấm vào trước trận, chỉ vào sau phút 15–20 khi thế trận xác nhận.",
+                            _ => "Điểm < 6 hoặc dính cờ đỏ: đứng ngoài bảo toàn vốn.",
+                        })
+                    </div>
+                    @foreach (var r in items.Take(group == AnalysisGroup.C && !_showAllC ? 25 : int.MaxValue))
+                    {
+                        <AnalysisCard R="r" />
+                    }
+                    @if (group == AnalysisGroup.C && items.Count > 25 && !_showAllC)
+                    {
+                        <button class="btn btn-sm btn-link" @onclick="() => _showAllC = true">Xem thêm @(items.Count - 25) trận</button>
+                    }
+                </div>
+            }
+        </div>
+    }
+
+    <h2 class="h5 mt-4">Thành tích khuyến nghị đã chốt</h2>
+    <p class="hint">Mỗi trận một khuyến nghị cho mỗi loại kèo, chốt theo kèo cuối trước giờ bóng lăn. Lãi/lỗ tính trên 1 đơn vị cược. Kèo góc/thẻ chấm theo thống kê trận (thẻ đỏ tính 1).</p>
+    @if (_stats.Count == 0)
+    {
+        <div class="text-muted small mb-3">Chưa có khuyến nghị nhóm A/B nào được chấm.</div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-sm bg-white border">
+                <thead><tr><th>Nhóm</th><th>Loại kèo</th><th class="text-end">Số kèo</th><th class="text-end">T / TN / H / BN / B</th><th class="text-end">Tỉ lệ thắng</th><th class="text-end">Lãi/lỗ</th><th class="text-end">ROI</th></tr></thead>
+                <tbody>
+                    @foreach (var s in _stats)
+                    {
+                        <tr class="@(s.Market is null ? "fw-semibold table-light" : "")">
+                            <td><AnalysisBadge Group="s.Group" /></td>
+                            <td>@(s.Market is { } m ? AnalysisView.MarketName(m) : "Tất cả")</td>
+                            <td class="text-end">@s.Count</td>
+                            <td class="text-end">@s.Win / @s.HalfWin / @s.Push / @s.HalfLoss / @s.Loss</td>
+                            <td class="text-end">@Fmt.Pct(s.WinRate)</td>
+                            <td class="text-end @Fmt.Sign(s.Profit)">@Fmt.Profit(s.Profit)</td>
+                            <td class="text-end @Fmt.Sign(s.Profit)">@Fmt.Roi(s.Count == 0 ? null : s.Profit / s.Count)</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    @if (_recent.Count > 0)
+    {
+        <h3 class="h6 mt-3">Khuyến nghị A/B gần đây</h3>
+        <div class="table-responsive">
+            <table class="table table-sm small bg-white border">
+                <thead><tr><th>Trận</th><th>Nhóm</th><th>Khuyến nghị</th><th>Kết quả</th><th class="text-end">Lãi/lỗ</th></tr></thead>
+                <tbody>
+                    @foreach (var p in _recent)
+                    {
+                        <tr>
+                            <td><a href="tran-dau/@p.FixtureId?tab=phan-tich">@Time.Short(p.Fixture!.KickoffUtc) · @Name(p.Fixture.HomeTeamId) – @Name(p.Fixture.AwayTeamId)</a> <span class="text-muted">@p.Fixture.HomeGoals-@p.Fixture.AwayGoals</span></td>
+                            <td><AnalysisBadge Group="p.Group" Score="(double)p.Score" /></td>
+                            <td>@p.Label @@@LineText.Odds(p.Odds)</td>
+                            <td><OutcomeBadge Outcome="p.Outcome" /></td>
+                            <td class="text-end @Fmt.Sign(p.Profit ?? 0)">@(p.Profit is { } pr ? Fmt.Profit(pr) : "")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+}
+
+@code {
+    private bool _loading = true;
+    private List<MatchAnalysisResult> _all = [];
+    private int _days = 3;
+    private int? _league;
+    private bool _showAllC;
+    private List<GroupStat> _stats = [];
+    private List<AnalysisPick> _recent = [];
+    private Dictionary<int, string> _teams = [];
+
+    private IEnumerable<MatchAnalysisResult> InWindow =>
+        _all.Where(r => r.Fixture.KickoffUtc <= Analyses.UtcNow.AddDays(_days));
+
+    private List<MatchAnalysisResult> Visible => InWindow.Where(r => _league is null || r.Fixture.LeagueId == _league).ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _all = await Analyses.UpcomingAsync(AnalysisService.Lookahead, null);
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var settled = await db.AnalysisPicks.AsNoTracking()
+            .Where(p => p.Group != AnalysisGroup.C && p.Outcome != BetOutcome.Pending && p.Outcome != BetOutcome.Void)
+            .Select(p => new { p.Group, p.Market, p.Outcome, Profit = p.Profit ?? 0 })
+            .ToListAsync();
+        foreach (var g in settled.GroupBy(p => p.Group).OrderBy(g => g.Key))
+        {
+            _stats.Add(Stat(g.Key, null, g.Select(x => (x.Outcome, x.Profit))));
+            foreach (var m in g.GroupBy(x => x.Market).OrderBy(m => m.Key))
+            {
+                _stats.Add(Stat(g.Key, m.Key, m.Select(x => (x.Outcome, x.Profit))));
+            }
+        }
+
+        _recent = await db.AnalysisPicks.AsNoTracking().Include(p => p.Fixture)
+            .Where(p => p.Group != AnalysisGroup.C && p.Outcome != BetOutcome.Pending)
+            .OrderByDescending(p => p.SettledAtUtc)
+            .Take(20)
+            .ToListAsync();
+        var teamIds = _recent.SelectMany(p => new[] { p.Fixture!.HomeTeamId, p.Fixture.AwayTeamId }).Distinct().ToList();
+        _teams = await db.Teams.AsNoTracking().Where(t => teamIds.Contains(t.Id)).ToDictionaryAsync(t => t.Id, t => t.Name);
+        _loading = false;
+    }
+
+    private string Name(int teamId) => _teams.GetValueOrDefault(teamId) ?? $"#{teamId}";
+
+    private static GroupStat Stat(AnalysisGroup group, Market? market, IEnumerable<(BetOutcome Outcome, decimal Profit)> rows)
+    {
+        var list = rows.ToList();
+        var stat = new GroupStat
+        {
+            Group = group,
+            Market = market,
+            Count = list.Count,
+            Win = list.Count(r => r.Outcome == BetOutcome.Win),
+            HalfWin = list.Count(r => r.Outcome == BetOutcome.HalfWin),
+            Push = list.Count(r => r.Outcome == BetOutcome.Push),
+            HalfLoss = list.Count(r => r.Outcome == BetOutcome.HalfLoss),
+            Loss = list.Count(r => r.Outcome == BetOutcome.Loss),
+            Profit = list.Sum(r => r.Profit),
+        };
+        var decided = stat.Count - stat.Push;
+        stat.WinRate = decided == 0 ? null : (stat.Win + stat.HalfWin * 0.5m) / (stat.Win + stat.HalfWin * 0.5m + stat.Loss + stat.HalfLoss * 0.5m);
+        return stat;
+    }
+
+    private sealed class GroupStat
+    {
+        public AnalysisGroup Group { get; init; }
+        public Market? Market { get; init; }
+        public int Count { get; init; }
+        public int Win { get; init; }
+        public int HalfWin { get; init; }
+        public int Push { get; init; }
+        public int HalfLoss { get; init; }
+        public int Loss { get; init; }
+        public decimal Profit { get; init; }
+        public decimal? WinRate { get; set; }
+    }
+}

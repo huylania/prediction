@@ -20,6 +20,7 @@ public static class SyncJobs
     public const string Stats = "stats";
     public const string Coaches = "coaches";
     public const string Injuries = "injuries";
+    public const string Analysis = "analysis";
 
     /// <summary>Tác vụ phụ: tạm dừng khi quota trong ngày sắp hết.</summary>
     public static bool IsLowPriority(string job) => job is Stats or Coaches or Injuries or Advice;
@@ -38,6 +39,7 @@ public static class SyncJobs
         Stats => "Thống kê trận (góc, thẻ, sút)",
         Coaches => "HLV",
         Injuries => "Chấn thương",
+        Analysis => "Phân tích chuyên sâu",
         _ => job,
     };
 }
@@ -50,6 +52,7 @@ public sealed class SyncCoordinator(
     IServiceScopeFactory scopes,
     IDbContextFactory<AppDbContext> dbFactory,
     SuggestionService suggestions,
+    AnalysisService analysis,
     TimeProvider clock,
     ILogger<SyncCoordinator> logger)
 {
@@ -78,7 +81,7 @@ public sealed class SyncCoordinator(
             try
             {
                 message = await work(sync, ct);
-                if (job != SyncJobs.Suggestions)
+                if (job is not (SyncJobs.Suggestions or SyncJobs.Analysis))
                 {
                     var suggestionMessage = await suggestions.RefreshAsync(ct);
                     message = message is null || suggestionMessage is null ? message : $"{message} {suggestionMessage}";
@@ -132,6 +135,7 @@ public sealed class SyncCoordinator(
         SyncJobs.Stats => RunAsync(job, (s, c) => s.SyncStatsAsync(null, c), ct),
         SyncJobs.Coaches => RunAsync(job, (s, c) => s.SyncCoachesAsync(c), ct),
         SyncJobs.Injuries => RunAsync(job, (s, c) => s.SyncInjuriesAsync(c), ct),
+        SyncJobs.Analysis => RunAsync(job, (_, c) => analysis.RefreshPicksAsync(c), ct),
         _ => throw new ArgumentOutOfRangeException(nameof(job)),
     };
 }
@@ -216,5 +220,6 @@ public sealed class SyncBackgroundService(
         }
 
         yield return (SyncJobs.Suggestions, o.SuggestionsIntervalMinutes);
+        yield return (SyncJobs.Analysis, o.AnalysisIntervalMinutes);
     }
 }

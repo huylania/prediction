@@ -1,0 +1,328 @@
+@page "/dna"
+@rendermode InteractiveServer
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject TimeProvider Clock
+
+<PageTitle>DNA & nhân sự</PageTitle>
+
+<h1 class="h3 mb-1">DNA & nhân sự</h1>
+<p class="text-muted small mb-3">
+    Nhãn DNA là "định hướng xác suất nền" của file kỹ năng: dùng để tính lợi thế sân trong kèo chấp dự phóng, cộng/trừ điểm khi cùng/ngược hướng và bật cờ đỏ.
+    HLV mới lấy tự động từ API (có thể thiếu); tân binh trụ cột cần nhập tay. Trong 1–3 trận đầu, trận đấu bị đưa vào nhóm "chờ ổn định".
+</p>
+
+@if (_message is not null)
+{
+    <div class="alert @(_ok ? "alert-success" : "alert-danger") alert-dismissible py-2">
+        @_message
+        <button type="button" class="btn-close" @onclick="() => _message = null"></button>
+    </div>
+}
+
+<ul class="nav mc-tabs gap-2 mb-3">
+    <li class="nav-item"><button class="nav-link @(_tab == 0 ? "active" : "")" @onclick="() => _tab = 0">HLV mới / tân binh <span class="count">@_changes.Count</span></button></li>
+    <li class="nav-item"><button class="nav-link @(_tab == 1 ? "active" : "")" @onclick="() => _tab = 1">Giải đấu <span class="count">@_leagues.Count(l => l.Tags != DnaTag.None)</span></button></li>
+    <li class="nav-item"><button class="nav-link @(_tab == 2 ? "active" : "")" @onclick="() => _tab = 2">Đội bóng <span class="count">@_teams.Count</span></button></li>
+</ul>
+
+@if (_tab == 0)
+{
+    <div class="form-section">
+        <h2>Thêm HLV mới / tân binh trụ cột</h2>
+        <div class="row g-2 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label small mb-0">Đội</label>
+                <TeamPicker @bind-TeamId="_newChange.TeamId" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small mb-0">Loại</label>
+                <select class="form-select form-select-sm" @bind="_newChange.Kind">
+                    <option value="@TeamChangeKind.NewManager">HLV mới</option>
+                    <option value="@TeamChangeKind.KeySigning">Tân binh trụ cột</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small mb-0">Tên</label>
+                <input class="form-control form-control-sm" @bind="_newChange.PersonName" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small mb-0">Ngày bắt đầu / đá chính đầu tiên</label>
+                <input type="date" class="form-control form-control-sm" @bind="_newChange.StartDate" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small mb-0">Ghi chú (vd: tiền đạo cánh, sơ đồ 3-4-3)</label>
+                <input class="form-control form-control-sm" @bind="_newChange.Notes" />
+            </div>
+            <div class="col-md-1"><button class="btn btn-sm btn-primary w-100" @onclick="AddChangeAsync">Thêm</button></div>
+        </div>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-sm bg-white border small">
+            <thead><tr><th>Đội</th><th>Loại</th><th>Tên</th><th>Từ ngày</th><th>Số trận đã đá</th><th>Trạng thái</th><th>Nguồn</th><th>Ghi chú</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var c in _changes)
+                {
+                    var played = _played.GetValueOrDefault(c.Id);
+                    <tr class="@(c.IsIgnored ? "text-muted text-decoration-line-through" : "")">
+                        <td>@c.Team?.Name</td>
+                        <td>@(c.Kind == TeamChangeKind.NewManager ? "HLV mới" : "Tân binh")</td>
+                        <td>@c.PersonName</td>
+                        <td>@c.StartDate.ToString("dd/MM/yyyy")</td>
+                        <td>@played</td>
+                        <td>
+                            @if (c.IsIgnored) { <span>bỏ qua</span> }
+                            else if (played < 3) { <span class="flag-pill">chờ ổn định (trận tới là trận @(played + 1))</span> }
+                            else if (played < 10) { <span class="text-success">đã ổn định – dùng @played trận giai đoạn mới</span> }
+                            else { <span class="text-muted">hết ảnh hưởng (≥ 10 trận)</span> }
+                        </td>
+                        <td>@(c.Source == TeamChangeSource.Api ? "API" : "Nhập tay")</td>
+                        <td>@c.Notes</td>
+                        <td class="text-nowrap">
+                            <button class="btn btn-sm btn-link p-0 me-2" @onclick="() => ToggleIgnoreAsync(c)">@(c.IsIgnored ? "Dùng lại" : "Bỏ qua")</button>
+                            <button class="btn btn-sm btn-link text-danger p-0" @onclick="() => DeleteChangeAsync(c)">Xóa</button>
+                        </td>
+                    </tr>
+                }
+                @if (_changes.Count == 0)
+                {
+                    <tr><td colspan="9" class="text-muted">Chưa có. Tác vụ "HLV" trong Cài đặt tự kiểm tra các đội có trận trong 3 ngày tới.</td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+else if (_tab == 1)
+{
+    <div class="table-responsive">
+        <table class="table table-sm bg-white border small">
+            <thead>
+                <tr>
+                    <th>Giải</th>
+                    @foreach (var t in DnaTagText.LeagueTags) { <th class="text-center">@DnaTagText.Label(t, false)</th> }
+                    <th style="min-width: 260px">Ghi chú</th><th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var l in _leagues)
+                {
+                    <tr>
+                        <td class="fw-semibold">@l.LeagueName @if (!l.Tracked) { <span class="text-muted fw-normal">(chưa theo dõi)</span> }</td>
+                        @foreach (var t in DnaTagText.LeagueTags)
+                        {
+                            <td class="text-center"><input type="checkbox" class="form-check-input" checked="@l.Tags.HasFlag(t)" @onchange="e => l.Tags = Toggle(l.Tags, t, (bool)e.Value!)" /></td>
+                        }
+                        <td><input class="form-control form-control-sm" @bind="l.Notes" /></td>
+                        <td><button class="btn btn-sm btn-outline-primary" @onclick="() => SaveLeagueAsync(l)">Lưu</button></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+else
+{
+    <div class="form-section">
+        <h2>Thêm / sửa DNA đội bóng</h2>
+        <div class="row g-2 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label small mb-0">Đội</label>
+                <TeamPicker @bind-TeamId="_newTeamId" />
+            </div>
+            <div class="col-md-2"><button class="btn btn-sm btn-primary" @onclick="AddTeamAsync">Thêm vào danh sách</button></div>
+            <div class="col-md-4 ms-auto">
+                <label class="form-label small mb-0">Lọc</label>
+                <input class="form-control form-control-sm" placeholder="Tên đội…" @bind="_filter" @bind:event="oninput" />
+            </div>
+        </div>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-sm bg-white border small">
+            <thead>
+                <tr>
+                    <th>Đội</th>
+                    @foreach (var t in DnaTagText.TeamTags) { <th class="text-center">@DnaTagText.Label(t, true)</th> }
+                    <th style="min-width: 260px">Ghi chú</th><th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var d in _teams.Where(d => string.IsNullOrWhiteSpace(_filter) || d.TeamName.Contains(_filter.Trim(), StringComparison.OrdinalIgnoreCase)))
+                {
+                    <tr>
+                        <td class="fw-semibold">@d.TeamName</td>
+                        @foreach (var t in DnaTagText.TeamTags)
+                        {
+                            <td class="text-center"><input type="checkbox" class="form-check-input" checked="@d.Tags.HasFlag(t)" @onchange="e => d.Tags = Toggle(d.Tags, t, (bool)e.Value!)" /></td>
+                        }
+                        <td><input class="form-control form-control-sm" @bind="d.Notes" /></td>
+                        <td class="text-nowrap">
+                            <button class="btn btn-sm btn-outline-primary" @onclick="() => SaveTeamAsync(d)">Lưu</button>
+                            <button class="btn btn-sm btn-link text-danger" @onclick="() => DeleteTeamAsync(d)">Xóa</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    <div class="hint">"Mạnh sân nhà" + "Yếu sân khách" = nhóm "khôn nhà dại chợ" (cờ đỏ 1 khi làm khách mà phải chấp 1/4–3/4).</div>
+}
+
+@code {
+    private int _tab;
+    private string? _message;
+    private bool _ok;
+    private List<TeamChange> _changes = [];
+    private Dictionary<long, int> _played = [];
+    private List<LeagueRow> _leagues = [];
+    private List<TeamDna> _teams = [];
+    private readonly NewChange _newChange = new();
+    private int? _newTeamId;
+    private string _filter = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        _newChange.StartDate = Clock.GetUtcNow().UtcDateTime.Date;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _changes = await db.TeamChanges.AsNoTracking().Include(c => c.Team).OrderByDescending(c => c.StartDate).ToListAsync();
+        _played.Clear();
+        foreach (var c in _changes)
+        {
+            _played[c.Id] = await db.Fixtures.CountAsync(f => (f.HomeTeamId == c.TeamId || f.AwayTeamId == c.TeamId)
+                && f.KickoffUtc >= c.StartDate && f.HomeGoals != null && (f.Status == "FT" || f.Status == "AET" || f.Status == "PEN"));
+        }
+
+        var dna = await db.LeagueDnas.AsNoTracking().ToDictionaryAsync(d => d.LeagueId);
+        var tracked = await db.Leagues.AsNoTracking().Where(l => l.IsTracked && !l.IsDemo).ToListAsync();
+        _leagues = tracked.Select(l => new LeagueRow(l.Id, dna.GetValueOrDefault(l.Id)?.LeagueName ?? $"{l.Name} ({l.Country})", true)
+            {
+                Tags = dna.GetValueOrDefault(l.Id)?.Tags ?? DnaTag.None,
+                Notes = dna.GetValueOrDefault(l.Id)?.Notes,
+            })
+            .Concat(dna.Values.Where(d => tracked.All(l => l.Id != d.LeagueId)).Select(d => new LeagueRow(d.LeagueId, d.LeagueName, false) { Tags = d.Tags, Notes = d.Notes }))
+            .OrderByDescending(l => l.Tracked).ThenBy(l => l.LeagueName)
+            .ToList();
+        _teams = await db.TeamDnas.AsNoTracking().OrderBy(d => d.TeamName).ToListAsync();
+    }
+
+    private static DnaTag Toggle(DnaTag tags, DnaTag tag, bool on) => on ? tags | tag : tags & ~tag;
+
+    private void Show(bool ok, string message) => (_ok, _message) = (ok, message);
+
+    private async Task AddChangeAsync()
+    {
+        if (_newChange.TeamId is not { } teamId || string.IsNullOrWhiteSpace(_newChange.PersonName))
+        {
+            Show(false, "Chọn đội và nhập tên HLV / cầu thủ.");
+            return;
+        }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        db.TeamChanges.Add(new TeamChange
+        {
+            TeamId = teamId,
+            Kind = _newChange.Kind,
+            PersonName = _newChange.PersonName.Trim(),
+            StartDate = DateTime.SpecifyKind(_newChange.StartDate.Date, DateTimeKind.Utc),
+            Notes = string.IsNullOrWhiteSpace(_newChange.Notes) ? null : _newChange.Notes.Trim(),
+            Source = TeamChangeSource.Manual,
+            UpdatedAtUtc = Clock.GetUtcNow().UtcDateTime,
+        });
+        await db.SaveChangesAsync();
+        _newChange.PersonName = "";
+        _newChange.Notes = null;
+        Show(true, "Đã thêm. Phân tích chuyên sâu sẽ áp quy tắc chờ ổn định 2–3 trận.");
+        await LoadAsync();
+    }
+
+    private async Task ToggleIgnoreAsync(TeamChange c)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        await db.TeamChanges.Where(x => x.Id == c.Id).ExecuteUpdateAsync(s => s.SetProperty(x => x.IsIgnored, !c.IsIgnored));
+        await LoadAsync();
+    }
+
+    private async Task DeleteChangeAsync(TeamChange c)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        await db.TeamChanges.Where(x => x.Id == c.Id).ExecuteDeleteAsync();
+        await LoadAsync();
+    }
+
+    private async Task SaveLeagueAsync(LeagueRow row)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var dna = await db.LeagueDnas.FindAsync(row.LeagueId);
+        if (dna is null)
+        {
+            dna = new LeagueDna { LeagueId = row.LeagueId, LeagueName = row.LeagueName };
+            db.LeagueDnas.Add(dna);
+        }
+
+        dna.Tags = row.Tags;
+        dna.Notes = string.IsNullOrWhiteSpace(row.Notes) ? null : row.Notes.Trim();
+        await db.SaveChangesAsync();
+        Show(true, $"Đã lưu DNA {row.LeagueName}.");
+    }
+
+    private async Task AddTeamAsync()
+    {
+        if (_newTeamId is not { } id)
+        {
+            Show(false, "Chọn đội.");
+            return;
+        }
+
+        if (_teams.Any(t => t.TeamId == id))
+        {
+            _filter = _teams.First(t => t.TeamId == id).TeamName;
+            return;
+        }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var team = await db.Teams.FindAsync(id);
+        db.TeamDnas.Add(new TeamDna { TeamId = id, TeamName = team?.Name ?? $"#{id}" });
+        await db.SaveChangesAsync();
+        _filter = team?.Name ?? "";
+        _newTeamId = null;
+        await LoadAsync();
+    }
+
+    private async Task SaveTeamAsync(TeamDna d)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        await db.TeamDnas.Where(x => x.TeamId == d.TeamId).ExecuteUpdateAsync(s => s
+            .SetProperty(x => x.Tags, d.Tags)
+            .SetProperty(x => x.Notes, string.IsNullOrWhiteSpace(d.Notes) ? null : d.Notes.Trim()));
+        Show(true, $"Đã lưu DNA {d.TeamName}.");
+    }
+
+    private async Task DeleteTeamAsync(TeamDna d)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        await db.TeamDnas.Where(x => x.TeamId == d.TeamId).ExecuteDeleteAsync();
+        await LoadAsync();
+    }
+
+    private sealed class LeagueRow(int leagueId, string leagueName, bool tracked)
+    {
+        public int LeagueId { get; } = leagueId;
+        public string LeagueName { get; } = leagueName;
+        public bool Tracked { get; } = tracked;
+        public DnaTag Tags { get; set; }
+        public string? Notes { get; set; }
+    }
+
+    private sealed class NewChange
+    {
+        public int? TeamId { get; set; }
+        public TeamChangeKind Kind { get; set; } = TeamChangeKind.NewManager;
+        public string PersonName { get; set; } = "";
+        public DateTime StartDate { get; set; }
+        public string? Notes { get; set; }
+    }
+}
