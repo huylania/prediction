@@ -963,11 +963,18 @@ public static class MatchAnalyzer
         var anyTeamOver = c.HomeTags.HasFlag(DnaTag.OverGoals) || c.AwayTags.HasFlag(DnaTag.OverGoals);
         var anyPragmatic = c.HomeTags.HasFlag(DnaTag.Pragmatic) || c.AwayTags.HasFlag(DnaTag.Pragmatic);
         var anyCornerTeam = c.HomeTags.HasFlag(DnaTag.OverCorners) || c.AwayTags.HasFlag(DnaTag.OverCorners);
+        bool Any(DnaTag tag) => c.HomeTags.HasFlag(tag) || c.AwayTags.HasFlag(tag);
+        string Who(DnaTag tag) => c.HomeTags.HasFlag(tag) && c.AwayTags.HasFlag(tag) ? "cả hai đội" : c.HomeTags.HasFlag(tag) ? input.HomeName : input.AwayName;
+
+        // "Bắt nạt đội yếu": chỉ tính khi đội đó chấp từ 1 trái và không xếp dưới đối thủ trên BXH.
+        bool HomeAbove() => input.HomeStanding?.Rank is not { } rh || input.AwayStanding?.Rank is not { } ra || rh < ra;
+        bool AwayAbove() => input.HomeStanding?.Rank is not { } rh || input.AwayStanding?.Rank is not { } ra || ra < rh;
         switch (pick.Market, pick.Side)
         {
             case (Market.OverUnder, PickSide.Over):
                 Add(c.LeagueTags.HasFlag(DnaTag.OverGoals), 0.5, $"{league} – giải Tài bàn");
                 Add(anyTeamOver, 0.5, "có đội DNA nổ Tài");
+                Add(Any(DnaTag.Btts), 0.25, $"{Who(DnaTag.Btts)} công làm thủ phá (BTTS)");
                 Add(c.LeagueTags.HasFlag(DnaTag.UnderGoals), -0.5, $"{league} – giải Xỉu/thực dụng");
                 Add(c.HomeTags.HasFlag(DnaTag.Pragmatic) && c.AwayTags.HasFlag(DnaTag.Pragmatic), -0.5, "hai đội thực dụng");
                 break;
@@ -976,21 +983,27 @@ public static class MatchAnalyzer
                 Add(anyPragmatic && !anyTeamOver, 0.5, "có đội thực dụng");
                 Add(c.LeagueTags.HasFlag(DnaTag.OverGoals), -0.5, $"{league} – giải Tài bàn (hạn chế Xỉu)");
                 Add(anyTeamOver, -0.5, "có đội DNA nổ Tài");
+                Add(Any(DnaTag.Btts), -0.25, $"{Who(DnaTag.Btts)} công làm thủ phá (BTTS)");
                 break;
             case (Market.AsianHandicap, PickSide.Home):
                 Add(c.LeagueTags.HasFlag(DnaTag.HomeFortress) && pick.Line is >= -0.5m and <= 0m, 0.5, $"{league} – thánh địa sân nhà, chủ nhà chấp nhẹ");
                 Add(c.LeagueTags.HasFlag(DnaTag.HomeFortress) && pick.Line is >= -0.5m and <= 0m && c.HomeForm.WinRate >= 0.5, 0.5, "chủ nhà phong độ ổn định");
                 Add(c.HomeTags.HasFlag(DnaTag.HomeFortress), 0.5, $"{input.HomeName} mạnh sân nhà");
                 Add(c.AwayTags.HasFlag(DnaTag.AwayFragile), 0.25, $"{input.AwayName} yếu sân khách");
+                Add(c.HomeTags.HasFlag(DnaTag.BullyWeak) && pick.Line <= -1m && HomeAbove(), 0.5, $"{input.HomeName} bắt nạt đội yếu, thắng được kèo chấp sâu");
+                Add(c.AwayTags.HasFlag(DnaTag.BullyWeak) && pick.Line >= 1m && AwayAbove(), -0.5, $"{input.AwayName} bắt nạt đội yếu (chấp sâu vẫn thắng)");
                 break;
             case (Market.AsianHandicap, PickSide.Away):
                 Add(c.LeagueTags.HasFlag(DnaTag.HomeFortress), -0.5, $"{league} – thánh địa sân nhà (kỵ đội khách)");
                 Add(c.HomeTags.HasFlag(DnaTag.HomeFortress), -0.5, $"{input.HomeName} mạnh sân nhà");
                 Add(c.AwayTags.HasFlag(DnaTag.AwayFragile), -0.5, $"{input.AwayName} yếu sân khách");
+                Add(c.AwayTags.HasFlag(DnaTag.BullyWeak) && pick.Line <= -1m && AwayAbove(), 0.5, $"{input.AwayName} bắt nạt đội yếu, thắng được kèo chấp sâu");
+                Add(c.HomeTags.HasFlag(DnaTag.BullyWeak) && pick.Line >= 1m && HomeAbove(), -0.5, $"{input.HomeName} bắt nạt đội yếu (chấp sâu vẫn thắng)");
                 break;
             case (Market.CornersOverUnder, PickSide.Over):
                 Add(c.LeagueTags.HasFlag(DnaTag.OverCorners), 0.5, $"{league} – giải Tài góc");
                 Add(anyCornerTeam, 0.5, "có đội cày góc");
+                Add(Any(DnaTag.ConcedesCorners), 0.25, $"{Who(DnaTag.ConcedesCorners)} hay xả góc / chịu góc");
                 Add(c.LeagueTags.HasFlag(DnaTag.UnderCorners), -0.5, $"{league} – giải Xỉu góc");
                 break;
             case (Market.CornersOverUnder, PickSide.Under):
@@ -998,17 +1011,24 @@ public static class MatchAnalyzer
                 Add(anyPragmatic, 0.25, "có đội thực dụng");
                 Add(c.LeagueTags.HasFlag(DnaTag.OverCorners), -0.5, $"{league} – giải Tài góc");
                 Add(anyCornerTeam, -0.5, "có đội cày góc");
+                Add(Any(DnaTag.ConcedesCorners), -0.25, $"{Who(DnaTag.ConcedesCorners)} hay xả góc / chịu góc");
                 break;
             case (Market.CornersHandicap, PickSide.Home):
                 Add(c.HomeTags.HasFlag(DnaTag.OverCorners), 0.5, $"{input.HomeName} cày góc");
                 Add(c.HomeTags.HasFlag(DnaTag.HomeFortress) || c.LeagueTags.HasFlag(DnaTag.HomeFortress), 0.5, "chấp góc chủ nhà ở sân mạnh");
+                Add(c.AwayTags.HasFlag(DnaTag.ConcedesCorners), 0.25, $"{input.AwayName} hay chịu góc");
                 break;
             case (Market.CornersHandicap, PickSide.Away):
                 Add(c.AwayTags.HasFlag(DnaTag.OverCorners), 0.5, $"{input.AwayName} cày góc");
                 Add(c.HomeTags.HasFlag(DnaTag.HomeFortress), -0.5, $"{input.HomeName} mạnh sân nhà");
+                Add(c.HomeTags.HasFlag(DnaTag.ConcedesCorners), 0.25, $"{input.HomeName} hay chịu góc");
                 break;
             case (Market.CardsOverUnder, PickSide.Over):
                 Add(c.LeagueTags.HasFlag(DnaTag.UnderGoals), 0.5, $"{league} – giải thực dụng (Tài thẻ)");
+                Add(Any(DnaTag.HeavyCards), 0.5, $"{Who(DnaTag.HeavyCards)} đá rát, nhiều thẻ");
+                break;
+            case (Market.CardsOverUnder, PickSide.Under):
+                Add(Any(DnaTag.HeavyCards), -0.5, $"{Who(DnaTag.HeavyCards)} đá rát, nhiều thẻ");
                 break;
         }
 
@@ -1067,6 +1087,19 @@ public static class MatchAnalyzer
         {
             hints.Add("Giải hay có bàn muộn: thể lực hàng thủ đuối từ phút 65–70 → săn bàn muộn từ phút 70"
                 + (c.LeagueTags.HasFlag(DnaTag.HomeFortress) ? ", ưu tiên chủ nhà." : "."));
+        }
+
+        foreach (var (name, tags) in new[] { (input.HomeName, c.HomeTags), (input.AwayName, c.AwayTags) })
+        {
+            if (tags.HasFlag(DnaTag.FastStart))
+            {
+                hints.Add($"{name} đánh phủ đầu (hay có bàn hiệp 1): theo dõi Tài H1 / bàn sớm trong 15–30' đầu.");
+            }
+
+            if (tags.HasFlag(DnaTag.LateGoals))
+            {
+                hints.Add($"{name} hay bùng nổ cuối trận: săn Tài In-play hiệp 2 từ phút 60–70 nếu tỉ số chưa an bài.");
+            }
         }
 
         return hints;

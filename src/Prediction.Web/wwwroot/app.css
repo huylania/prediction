@@ -287,3 +287,7 @@ h1:focus {
 .mc-live-odds .full { font-size: .7rem; color: #94a3b8; margin-left: .25rem; }
 .low-data { display: inline-block; background: #fef3c7; color: #92400e; border-radius: 999px; padding: 0 .5rem; font-size: .72rem; font-weight: 700; white-space: nowrap; }
 .mc-rejected { flex-basis: 100%; font-size: .74rem; color: #94a3b8; }
+.dna-tag-col { font-size: .72rem; white-space: nowrap; }
+.dna-profile { font-size: .72rem; color: #475569; }
+.dna-summary { font-size: .72rem; color: #94a3b8; }
+.dna-analysis { font-size: .72rem; color: #475569; margin: .2rem 0 0; padding-left: 1rem; }

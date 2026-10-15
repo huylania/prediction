@@ -168,6 +168,19 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(x => x.TeamId).ValueGeneratedNever();
             e.Property(x => x.TeamName).HasMaxLength(200);
             e.Property(x => x.Notes).HasMaxLength(1000);
+            e.Property(x => x.SourceLeagueName).HasMaxLength(100);
+            e.Property(x => x.Summary).HasMaxLength(500);
+            e.Property(x => x.Analysis).HasMaxLength(2000);
+            foreach (var p in new[] { nameof(TeamDna.AvgTotalGoals), nameof(TeamDna.AvgGoalsFor), nameof(TeamDna.AvgGoalsAgainst), nameof(TeamDna.AvgCornersFor),
+                         nameof(TeamDna.AvgCornersAgainst), nameof(TeamDna.AvgSecondHalfGoals), nameof(TeamDna.AvgCards) })
+            {
+                e.Property<decimal?>(p).HasPrecision(5, 2);
+            }
+
+            foreach (var p in new[] { nameof(TeamDna.Over25Pct), nameof(TeamDna.BttsPct), nameof(TeamDna.HomeWinPct), nameof(TeamDna.AwayLossPct), nameof(TeamDna.FirstHalfGoalPct) })
+            {
+                e.Property<decimal?>(p).HasPrecision(5, 1);
+            }
         });
 
         b.Entity<AnalysisPick>(e =>

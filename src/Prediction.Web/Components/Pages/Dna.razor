@@ -130,7 +130,18 @@ else
                 <TeamPicker @bind-TeamId="_newTeamId" />
             </div>
             <div class="col-md-2"><button class="btn btn-sm btn-primary" @onclick="AddTeamAsync">Thêm vào danh sách</button></div>
-            <div class="col-md-4 ms-auto">
+            <div class="col-md-3 ms-auto">
+                <label class="form-label small mb-0">Giải (hồ sơ 1 năm)</label>
+                <select class="form-select form-select-sm" @bind="_leagueFilter">
+                    <option value="">Tất cả (@_teams.Count đội)</option>
+                    @foreach (var g in _teams.Where(t => t.SourceLeagueName is not null).GroupBy(t => t.SourceLeagueName!).OrderBy(g => g.Key))
+                    {
+                        <option value="@g.Key">@g.Key (@g.Count())</option>
+                    }
+                    <option value="@NoProfile">Chưa có hồ sơ (@_teams.Count(t => t.SourceLeagueName is null))</option>
+                </select>
+            </div>
+            <div class="col-md-3">
                 <label class="form-label small mb-0">Lọc</label>
                 <input class="form-control form-control-sm" placeholder="Tên đội…" @bind="_filter" @bind:event="oninput" />
             </div>
@@ -140,16 +151,43 @@ else
         <table class="table table-sm bg-white border small">
             <thead>
                 <tr>
-                    <th>Đội</th>
-                    @foreach (var t in DnaTagText.TeamTags) { <th class="text-center">@DnaTagText.Label(t, true)</th> }
+                    <th style="min-width: 240px">Đội</th>
+                    @foreach (var t in DnaTagText.TeamTags) { <th class="text-center dna-tag-col" title="@DnaTagText.Label(t, true)">@DnaTagText.Short(t)</th> }
                     <th style="min-width: 260px">Ghi chú</th><th></th>
                 </tr>
             </thead>
             <tbody>
-                @foreach (var d in _teams.Where(d => string.IsNullOrWhiteSpace(_filter) || d.TeamName.Contains(_filter.Trim(), StringComparison.OrdinalIgnoreCase)))
+                @foreach (var d in VisibleTeams.Take(_showAll ? int.MaxValue : PageSize))
                 {
                     <tr>
-                        <td class="fw-semibold">@d.TeamName</td>
+                        <td>
+                            <div class="fw-semibold">@d.TeamName</div>
+                            @if (d.Matches is { } n)
+                            {
+                                <div class="dna-profile">
+                                    @d.SourceLeagueName · @n trận · @Num(d.AvgTotalGoals) bàn/trận (ghi @Num(d.AvgGoalsFor) – thủng @Num(d.AvgGoalsAgainst))
+                                    · Tài 2.5 @Num(d.Over25Pct)% · BTTS @Num(d.BttsPct)% · thắng nhà @Num(d.HomeWinPct)% · thua khách @Num(d.AwayLossPct)%
+                                    · góc @Num(d.AvgCornersFor)/@Num(d.AvgCornersAgainst) · có bàn H1 @Num(d.FirstHalfGoalPct)% · bàn H2 @Num(d.AvgSecondHalfGoals) · thẻ @Num(d.AvgCards)
+                                </div>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(d.Summary))
+                            {
+                                <div class="dna-summary">@d.Summary</div>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(d.Analysis))
+                            {
+                                <button class="btn btn-link btn-sm p-0 small" @onclick="() => ToggleExpanded(d.TeamId)">@(_expanded.Contains(d.TeamId) ? "Ẩn lý do" : "Xem lý do")</button>
+                                @if (_expanded.Contains(d.TeamId))
+                                {
+                                    <ul class="dna-analysis">
+                                        @foreach (var part in d.Analysis.Split(" | ", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                                        {
+                                            <li>@part</li>
+                                        }
+                                    </ul>
+                                }
+                            }
+                        </td>
                         @foreach (var t in DnaTagText.TeamTags)
                         {
                             <td class="text-center"><input type="checkbox" class="form-check-input" checked="@d.Tags.HasFlag(t)" @onchange="e => d.Tags = Toggle(d.Tags, t, (bool)e.Value!)" /></td>
@@ -164,7 +202,14 @@ else
             </tbody>
         </table>
     </div>
-    <div class="hint">"Mạnh sân nhà" + "Yếu sân khách" = nhóm "khôn nhà dại chợ" (cờ đỏ 1 khi làm khách mà phải chấp 1/4–3/4).</div>
+    @if (!_showAll && VisibleTeams.Count > PageSize)
+    {
+        <button class="btn btn-sm btn-outline-secondary mb-2" @onclick="() => _showAll = true">Hiện tất cả @VisibleTeams.Count đội</button>
+    }
+    <div class="hint">
+        "Mạnh sân nhà" + "Yếu sân khách" = nhóm "khôn nhà dại chợ" (cờ đỏ 1 khi làm khách mà phải chấp 1/4–3/4).
+        Rê chuột lên tiêu đề cột để xem tên đầy đủ. Số liệu 1 năm lấy từ file DNA đã nhập (script SQL trong <code>scripts/dna</code>).
+    </div>
 }
 
 @code {
@@ -178,6 +223,26 @@ else
     private readonly NewChange _newChange = new();
     private int? _newTeamId;
     private string _filter = "";
+    private string _leagueFilter = "";
+    private bool _showAll;
+    private readonly HashSet<int> _expanded = [];
+    private const string NoProfile = "__none__";
+    private const int PageSize = 150;
+
+    private List<TeamDna> VisibleTeams => _teams
+        .Where(d => string.IsNullOrWhiteSpace(_filter) || d.TeamName.Contains(_filter.Trim(), StringComparison.OrdinalIgnoreCase))
+        .Where(d => _leagueFilter == "" || (_leagueFilter == NoProfile ? d.SourceLeagueName is null : d.SourceLeagueName == _leagueFilter))
+        .ToList();
+
+    private void ToggleExpanded(int teamId)
+    {
+        if (!_expanded.Add(teamId))
+        {
+            _expanded.Remove(teamId);
+        }
+    }
+
+    private static string Num(decimal? value) => value is { } v ? v.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) : "—";
 
     protected override async Task OnInitializedAsync()
     {

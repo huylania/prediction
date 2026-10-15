@@ -1,0 +1,442 @@
+League_Id,Doi_Bong,TeamId,Api_Name,Match
+79,1. FC Heidenheim,180,1. FC Heidenheim,exact
+78,1. FC Heidenheim,180,1. FC Heidenheim,exact
+79,1. FC Kaiserslautern,745,1. FC Kaiserslautern,exact
+78,1. FC Koln,192,1. FC Köln,normalized
+79,1. FC Magdeburg,179,1. FC Magdeburg,exact
+79,1. FC Nurnberg,171,1. FC Nürnberg,normalized
+78,1899 Hoffenheim,167,1899 Hoffenheim,exact
+135,AC Milan,489,AC Milan,exact
+89,ADO Den Haag,198,ADO Den Haag,exact
+88,Ajax,194,Ajax,exact
+2,Ajax Amsterdam,194,Ajax,contains
+17,Al Ahli,2929,Al-Ahli Jeddah,alias
+18,Al Ahli SC,5580,Al Ahli,normalized
+17,Al Duhail,2904,Al-Duhail SC,normalized
+17,Al Hilal,2932,Al-Hilal Saudi FC,contains
+18,Al Hussein,4532,Al Hussein,exact
+17,Al Ittihad,2938,Al-Ittihad FC,normalized
+18,Al Muharraq,5488,Muharraq,contains
+18,Al Nassr,2939,Al-Nassr,normalized
+17,Al Sadd,2895,Al Sadd,exact
+18,Al Wasl,2872,Al-Wasl FC,normalized
+18,Al Wehdat,4537,Al Wihdat,alias
+141,Albacete,722,Albacete,exact
+17,Al-Gharafa,2903,Al-Gharafa,exact
+89,Almere City FC,419,Almere City FC,exact
+141,Almeria,723,Almeria,exact
+17,Al-Shorta,5242,Al Shorta,normalized
+17,Al-Wahda,2875,Al Wahda FC,normalized
+18,Al-Zawraa,8010,Al Zawra'a,fuzzy 0.95
+72,Amazonas,10862,Amazonas,exact
+72,América Mineiro,125,America Mineiro,normalized
+62,Amiens SC,87,Amiens,normalized
+18,Andijan,4209,Andijan,exact
+141,Andorra,8157,FC Andorra,normalized
+61,Angers,77,Angers,exact
+18,Arkadag,21232,Arkadag,exact
+79,Arminia Bielefeld,188,Arminia Bielefeld,exact
+39,Arsenal,42,Arsenal,exact
+2,Arsenal,42,Arsenal,exact
+61,AS Monaco,91,Monaco,normalized
+2,AS Monaco,91,Monaco,normalized
+135,AS Roma,497,AS Roma,exact
+39,Aston Villa,66,Aston Villa,exact
+135,Atalanta,499,Atalanta,exact
+2,Atalanta,499,Atalanta,exact
+72,Athletic,13975,Athletic Club,normalized
+140,Athletic Club,531,Athletic Club,exact
+2,Athletic Club,531,Athletic Club,exact
+72,Athletico Paranaense,134,Atletico Paranaense,alias
+71,Athletico-PR,134,Atletico Paranaense,alias
+253,Atlanta United FC,1608,Atlanta United FC,exact
+72,Atlético Goianiense,144,Atletico Goianiense,normalized
+140,Atletico Madrid,530,Atletico Madrid,exact
+2,Atlético Madrid,530,Atletico Madrid,normalized
+71,Atletico-MG,1062,Atletico-MG,exact
+253,Austin FC,16489,Austin,normalized
+61,Auxerre,108,Auxerre,exact
+72,Avaí,145,Avai,normalized
+296,Ayutthaya United,2803,Ayutthaya FC,contains
+297,Ayutthaya United,2803,Ayutthaya FC,contains
+88,AZ Alkmaar,201,AZ Alkmaar,exact
+71,Bahia,118,Bahia,exact
+18,Bangkok United,2770,Bangkok United,exact
+296,Bangkok United,2770,Bangkok United,exact
+140,Barcelona,529,Barcelona,exact
+2,Barcelona,529,Barcelona,exact
+78,Bayer Leverkusen,168,Bayer Leverkusen,exact
+2,Bayer Leverkusen,168,Bayer Leverkusen,exact
+78,Bayern Munich,157,Bayern München,fuzzy 0.89
+2,Bayern Munich,157,Bayern München,fuzzy 0.89
+340,Becamex Binh Duong,3668,Binh Duong,contains
+18,Beijing Guoan,830,Beijing Guoan,exact
+2,Benfica,211,Benfica,exact
+18,BG Pathum United,2769,BG Pathum United,exact
+296,BG Pathum United,2769,BG Pathum United,exact
+18,BG Tampines Rovers FC,4206,Tampines Rovers,contains
+2,Bodo/Glimt,327,Bodo/Glimt,exact
+135,Bologna,500,Bologna,exact
+78,Borussia Dortmund,165,Borussia Dortmund,exact
+2,Borussia Dortmund,165,Borussia Dortmund,exact
+78,Borussia Monchengladbach,163,Borussia Mönchengladbach,normalized
+71,Botafogo RJ,120,Botafogo,contains
+72,Botafogo-SP,2618,Botafogo SP,normalized
+62,Boulogne,1299,Boulogne,exact
+39,Bournemouth,35,Bournemouth,exact
+71,Bragantino,794,RB Bragantino,contains
+39,Brentford,55,Brentford,exact
+39,Brighton & Hove Albion,51,Brighton,contains
+141,Burgos,9580,Burgos,exact
+17,Buriram United,2780,Buriram United,exact
+296,Buriram United,2780,Buriram United,exact
+39,Burnley,44,Burnley,exact
+141,Cadiz,724,Cadiz,exact
+135,Cagliari,490,Cagliari,exact
+88,Cambuur,420,Cambuur,exact
+141,Castellon,5254,Castellón,normalized
+71,Ceara,129,Ceara,exact
+72,Ceará,129,Ceara,normalized
+141,Celta B,9571,Celta de Vigo II,alias
+140,Celta Vigo,538,Celta Vigo,exact
+141,Ceuta,10139,AD Ceuta FC,contains
+253,CF Montreal,1614,CF Montreal,exact
+297,Chainat Hornbill,2781,Chainat,contains
+297,Chanthaburi FC,6557,Chanthaburi,normalized
+72,Chapecoense,132,Chapecoense-sc,normalized
+71,Chapecoense-SC,132,Chapecoense-sc,normalized
+253,Charlotte FC,18310,Charlotte,normalized
+39,Chelsea,49,Chelsea,exact
+2,Chelsea,49,Chelsea,exact
+17,Chengdu Rongcheng,5648,Chengdu Better City,alias
+296,Chiangrai United,2771,Chiangrai United,exact
+253,Chicago Fire,1607,Chicago Fire,exact
+296,Chonburi FC,2772,Chonburi FC,exact
+297,Chonburi FC,2772,Chonburi FC,exact
+62,Clermont Foot,99,Clermont Foot,exact
+2,Club Brugge,569,Club Brugge KV,contains
+253,Colorado Rapids,1610,Colorado Rapids,exact
+253,Columbus Crew,1613,Columbus Crew,exact
+135,Como,895,Como,exact
+340,Cong An Ha Noi,16400,Công An Nhân Dân,alias
+18,Cong An Hanoi,16400,Công An Nhân Dân,alias
+141,Cordoba,713,Cordoba,exact
+71,Corinthians,131,Corinthians,exact
+71,Coritiba,147,Coritiba,exact
+72,Coritiba,147,Coritiba,exact
+79,Cottbus,1320,Energie Cottbus,contains
+39,Coventry City,1346,Coventry,contains
+72,CRB,146,CRB,exact
+135,Cremonese,520,Cremonese,exact
+72,Criciúma,140,Criciuma,normalized
+71,Cruzeiro,135,Cruzeiro,exact
+39,Crystal Palace,52,Crystal Palace,exact
+72,Cuiabá,1193,Cuiaba,normalized
+141,Cultural Leonesa,725,Cultural Leonesa,exact
+253,DC United,1615,DC United,exact
+89,De Graafschap,199,De Graafschap,exact
+88,Den Haag,198,ADO Den Haag,contains
+140,Deportivo Alaves,542,Alaves,contains
+62,Dijon,89,Dijon,exact
+340,Dong A Thanh Hoa,3680,Thanh Hóa,contains
+79,Dynamo Dresden,183,Dynamo Dresden,exact
+18,Eastern SC,4451,Eastern,normalized
+141,Eibar,545,Eibar,exact
+79,Eintracht Braunschweig,744,Eintracht Braunschweig,exact
+78,Eintracht Frankfurt,169,Eintracht Frankfurt,exact
+2,Eintracht Frankfurt,169,Eintracht Frankfurt,exact
+140,Elche,797,Elche,exact
+141,Eldense,9692,Eldense,exact
+140,Espanol,540,Espanyol,fuzzy 0.93
+61,ESTAC Troyes,110,Estac Troyes,normalized
+62,ESTAC Troyes,110,Estac Troyes,normalized
+18,Esteghlal,2733,Esteghlal FC,normalized
+39,Everton,45,Everton,exact
+88,Excelsior Rotterdam,196,Excelsior,contains
+2,F.C. København,400,FC Copenhagen,alias
+62,FC Annecy,3012,Annecy,normalized
+78,FC Augsburg,170,FC Augsburg,exact
+253,FC Cincinnati,2242,FC Cincinnati,exact
+253,FC Dallas,1597,FC Dallas,exact
+89,FC Den Bosch,421,Den Bosch,normalized
+89,FC Dordrecht,409,Dordrecht,normalized
+89,FC Eindhoven,422,FC Eindhoven,exact
+89,FC Emmen,208,Emmen,normalized
+18,FC Goa,3475,Goa,normalized
+88,FC Groningen,202,Groningen,normalized
+61,FC Nantes,83,Nantes,normalized
+62,FC Nantes,83,Nantes,normalized
+17,FC Seoul,2766,FC Seoul,exact
+88,FC Twente,415,Twente,normalized
+88,FC Utrecht,207,Utrecht,normalized
+89,FC Volendam,416,FC Volendam,exact
+88,FC Volendam,416,FC Volendam,exact
+72,Ferroviária,7826,Ferroviária,exact
+88,Feyenoord,209,Feyenoord,exact
+135,Fiorentina,502,Fiorentina,exact
+2,FK Qarabag,556,Qarabag,normalized
+71,Flamengo RJ,127,Flamengo,contains
+71,Fluminense,124,Fluminense,exact
+88,For Sittard,205,Fortuna Sittard,fuzzy 0.85
+71,Fortaleza,154,Fortaleza EC,normalized
+72,Fortaleza,154,Fortaleza EC,normalized
+79,Fortuna Dusseldorf,158,Fortuna Düsseldorf,normalized
+135,Frosinone,512,Frosinone,exact
+39,Fulham,36,Fulham,exact
+2,Galatasaray,645,Galatasaray,exact
+18,Gamba Osaka,293,Gamba Osaka,exact
+17,Gangwon FC,2746,Gangwon FC,exact
+135,Genoa,495,Genoa,exact
+140,Getafe,546,Getafe,exact
+140,Girona,547,Girona,exact
+141,Girona,547,Girona,exact
+88,Go Ahead Eagles,410,GO Ahead Eagles,normalized
+72,Goiás,151,Goias,normalized
+141,Granada,715,Granada CF,normalized
+71,Gremio,130,Gremio,exact
+62,Grenoble Foot 38,101,Grenoble,contains
+62,Guingamp,90,Guingamp,exact
+340,Ha Noi FC,3670,Ha Noi,normalized
+340,Hai Phong FC,3671,Hai Phong,normalized
+78,Hamburger SV,175,Hamburger SV,exact
+79,Hannover 96,166,Hannover 96,exact
+135,Hellas Verona,504,Hellas Verona,exact
+89,Helmond Sport,424,Helmond Sport,exact
+89,Heracles Almelo,206,Heracles,contains
+88,Heracles Almelo,206,Heracles,contains
+79,Hertha BSC,159,Hertha BSC,exact
+340,Hoang Anh Gia Lai,3673,Hoang Anh Gia Lai,exact
+79,Holstein Kiel,191,Holstein Kiel,exact
+340,Hong Linh Ha Tinh,11134,Hồng Lĩnh Hà Tĩnh,normalized
+253,Houston Dynamo FC,1600,Houston Dynamo,normalized
+141,Huesca,726,Huesca,exact
+39,Hull,64,Hull City,contains
+253,Inter Miami CF,9568,Inter Miami,normalized
+135,Inter Milan,505,Inter,alias
+71,Internacional,119,Internacional,exact
+2,Internazionale,505,Inter,contains
+39,Ipswich Town,57,Ipswich,contains
+18,Istiklol,8012,Istiqlol,fuzzy 0.88
+17,Johor Darul Ta'zim,2523,Johor Darul Takzim FC,fuzzy 0.94
+89,Jong Ajax,425,Jong Ajax,exact
+89,Jong AZ,418,Jong AZ,exact
+89,Jong FC Utrecht,428,Jong Utrecht,normalized
+89,Jong PSV,411,Jong PSV U21,contains
+71,Juventude,152,Juventude,exact
+72,Juventude,152,Juventude,exact
+135,Juventus,496,Juventus,exact
+2,Juventus,496,Juventus,exact
+2,Kairat Almaty,664,Kairat Almaty,exact
+297,Kanchanaburi Power,18051,Kanchanaburi,contains
+296,Kanchanaburi Power FC,18051,Kanchanaburi,contains
+79,Karlsruher SC,785,Karlsruher SC,exact
+18,Kaya,8030,Kaya,exact
+18,Khaldiya,17666,Khalidiya,fuzzy 0.94
+140,La Coruna,544,Deportivo La Coruna,contains
+141,La Coruna,544,Deportivo La Coruna,contains
+253,LA Galaxy,1605,Los Angeles Galaxy,alias
+297,Lampang FC,2801,Lampang FC,exact
+296,Lamphun Warriors,6572,Lamphun Warrior,contains
+141,Las Palmas,534,Las Palmas,exact
+135,Lazio,487,Lazio,exact
+61,Le Havre,111,Le Havre,exact
+61,Le Mans,1298,Le Mans,exact
+62,Le Mans,1298,Le Mans,exact
+135,Lecce,867,Lecce,exact
+39,Leeds United,63,Leeds,contains
+141,Leganes,537,Leganes,exact
+140,Levante,539,Levante,exact
+61,Lille,79,Lille,exact
+18,Lion City Sailors FC,4204,Home United,alias
+39,Liverpool,40,Liverpool,exact
+2,Liverpool,40,Liverpool,exact
+72,Londrina,148,Londrina,exact
+61,Lorient,97,Lorient,exact
+253,Los Angeles FC,1616,Los Angeles FC,exact
+18,Macarthur FC,15550,Macarthur,normalized
+17,Machida Zelvia,303,Machida Zelvia,exact
+297,Mahasarakham SBT,17910,Mahasarakham United,alias
+78,Mainz 05,164,FSV Mainz 05,contains
+140,Malaga,535,Malaga,exact
+141,Malaga,535,Malaga,exact
+140,Mallorca,798,Mallorca,exact
+141,Mallorca,798,Mallorca,exact
+39,Manchester City,50,Manchester City,exact
+2,Manchester City,50,Manchester City,exact
+39,Manchester United,33,Manchester United,exact
+61,Marseille,81,Marseille,exact
+2,Marseille,81,Marseille,exact
+17,Melbourne City FC,945,Melbourne City,normalized
+61,Metz,112,Metz,exact
+62,Metz,112,Metz,exact
+253,Minnesota United FC,1612,Minnesota United FC,exact
+141,Mirandes,799,Mirandes,exact
+71,Mirassol,7848,Mirassol,exact
+62,Montpellier,82,Montpellier,exact
+135,Monza,1579,Monza,exact
+296,Muangthong United,2786,Muangthong United,exact
+89,MVV Maastricht,412,MVV,contains
+89,NAC Breda,203,NAC Breda,exact
+88,NAC Breda,203,NAC Breda,exact
+296,Nakhon Ratchasima FC,2773,Nakhon Ratchasima FC,exact
+297,Nakhon Si United,10197,Nakhon Si Thammarat,alias
+18,Nam Dinh,3674,Nam Dinh,exact
+62,Nancy,102,Nancy,exact
+135,Napoli,492,Napoli,exact
+2,Napoli,492,Napoli,exact
+17,Nasaf Qarshi,4215,Nasaf,contains
+253,Nashville SC,9569,Nashville SC,exact
+72,Náutico,755,Nautico Recife,contains
+253,New England Revolution,1609,New England Revolution,exact
+253,New York City FC,1604,New York City FC,exact
+253,New York Red Bulls,1602,New York Red Bulls,exact
+39,Newcastle United,34,Newcastle,contains
+2,Newcastle United,34,Newcastle,contains
+88,Nijmegen,413,NEC Nijmegen,contains
+39,Nottingham Forest,65,Nottingham Forest,exact
+72,Novorizontino,7834,Novorizontino,exact
+61,OGC Nice,84,Nice,contains
+2,Olympiacos,553,Olympiakos Piraeus,alias
+61,Olympique Lyonnais,80,Lyon,contains
+72,Operário PR,1223,Operario-PR,normalized
+253,Orlando City SC,1598,Orlando City SC,exact
+140,Osasuna,727,Osasuna,exact
+79,Osnabruck,1324,VfL Osnabrück,normalized
+140,Oviedo,718,Oviedo,exact
+141,Oviedo,718,Oviedo,exact
+2,Pafos,3403,Pafos,exact
+71,Palmeiras,121,Palmeiras,exact
+61,Paris FC,114,Paris FC,exact
+61,Paris Saint-Germain,85,Paris Saint Germain,normalized
+2,Paris Saint-Germain,85,Paris Saint Germain,normalized
+135,Parma,523,Parma,exact
+297,Pattaya United,2782,Pattaya United,exact
+62,Pau FC,1297,PAU,normalized
+72,Paysandu,149,Paysandu,exact
+88,PEC Zwolle,193,PEC Zwolle,exact
+18,Persib,2445,Persib Bandung,contains
+253,Philadelphia Union,1599,Philadelphia Union,exact
+297,Phrae United,6585,Phrae United,exact
+135,Pisa,801,Pisa,exact
+18,Pohang Steelers,2764,Pohang Steelers,exact
+297,Police Tero FC,2775,Police Tero,normalized
+72,Ponte Preta,139,Ponte Preta,exact
+296,Port FC,2789,Port FC,exact
+253,Portland Timbers,1617,Portland Timbers,exact
+79,Preußen Münster,1313,Preußen Münster,exact
+88,PSV Eindhoven,197,PSV Eindhoven,exact
+2,PSV Eindhoven,197,PSV Eindhoven,exact
+296,PT Prachuap FC,2791,Prachuap,contains
+340,Quang Nam FC,3675,Quang Nam,normalized
+340,Quy Nhon Binh Dinh,9160,Binh Dinh,contains
+18,Ratchaburi FC,2776,Ratchaburi,normalized
+296,Ratchaburi FC,2776,Ratchaburi,normalized
+140,Rayo Vallecano,728,Rayo Vallecano,exact
+296,Rayong FC,2797,Rayong FC,exact
+78,RB Leipzig,173,RB Leipzig,exact
+61,RC Lens,116,Lens,normalized
+140,Real Betis,543,Real Betis,exact
+140,Real Madrid,541,Real Madrid,exact
+2,Real Madrid,541,Real Madrid,exact
+253,Real Salt Lake,1606,Real Salt Lake,exact
+140,Real Sociedad,548,Real Sociedad,exact
+141,Real Valladolid,720,Valladolid,contains
+62,Red Star FC,104,RED Star FC 93,contains
+71,Remo,1198,Remo,exact
+72,Remo,1198,Remo,exact
+89,RKC Waalwijk,417,Waalwijk,contains
+89,Roda JC Kerkrade,414,Roda,contains
+62,Rodez AF,1301,Rodez,contains
+141,Sabadell,9593,Sabadell,exact
+62,Saint-Etienne,1063,Saint Etienne,normalized
+253,San Diego FC,25484,San Diego,normalized
+253,San Jose Earthquakes,1596,San Jose Earthquakes,exact
+17,Sanfrecce Hiroshima,282,Sanfrecce Hiroshima,exact
+140,Santander,4665,Racing Santander,contains
+141,Santander,4665,Racing Santander,contains
+71,Santos,128,Santos,exact
+72,São Bernardo,7865,São Bernardo,exact
+71,Sao Paulo,126,Sao Paulo,exact
+135,Sassuolo,488,Sassuolo,exact
+62,SC Bastia,1305,Bastia,normalized
+89,SC Cambuur,420,Cambuur,normalized
+78,SC Freiburg,160,SC Freiburg,exact
+88,SC Heerenveen,210,Heerenveen,normalized
+79,SC Paderborn 07,185,SC Paderborn 07,exact
+78,SC Paderborn 07,185,SC Paderborn 07,exact
+79,Schalke 04,174,FC Schalke 04,normalized
+78,Schalke 04,174,FC Schalke 04,normalized
+253,Seattle Sounders FC,1595,Seattle Sounders,normalized
+18,Selangor FC,2526,Selangor,normalized
+140,Sevilla,536,Sevilla,exact
+17,Shabab Al-Ahli,2870,Shabab Al Ahli Dubai,contains
+17,Shanghai Port,836,SHANGHAI SIPG,alias
+17,Shanghai Shenhua,833,Shanghai Shenhua,exact
+17,Sharjah,2874,Sharjah FC,normalized
+340,SHB Da Nang,3669,Da Nang,contains
+2,Slavia Prague,560,Slavia Praha,alias
+62,Sochaux,115,Sochaux,exact
+141,Sociedad B,9585,Real Sociedad II,alias
+340,Song Lam Nghe An,3678,Song Lam Nghe An,exact
+141,Sp Gijon,731,Sporting Gijon,alias
+88,Sparta Rotterdam,426,Sparta Rotterdam,exact
+72,Sport,123,Sport Recife,contains
+71,Sport Recife,123,Sport Recife,exact
+2,Sporting CP,228,Sporting CP,exact
+253,Sporting Kansas City,1611,Sporting Kansas City,exact
+79,SpVgg Greuther Furth,178,SpVgg Greuther Fürth,normalized
+253,St. Louis City SC,20787,St. Louis City,normalized
+79,St. Pauli,186,FC St. Pauli,normalized
+78,St. Pauli,186,FC St. Pauli,normalized
+61,Stade Brestois,106,Stade Brestois 29,contains
+62,Stade de Reims,93,Reims,contains
+62,Stade Lavallois,433,Laval,contains
+61,Stade Rennais,94,Rennes,alias
+61,Strasbourg,95,Strasbourg,exact
+296,Sukhothai FC,2783,Sukhothai FC,exact
+39,Sunderland,746,Sunderland,exact
+79,SV Darmstadt 98,181,SV Darmstadt 98,exact
+79,SV Elversberg,1660,SV Elversberg,exact
+78,SV Elversberg,1660,SV Elversberg,exact
+18,Tai Po FC,4457,Wofoo Tai Po,contains
+88,Telstar,427,Telstar,exact
+141,Tenerife,719,Tenerife,exact
+340,The Cong - Viettel,3681,Viettel,contains
+340,Thep Xanh Nam Dinh,3674,Nam Dinh,contains
+89,TOP Oss,423,FC OSS,contains
+135,Torino,503,Torino,exact
+253,Toronto FC,1601,Toronto FC,exact
+39,Tottenham Hotspur,47,Tottenham,contains
+2,Tottenham Hotspur,47,Tottenham,contains
+61,Toulouse,96,Toulouse,exact
+340,TP. Ho Chi Minh,3672,Ho Chi Minh,contains
+17,Traktor Sazi FC,2737,Tractor Sazi,fuzzy 0.92
+297,Trat FC,2794,Trat FC,exact
+135,Udinese,494,Udinese,exact
+17,Ulsan HD,2767,Ulsan Hyundai FC,alias
+78,Union Berlin,182,Union Berlin,exact
+2,Union St.-Gilloise,1393,Union St. Gilloise,normalized
+62,USL Dunkerque,1304,Dunkerque,contains
+296,Uthai Thani FC,10088,Uthai Thani,normalized
+140,Valencia,532,Valencia,exact
+253,Vancouver Whitecaps,1603,Vancouver Whitecaps,exact
+71,Vasco,133,Vasco DA Gama,contains
+135,Venezia,517,Venezia,exact
+78,VfB Stuttgart,172,VfB Stuttgart,exact
+79,VfL Bochum,176,VfL Bochum,exact
+79,VfL Wolfsburg,161,VfL Wolfsburg,exact
+78,VfL Wolfsburg,161,VfL Wolfsburg,exact
+72,Vila Nova,142,Vila Nova,exact
+140,Villarreal,533,Villarreal,exact
+2,Villarreal,533,Villarreal,exact
+17,Vissel Kobe,289,Vissel Kobe,exact
+89,Vitesse,200,Vitesse,exact
+71,Vitoria,136,Vitoria,exact
+72,Volta Redonda,7814,Volta Redonda,exact
+89,VVV-Venlo,204,VVV Venlo,normalized
+78,Werder Bremen,162,Werder Bremen,exact
+39,West Ham United,48,West Ham,contains
+89,Willem II,195,Willem II,exact
+88,Willem II,195,Willem II,exact
+39,Wolverhampton Wanderers,39,Wolves,alias
+141,Zaragoza,732,Zaragoza,exact

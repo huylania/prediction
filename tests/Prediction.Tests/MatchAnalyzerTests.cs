@@ -416,6 +416,76 @@ public class MatchAnalyzerTests
         Assert.False(full.Picks.Single(p => p.Market == Market.OverUnder).LowSample);
     }
 
+    // ------------------------------------------------------------ DNA đội từ file 19 giải
+
+    [Fact]
+    public void Btts_team_supports_over_goals()
+    {
+        var a = MatchAnalyzer.Analyze(Input(home: History(10, 3, 1), away: History(10, 2, 2), ou: 2.75m, homeTags: DnaTag.Btts));
+
+        var over = a.Picks.Single(p => p.Market == Market.OverUnder);
+        Assert.Equal(PickSide.Over, over.Side);
+        Assert.Contains(over.Reasons, r => r.StartsWith("DNA cùng hướng") && r.Contains("Nhà công làm thủ phá (BTTS)"));
+    }
+
+    [Fact]
+    public void Corner_conceding_team_supports_over_corners()
+    {
+        var a = MatchAnalyzer.Analyze(Input(home: History(10, 2, 1, cf: 7, ca: 5), away: History(10, 1, 2, cf: 4, ca: 7), corners: 9.5m,
+            awayTags: DnaTag.ConcedesCorners));
+
+        var corners = a.Picks.Single(p => p.Market == Market.CornersOverUnder);
+        Assert.Equal(PickSide.Over, corners.Side);
+        Assert.Contains(corners.Reasons, r => r.Contains("Khách hay xả góc / chịu góc"));
+    }
+
+    [Fact]
+    public void Bully_weak_counts_only_on_deep_line_for_better_ranked_team()
+    {
+        var input = Input(home: History(10, 3, 0), away: History(10, 0, 2), ah: -1.25m, homeTags: DnaTag.BullyWeak,
+            homeStanding: Standing(HomeId, 1, 20), awayStanding: Standing(AwayId, 16, -12));
+        var ah = MatchAnalyzer.Analyze(input).Picks.Single(p => p.Market == Market.AsianHandicap);
+        Assert.Contains(ah.Reasons, r => r.Contains("bắt nạt đội yếu"));
+
+        // Kèo nông (chấp 1/4) thì không áp nhãn bắt nạt.
+        var shallow = MatchAnalyzer.Analyze(Input(home: History(10, 3, 0), away: History(10, 0, 2), ah: -0.25m, homeTags: DnaTag.BullyWeak,
+            homeStanding: Standing(HomeId, 1, 20), awayStanding: Standing(AwayId, 16, -12)));
+        Assert.DoesNotContain(shallow.Picks.Single(p => p.Market == Market.AsianHandicap).Reasons, r => r.Contains("bắt nạt"));
+    }
+
+    [Fact]
+    public void Heavy_cards_supports_over_cards()
+    {
+        var input = Input(homeTags: DnaTag.HeavyCards);
+        var a = MatchAnalyzer.Analyze(new AnalysisInput
+        {
+            Fixture = input.Fixture, HomeName = input.HomeName, AwayName = input.AwayName, LeagueName = input.LeagueName, HomeDna = input.HomeDna,
+            TableSize = input.TableSize, HomeHistory = input.HomeHistory, AwayHistory = input.AwayHistory, League = input.League,
+            HomeChanges = [], Injuries = [], Cards = Line(Market.CardsOverUnder, 3.5m),
+        });
+
+        var cards = a.Picks.Single(p => p.Market == Market.CardsOverUnder);
+        Assert.Contains(cards.Reasons, r => r.Contains("Nhà đá rát, nhiều thẻ"));
+    }
+
+    [Fact]
+    public void Fast_start_and_late_goal_teams_add_in_play_hints()
+    {
+        var a = MatchAnalyzer.Analyze(Input(homeTags: DnaTag.FastStart, awayTags: DnaTag.LateGoals));
+
+        Assert.Contains(a.InPlayHints, h => h.StartsWith("Nhà đánh phủ đầu"));
+        Assert.Contains(a.InPlayHints, h => h.StartsWith("Khách hay bùng nổ cuối trận"));
+    }
+
+    [Fact]
+    public void Team_tag_labels_cover_all_eleven_traits()
+    {
+        Assert.Equal(11, DnaTagText.TeamTags.Length);
+        Assert.Equal("Bùng nổ cuối trận (H2)", DnaTagText.Label(DnaTag.LateGoals, true));
+        Assert.Equal("Bàn muộn (đuối sức cuối trận)", DnaTagText.Label(DnaTag.LateGoals, false));
+        Assert.All(DnaTagText.TeamTags, t => Assert.DoesNotContain(t.ToString(), DnaTagText.Short(t)));
+    }
+
     [Fact]
     public void Red_flag_names_for_cards()
     {

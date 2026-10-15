@@ -480,3 +480,6 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# Bản trả về API khi tìm id đội (scripts/dna/resolve_team_ids.py)
+scripts/dna/.cache/

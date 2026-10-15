@@ -165,6 +165,23 @@ Cách website tính (các ngưỡng lấy nguyên từ file kỹ năng):
 
 Trang **DNA & nhân sự** cho sửa nhãn DNA của giải/đội (đã nhập sẵn theo file kỹ năng) và nhập tay HLV mới / tân binh trụ cột. HLV mới được lấy tự động từ API nhưng dữ liệu API có thể thiếu, nên hãy kiểm tra lại.
 
+**DNA đội bóng 19 giải (số liệu 1 năm)** — `scripts/dna/`:
+- **11 đặc điểm** (cột tích trên trang DNA): Nổ Tài, Mạnh nhà, Yếu khách, Cày góc, Thực dụng, Bắt nạt đội yếu / chấp sâu, BTTS, Xả góc, Đánh phủ đầu H1, Bùng nổ H2, Đá rát thẻ. Mỗi đội có thêm hồ sơ 1 năm (số trận, TB bàn, % Tài 2.5, % BTTS, góc, thẻ…) và lý do chọn từng đặc điểm.
+- **Cách nạp vào CSDL:**
+  1. Cập nhật và chạy website bản mới ít nhất 1 lần (migration `TeamDnaProfile` thêm cột).
+  2. Chạy `scripts/dna/team_dna_19_giai.sql` bằng SSMS, hoặc `sqlcmd -S <máy> -d <CSDL> -U <user> -P <mật khẩu> -f 65001 -i scripts/dna/team_dna_19_giai.sql`.
+  - Đội đã có DNA giữ tích cũ và ghi chú, chỉ cộng thêm tích từ file. Chạy lại nhiều lần không bị nhân đôi.
+- **Đội đá 2 giải** (quốc nội + cúp châu lục): lấy dòng nhiều trận nhất.
+- **Sinh lại script** khi có file CSV mới:
+  - `python3 scripts/dna/resolve_team_ids.py` (cần `APIFOOTBALL_KEY`, khoảng 57 request) tìm id API-Football theo tên và ghi `team-ids.csv`. Tên lệch thì thêm vào `ALIASES` trong script.
+  - `python3 scripts/dna/gen_team_dna_sql.py` sinh lại file `.sql`.
+- **Ảnh hưởng chấm điểm** (tổng DNA vẫn kẹp ±1):
+  - BTTS: Tài bàn ±0.25.
+  - Xả góc: Tài góc / chấp góc cửa đối diện +0.25.
+  - Bắt nạt đội yếu: đội đó chấp từ 1 trái và xếp trên → ±0.5.
+  - Đá rát thẻ: Tài thẻ ±0.5.
+  - Đánh phủ đầu / Bùng nổ H2: thêm gợi ý In-play.
+
 **Cảnh báo In-play** hiện trên thẻ trận đang đá: bàn siêu sớm (≤ 15'), hạ nhịp săn Tài ở trận DNA Tài có mốc ≥ 3.25, kiểm chứng HLV/tân binh mới ở phút 20–25, bế tắc hiệp 1 (0-0, sút trúng đích ≤ 1), bàn muộn ở giải đuối sức cuối trận. Kèo chấp/tài xỉu live hiện ngay trên thẻ trận để đối chiếu (xem mục "Kèo live").
 
 ### Báo cáo AI (Claude)
