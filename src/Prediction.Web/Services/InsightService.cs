@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Prediction.Core.Engine;
+using Prediction.Core.Engine.Analysis;
 using Prediction.Core.Entities;
 using Prediction.Web.Data;
 
@@ -20,6 +21,12 @@ public sealed class MatchInsight
 
     /// <summary>Khuyến nghị tốt nhất của phân tích chuyên sâu (đã lưu), nếu có.</summary>
     public AnalysisPick? Analysis { get; init; }
+
+    /// <summary>Cảnh báo In-play (chỉ với trận đang đá).</summary>
+    public IReadOnlyList<InPlayAlert> InPlayAlerts { get; init; } = [];
+
+    /// <summary>Thống kê trận (đang đá hoặc đã đá), nếu có.</summary>
+    public FixtureStats? Stats { get; init; }
 
     public bool HasPicks => Advice.Picks.Count > 0;
 }
@@ -73,6 +80,16 @@ public sealed class InsightService(IDbContextFactory<AppDbContext> dbFactory, Ti
         var leagueIds = fixtures.Select(f => f.LeagueId).Distinct().ToList();
         var leagues = await db.Leagues.AsNoTracking().Where(l => leagueIds.Contains(l.Id)).ToDictionaryAsync(l => l.Id, ct);
         var analyses = await AnalysisService.BestPicksAsync(db, fixtures.Select(f => f.Id).ToList(), ct);
+        var inPlay = await AnalysisService.InPlayAlertsAsync(db, fixtures, contexts, ct);
+        var started = fixtures.Where(f => f.IsLive || f.IsFinished).Select(f => f.Id).ToList();
+        var stats = new Dictionary<int, FixtureStats>();
+        foreach (var chunk in started.Chunk(500))
+        {
+            foreach (var st in await db.FixtureStats.AsNoTracking().Where(x => chunk.Contains(x.FixtureId)).ToListAsync(ct))
+            {
+                stats[st.FixtureId] = st;
+            }
+        }
 
         var result = new List<MatchInsight>(fixtures.Count);
         foreach (var fixture in fixtures)
@@ -97,6 +114,8 @@ public sealed class InsightService(IDbContextFactory<AppDbContext> dbFactory, Ti
                 Advice = MatchAdvisor.Advise(ctx, picks, home, away),
                 Snapshots = contexts.Snapshots.GetValueOrDefault(fixture.Id) ?? [],
                 Analysis = analyses.GetValueOrDefault(fixture.Id),
+                InPlayAlerts = inPlay.GetValueOrDefault(fixture.Id) ?? [],
+                Stats = stats.GetValueOrDefault(fixture.Id),
             });
         }
 

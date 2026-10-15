@@ -330,6 +330,74 @@ public sealed class AnalysisService(IDbContextFactory<AppDbContext> dbFactory, T
         ? null
         : home ? s.HomeYellow + (s.HomeRed ?? 0) : s.AwayYellow + (s.AwayRed ?? 0);
 
+    /// <summary>Cảnh báo In-play cho các trận đang đá (thống kê trực tiếp + DNA + kèo đóng + HLV/tân binh mới).</summary>
+    public static async Task<Dictionary<int, IReadOnlyList<InPlayAlert>>> InPlayAlertsAsync(
+        AppDbContext db, IReadOnlyCollection<Fixture> fixtures, ContextSet contexts, CancellationToken ct)
+    {
+        var result = new Dictionary<int, IReadOnlyList<InPlayAlert>>();
+        var live = fixtures.Where(f => f.IsLive).ToList();
+        if (live.Count == 0)
+        {
+            return result;
+        }
+
+        var ids = live.Select(f => f.Id).ToList();
+        var leagueIds = live.Select(f => f.LeagueId).Distinct().ToList();
+        var teamIds = live.SelectMany(f => new[] { f.HomeTeamId, f.AwayTeamId }).Distinct().ToList();
+        var stats = await db.FixtureStats.AsNoTracking().Where(s => ids.Contains(s.FixtureId)).ToDictionaryAsync(s => s.FixtureId, ct);
+        var leagueDna = await db.LeagueDnas.AsNoTracking().Where(d => leagueIds.Contains(d.LeagueId)).ToDictionaryAsync(d => d.LeagueId, d => d.Tags, ct);
+        var teamDna = await db.TeamDnas.AsNoTracking().Where(d => teamIds.Contains(d.TeamId)).ToDictionaryAsync(d => d.TeamId, d => d.Tags, ct);
+        var changes = (await db.TeamChanges.AsNoTracking().Where(c => teamIds.Contains(c.TeamId) && !c.IsIgnored).ToListAsync(ct)).ToLookup(c => c.TeamId);
+
+        var history = new Dictionary<int, List<TeamMatch>>();
+        if (changes.Count > 0)
+        {
+            var since = changes.SelectMany(g => g).Min(c => c.StartDate);
+            var changed = changes.Select(g => g.Key).ToList();
+            var rows = await db.Fixtures.AsNoTracking()
+                .Where(f => (changed.Contains(f.HomeTeamId) || changed.Contains(f.AwayTeamId)) && f.KickoffUtc >= since
+                    && f.HomeGoals != null && (f.Status == "FT" || f.Status == "AET" || f.Status == "PEN"))
+                .Select(f => new { f.Id, f.KickoffUtc, f.HomeTeamId, f.AwayTeamId })
+                .ToListAsync(ct);
+            foreach (var teamId in changed)
+            {
+                history[teamId] = rows.Where(r => r.HomeTeamId == teamId || r.AwayTeamId == teamId)
+                    .OrderByDescending(r => r.KickoffUtc)
+                    .Select(r => new TeamMatch(r.Id, r.KickoffUtc, r.HomeTeamId == teamId, 0, 0, 0))
+                    .ToList();
+            }
+        }
+
+        foreach (var f in live)
+        {
+            var ctx = contexts.Contexts.GetValueOrDefault(f.Id);
+            RegimeStatus? Regime(int teamId) => changes[teamId].Any()
+                ? TeamFormBuilder.Regime(changes[teamId], history.GetValueOrDefault(teamId) ?? [], f.KickoffUtc)
+                : null;
+
+            var alerts = InPlayEngine.Evaluate(new InPlayInput
+            {
+                Fixture = f,
+                Stats = stats.GetValueOrDefault(f.Id),
+                HomeName = contexts.TeamName(f.HomeTeamId),
+                AwayName = contexts.TeamName(f.AwayTeamId),
+                LeagueTags = leagueDna.GetValueOrDefault(f.LeagueId),
+                HomeTags = teamDna.GetValueOrDefault(f.HomeTeamId),
+                AwayTags = teamDna.GetValueOrDefault(f.AwayTeamId),
+                PreMatchHandicap = ctx?.Handicap?.Current.Line,
+                PreMatchTotal = ctx?.Totals?.Current.Line,
+                HomeRegime = Regime(f.HomeTeamId),
+                AwayRegime = Regime(f.AwayTeamId),
+            });
+            if (alerts.Count > 0)
+            {
+                result[f.Id] = alerts;
+            }
+        }
+
+        return result;
+    }
+
     /// <summary>Khuyến nghị đã lưu (tốt nhất mỗi trận) để gắn nhãn A/B/C lên thẻ trận.</summary>
     public static async Task<Dictionary<int, AnalysisPick>> BestPicksAsync(AppDbContext db, IReadOnlyCollection<int> fixtureIds, CancellationToken ct)
     {

@@ -225,3 +225,13 @@ h1:focus {
 .prob-split > div { display: flex; align-items: center; justify-content: center; min-width: 0; overflow: hidden; }
 .reco-row td { vertical-align: top; }
 .reco-reasons { margin: 0; padding-left: 1rem; font-size: .76rem; color: #475569; }
+.inplay { margin-top: .6rem; display: grid; gap: .35rem; }
+.inplay-alert { border-radius: 8px; padding: .4rem .6rem; font-size: .8rem; border: 1px solid #e2e8f0; background: #f8fafc; color: #334155; }
+.inplay-alert .t { font-weight: 800; margin-right: .35rem; }
+.inplay-alert .r { font-size: .68rem; font-weight: 800; letter-spacing: .04em; color: #fff; background: #64748b; border-radius: 4px; padding: .05rem .35rem; margin-right: .4rem; }
+.inplay-alert.opp { border-color: #86efac; background: #f0fdf4; }
+.inplay-alert.opp .r { background: #16a34a; }
+.inplay-alert.warn { border-color: #fdba74; background: #fff7ed; }
+.inplay-alert.warn .r { background: #ea580c; }
+.mc-stats { display: flex; flex-wrap: wrap; justify-content: center; gap: .35rem 1rem; margin-top: .55rem; font-size: .78rem; color: #475569; }
+.mc-stats strong { color: #0f172a; font-variant-numeric: tabular-nums; }

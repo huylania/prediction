@@ -35,6 +35,11 @@ else
         <span class="badge bg-light text-dark border fs-6 align-middle">@FixtureStatus.Label(f.Status)</span>
     </h1>
 
+    @if (_m.InPlayAlerts.Count > 0)
+    {
+        <div class="mb-3"><InPlayAlerts Alerts="_m.InPlayAlerts" /></div>
+    }
+
     <ul class="nav mc-tabs gap-2 mb-3">
         <li class="nav-item"><a class="nav-link @(IsAnalysisTab ? "" : "active")" href="tran-dau/@Id">Tổng quan & kèo</a></li>
         <li class="nav-item">

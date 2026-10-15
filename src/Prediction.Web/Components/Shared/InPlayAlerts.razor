@@ -1,0 +1,15 @@
+@if (Alerts.Count > 0)
+{
+    <div class="inplay">
+        @foreach (var a in Alerts)
+        {
+            <div class="inplay-alert @(a.Severity switch { InPlaySeverity.Opportunity => "opp", InPlaySeverity.Warning => "warn", _ => "" })">
+                <span class="r">IN-PLAY @a.Rule</span><span class="t">@a.Title</span>@a.Detail
+            </div>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public IReadOnlyList<InPlayAlert> Alerts { get; set; } = [];
+}

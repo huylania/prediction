@@ -73,10 +73,29 @@
         </div>
     </div>
 
+    @if (Match.Stats is { HomeShots: not null } st)
+    {
+        <div class="mc-stats">
+            <span>Sút <strong>@st.HomeShots–@st.AwayShots</strong> (trúng đích @st.HomeShotsOnTarget–@st.AwayShotsOnTarget)</span>
+            <span>Góc <strong>@st.HomeCorners–@st.AwayCorners</strong></span>
+            <span>Thẻ <strong>@(st.HomeYellow + (st.HomeRed ?? 0))–@(st.AwayYellow + (st.AwayRed ?? 0))</strong>@if ((st.HomeRed ?? 0) + (st.AwayRed ?? 0) > 0) { <span class="text-danger"> (đỏ @st.HomeRed–@st.AwayRed)</span> }</span>
+            @if (st.HomePossession is { } hp)
+            {
+                <span>Kiểm soát @hp%–@st.AwayPossession%</span>
+            }
+            @if (st.HomeXg is not null)
+            {
+                <span>xG @Fmt.Num(st.HomeXg)–@Fmt.Num(st.AwayXg)</span>
+            }
+        </div>
+    }
+
     <div class="mc-markets">
         <MarketBox Outlook="Handicap" Match="Match" />
         <MarketBox Outlook="Totals" Match="Match" />
     </div>
+
+    <InPlayAlerts Alerts="Match.InPlayAlerts" />
 
     @if (Match.Analysis is not null || ExtraMarkets is not null)
     {
