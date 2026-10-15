@@ -1,9 +1,9 @@
-"""Sinh script SQL nạp DNA đội bóng (file 19 giải, 1 năm) vào bảng dbo.TeamDnas.
+"""Sinh script SQL nạp DNA đội bóng (file 22 giải, 1 năm) vào bảng dbo.TeamDnas.
 
     python3 scripts/dna/gen_team_dna_sql.py
 
-Đọc dna_doi_bong_19_giai_1nam.csv + team-ids.csv (id API-Football, tạo bằng resolve_team_ids.py)
-và ghi team_dna_19_giai.sql. Mỗi đội 1 dòng: đội có nhiều dòng (vd giải quốc nội + cúp châu lục)
+Đọc dna_doi_bong_22_giai_1nam.csv + team-ids.csv (id API-Football, tạo bằng resolve_team_ids.py)
+và ghi team_dna_22_giai.sql. Mỗi đội 1 dòng: đội có nhiều dòng (vd giải quốc nội + cúp châu lục)
 lấy dòng nhiều trận nhất, bằng nhau thì ưu tiên giải quốc nội.
 """
 import csv
@@ -12,9 +12,9 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-SOURCE = HERE / "dna_doi_bong_19_giai_1nam.csv"
+SOURCE = HERE / "dna_doi_bong_22_giai_1nam.csv"
 IDS = HERE / "team-ids.csv"
-OUTPUT = HERE / "team_dna_19_giai.sql"
+OUTPUT = HERE / "team_dna_22_giai.sql"
 
 # Cột tích trong CSV → giá trị cờ DnaTag (src/Prediction.Core/Entities/Dna.cs).
 TAGS = {
@@ -98,12 +98,12 @@ def main() -> None:
     stat_cols = ", ".join(c for _, c in STATS)
     today = datetime.date.today().isoformat()
     lines = [
-        "-- DNA đội bóng 19 giải (số liệu 1 năm) → dbo.TeamDnas",
+        f"-- DNA đội bóng {len({r['League_Id'] for r in rows})} giải (số liệu 1 năm) → dbo.TeamDnas",
         f"-- Sinh tự động bởi scripts/dna/gen_team_dna_sql.py ngày {today}: {len(values)} đội từ {len(rows)} dòng CSV.",
         "-- CHẠY SAU KHI website bản mới đã khởi động ít nhất 1 lần (migration TeamDnaProfile thêm các cột hồ sơ).",
         "-- Đội đã có DNA: giữ các tích cũ + cộng thêm tích từ file (phép OR), giữ Tên và Ghi chú; ghi đè số liệu 1 năm.",
         "-- Đội chưa có: thêm mới. Chạy lại nhiều lần vẫn cho cùng kết quả.",
-        "-- Cách chạy: mở bằng SSMS / Azure Data Studio rồi Execute, hoặc: sqlcmd -S <máy> -d <CSDL> -U <user> -P <mật khẩu> -f 65001 -i team_dna_19_giai.sql",
+        f"-- Cách chạy: mở bằng SSMS / Azure Data Studio rồi Execute, hoặc: sqlcmd -S <máy> -d <CSDL> -U <user> -P <mật khẩu> -f 65001 -i {OUTPUT.name}",
         "SET NOCOUNT ON;",
         "SET XACT_ABORT ON;",
         "",

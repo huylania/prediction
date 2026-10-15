@@ -1,4 +1,4 @@
-"""Tìm id API-Football cho các đội trong dna_doi_bong_19_giai_1nam.csv (CSV chỉ có tên).
+"""Tìm id API-Football cho các đội trong dna_doi_bong_22_giai_1nam.csv (CSV chỉ có tên).
 
 Gọi teams?league=<id>&season=<năm> cho mỗi giải (mùa 2024–2026), đối chiếu tên trong cùng giải
 rồi ghi team-ids.csv. Đội không khớp được ghi TeamId trống để sửa tay.
@@ -18,7 +18,7 @@ import urllib.request
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-SOURCE = HERE / "dna_doi_bong_19_giai_1nam.csv"
+SOURCE = HERE / "dna_doi_bong_22_giai_1nam.csv"
 OUTPUT = HERE / "team-ids.csv"
 SEASONS = (2026, 2025, 2024)
 
@@ -46,6 +46,10 @@ ALIASES: dict[str, str] = {
     "Stade Rennais": "Rennes",
     "Ulsan HD": "Ulsan Hyundai FC",
     "Wolverhampton Wanderers": "Wolves",
+    "Club Atlético Morelia": "Monarcas",  # tên cũ trên API
+    "Club Jaiba Brava": "CDS Tampico Madero",
+    "Madura United FC": "Persepam Madura Utd",
+    "Malut United": "Java United",  # API không có "Malut United"; "Java United" (id 22409) đứng đúng chỗ ở Liga 1 2024–2025 — nên kiểm tra
 }
 
 NOISE = {"fc", "cf", "sc", "ac", "afc", "fk", "sk", "cd", "ud", "sd", "rc", "rcd", "club", "de", "the", "cr", "ec", "se", "ca", "sv", "vfb", "vfl", "tsg", "us", "ss", "as"}

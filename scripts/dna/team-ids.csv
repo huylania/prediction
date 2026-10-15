@@ -22,6 +22,7 @@ League_Id,Doi_Bong,TeamId,Api_Name,Match
 18,Al Wasl,2872,Al-Wasl FC,normalized
 18,Al Wehdat,4537,Al Wihdat,alias
 141,Albacete,722,Albacete,exact
+263,Alebrijes de Oaxaca,2300,Alebrijes de Oaxaca,exact
 17,Al-Gharafa,2903,Al-Gharafa,exact
 89,Almere City FC,419,Almere City FC,exact
 141,Almeria,723,Almeria,exact
@@ -34,6 +35,7 @@ League_Id,Doi_Bong,TeamId,Api_Name,Match
 18,Andijan,4209,Andijan,exact
 141,Andorra,8157,FC Andorra,normalized
 61,Angers,77,Angers,exact
+274,Arema Indonesia,2438,Arema FC,contains
 18,Arkadag,21232,Arkadag,exact
 79,Arminia Bielefeld,188,Arminia Bielefeld,exact
 39,Arsenal,42,Arsenal,exact
@@ -49,7 +51,11 @@ League_Id,Doi_Bong,TeamId,Api_Name,Match
 2,Athletic Club,531,Athletic Club,exact
 72,Athletico Paranaense,134,Atletico Paranaense,alias
 71,Athletico-PR,134,Atletico Paranaense,alias
+262,Atl. San Luis,2314,Atletico San Luis,fuzzy 0.83
 253,Atlanta United FC,1608,Atlanta United FC,exact
+263,Atlante,2312,Atlante FC,normalized
+262,Atlante,2312,Atlante FC,normalized
+262,Atlas,2283,Atlas,exact
 72,Atlético Goianiense,144,Atletico Goianiense,normalized
 140,Atletico Madrid,530,Atletico Madrid,exact
 2,Atlético Madrid,530,Atletico Madrid,normalized
@@ -61,6 +67,7 @@ League_Id,Doi_Bong,TeamId,Api_Name,Match
 297,Ayutthaya United,2803,Ayutthaya FC,contains
 88,AZ Alkmaar,201,AZ Alkmaar,exact
 71,Bahia,118,Bahia,exact
+274,Bali United,2448,Bali United,exact
 18,Bangkok United,2770,Bangkok United,exact
 296,Bangkok United,2770,Bangkok United,exact
 140,Barcelona,529,Barcelona,exact
@@ -75,8 +82,10 @@ League_Id,Doi_Bong,TeamId,Api_Name,Match
 18,BG Pathum United,2769,BG Pathum United,exact
 296,BG Pathum United,2769,BG Pathum United,exact
 18,BG Tampines Rovers FC,4206,Tampines Rovers,contains
+274,Bhayangkara Presisi,2443,Bhayangkara FC,contains
 2,Bodo/Glimt,327,Bodo/Glimt,exact
 135,Bologna,500,Bologna,exact
+274,Borneo FC,2442,Pusamania Borneo,contains
 78,Borussia Dortmund,165,Borussia Dortmund,exact
 2,Borussia Dortmund,165,Borussia Dortmund,exact
 78,Borussia Monchengladbach,163,Borussia Mönchengladbach,normalized
@@ -94,6 +103,7 @@ League_Id,Doi_Bong,TeamId,Api_Name,Match
 141,Cadiz,724,Cadiz,exact
 135,Cagliari,490,Cagliari,exact
 88,Cambuur,420,Cambuur,exact
+263,Cancún FC,14276,Cancún,normalized
 141,Castellon,5254,Castellón,normalized
 71,Ceara,129,Ceara,exact
 72,Ceará,129,Ceara,normalized
@@ -114,7 +124,14 @@ League_Id,Doi_Bong,TeamId,Api_Name,Match
 296,Chonburi FC,2772,Chonburi FC,exact
 297,Chonburi FC,2772,Chonburi FC,exact
 62,Clermont Foot,99,Clermont Foot,exact
+262,Club America,2287,Club America,exact
+263,Club Atlético La Paz,19024,CA La Paz,contains
+263,Club Atlético Morelia,2284,Monarcas,alias
 2,Club Brugge,569,Club Brugge KV,contains
+263,Club Deportivo Irapuato,15932,Irapuato,contains
+263,Club Jaiba Brava,19905,CDS Tampico Madero,alias
+262,Club Leon,2289,Leon,normalized
+262,Club Tijuana,2280,Club Tijuana,exact
 253,Colorado Rapids,1610,Colorado Rapids,exact
 253,Columbus Crew,1613,Columbus Crew,exact
 135,Como,895,Como,exact
@@ -124,11 +141,14 @@ League_Id,Doi_Bong,TeamId,Api_Name,Match
 71,Corinthians,131,Corinthians,exact
 71,Coritiba,147,Coritiba,exact
 72,Coritiba,147,Coritiba,exact
+263,Correcaminos UAT,2313,Correcaminos Uat,normalized
 79,Cottbus,1320,Energie Cottbus,contains
 39,Coventry City,1346,Coventry,contains
 72,CRB,146,CRB,exact
 135,Cremonese,520,Cremonese,exact
 72,Criciúma,140,Criciuma,normalized
+262,Cruz Azul,2295,Cruz Azul,exact
+263,Cruz Azul Hidalgo,15928,Cruz Azul Hidalgo,exact
 71,Cruzeiro,135,Cruzeiro,exact
 39,Crystal Palace,52,Crystal Palace,exact
 72,Cuiabá,1193,Cuiaba,normalized
@@ -137,8 +157,11 @@ League_Id,Doi_Bong,TeamId,Api_Name,Match
 89,De Graafschap,199,De Graafschap,exact
 88,Den Haag,198,ADO Den Haag,contains
 140,Deportivo Alaves,542,Alaves,contains
+274,Dewa United,17902,Dewa United,exact
 62,Dijon,89,Dijon,exact
 340,Dong A Thanh Hoa,3680,Thanh Hóa,contains
+263,Dorados de Sinaloa,2297,Dorados,contains
+263,Durango,15941,Durango,exact
 79,Dynamo Dresden,183,Dynamo Dresden,exact
 18,Eastern SC,4451,Eastern,normalized
 141,Eibar,545,Eibar,exact
@@ -195,6 +218,7 @@ League_Id,Doi_Bong,TeamId,Api_Name,Match
 141,Granada,715,Granada CF,normalized
 71,Gremio,130,Gremio,exact
 62,Grenoble Foot 38,101,Grenoble,contains
+262,Guadalajara Chivas,2278,Guadalajara Chivas,exact
 62,Guingamp,90,Guingamp,exact
 340,Ha Noi FC,3670,Ha Noi,normalized
 340,Hai Phong FC,3671,Hai Phong,normalized
@@ -222,6 +246,7 @@ League_Id,Doi_Bong,TeamId,Api_Name,Match
 89,Jong AZ,418,Jong AZ,exact
 89,Jong FC Utrecht,428,Jong Utrecht,normalized
 89,Jong PSV,411,Jong PSV U21,contains
+262,Juarez,2298,FC Juarez,normalized
 71,Juventude,152,Juventude,exact
 72,Juventude,152,Juventude,exact
 135,Juventus,496,Juventus,exact
@@ -245,6 +270,7 @@ League_Id,Doi_Bong,TeamId,Api_Name,Match
 135,Lecce,867,Lecce,exact
 39,Leeds United,63,Leeds,contains
 141,Leganes,537,Leganes,exact
+263,Leones Negros,2307,Leones Negros UDG,contains
 140,Levante,539,Levante,exact
 61,Lille,79,Lille,exact
 18,Lion City Sailors FC,4204,Home United,alias
@@ -255,23 +281,28 @@ League_Id,Doi_Bong,TeamId,Api_Name,Match
 253,Los Angeles FC,1616,Los Angeles FC,exact
 18,Macarthur FC,15550,Macarthur,normalized
 17,Machida Zelvia,303,Machida Zelvia,exact
+274,Madura United FC,2444,Persepam Madura Utd,alias
 297,Mahasarakham SBT,17910,Mahasarakham United,alias
 78,Mainz 05,164,FSV Mainz 05,contains
 140,Malaga,535,Malaga,exact
 141,Malaga,535,Malaga,exact
 140,Mallorca,798,Mallorca,exact
 141,Mallorca,798,Mallorca,exact
+274,Malut United,22409,Java United,alias
 39,Manchester City,50,Manchester City,exact
 2,Manchester City,50,Manchester City,exact
 39,Manchester United,33,Manchester United,exact
 61,Marseille,81,Marseille,exact
 2,Marseille,81,Marseille,exact
+262,Mazatlan FC,14002,Mazatlán,normalized
 17,Melbourne City FC,945,Melbourne City,normalized
 61,Metz,112,Metz,exact
 62,Metz,112,Metz,exact
+263,Mineros de Zacatecas,2299,Mineros de Zacatecas,exact
 253,Minnesota United FC,1612,Minnesota United FC,exact
 141,Mirandes,799,Mirandes,exact
 71,Mirassol,7848,Mirassol,exact
+262,Monterrey,2282,Monterrey,exact
 62,Montpellier,82,Montpellier,exact
 135,Monza,1579,Monza,exact
 296,Muangthong United,2786,Muangthong United,exact
@@ -287,6 +318,7 @@ League_Id,Doi_Bong,TeamId,Api_Name,Match
 17,Nasaf Qarshi,4215,Nasaf,contains
 253,Nashville SC,9569,Nashville SC,exact
 72,Náutico,755,Nautico Recife,contains
+262,Necaxa,2288,Necaxa,exact
 253,New England Revolution,1609,New England Revolution,exact
 253,New York City FC,1604,New York City FC,exact
 253,New York Red Bulls,1602,New York Red Bulls,exact
@@ -304,6 +336,7 @@ League_Id,Doi_Bong,TeamId,Api_Name,Match
 79,Osnabruck,1324,VfL Osnabrück,normalized
 140,Oviedo,718,Oviedo,exact
 141,Oviedo,718,Oviedo,exact
+262,Pachuca,2292,CF Pachuca,normalized
 2,Pafos,3403,Pafos,exact
 71,Palmeiras,121,Palmeiras,exact
 61,Paris FC,114,Paris FC,exact
@@ -314,9 +347,17 @@ League_Id,Doi_Bong,TeamId,Api_Name,Match
 62,Pau FC,1297,PAU,normalized
 72,Paysandu,149,Paysandu,exact
 88,PEC Zwolle,193,PEC Zwolle,exact
+274,Persebaya Surabaya,2446,Persebaya Surabaya,exact
 18,Persib,2445,Persib Bandung,contains
+274,Persib,2445,Persib Bandung,contains
+274,Persija,10134,Persija,exact
+274,Persijap,11132,Persijap,exact
+274,Persik Kediri,4241,Persik Kediri,exact
+274,Persis Solo,4243,Persis Solo,exact
+274,Persita,4244,Persita,exact
 253,Philadelphia Union,1599,Philadelphia Union,exact
 297,Phrae United,6585,Phrae United,exact
+263,Piratas,27935,Piratas,exact
 135,Pisa,801,Pisa,exact
 18,Pohang Steelers,2764,Pohang Steelers,exact
 297,Police Tero FC,2775,Police Tero,normalized
@@ -324,10 +365,15 @@ League_Id,Doi_Bong,TeamId,Api_Name,Match
 296,Port FC,2789,Port FC,exact
 253,Portland Timbers,1617,Portland Timbers,exact
 79,Preußen Münster,1313,Preußen Münster,exact
+274,PSBS Biak,4232,PSBS Biak Numfor,contains
+274,PSIM Yogyakarta,4235,PSIM Yogyakarta,exact
+274,PSM Makassar,2441,PSM Makassar,exact
 88,PSV Eindhoven,197,PSV Eindhoven,exact
 2,PSV Eindhoven,197,PSV Eindhoven,exact
 296,PT Prachuap FC,2791,Prachuap,contains
+262,Puebla,2291,Puebla,exact
 340,Quang Nam FC,3675,Quang Nam,normalized
+262,Queretaro,2290,Club Queretaro,normalized
 340,Quy Nhon Binh Dinh,9160,Binh Dinh,contains
 18,Ratchaburi FC,2776,Ratchaburi,normalized
 296,Ratchaburi FC,2776,Ratchaburi,normalized
@@ -355,6 +401,7 @@ League_Id,Doi_Bong,TeamId,Api_Name,Match
 140,Santander,4665,Racing Santander,contains
 141,Santander,4665,Racing Santander,contains
 71,Santos,128,Santos,exact
+262,Santos Laguna,2285,Santos Laguna,exact
 72,São Bernardo,7865,São Bernardo,exact
 71,Sao Paulo,126,Sao Paulo,exact
 135,Sassuolo,488,Sassuolo,exact
@@ -368,6 +415,7 @@ League_Id,Doi_Bong,TeamId,Api_Name,Match
 78,Schalke 04,174,FC Schalke 04,normalized
 253,Seattle Sounders FC,1595,Seattle Sounders,normalized
 18,Selangor FC,2526,Selangor,normalized
+274,Semen Padang,2456,Semen Padang,exact
 140,Sevilla,536,Sevilla,exact
 17,Shabab Al-Ahli,2870,Shabab Al Ahli Dubai,contains
 17,Shanghai Port,836,SHANGHAI SIPG,alias
@@ -399,10 +447,15 @@ League_Id,Doi_Bong,TeamId,Api_Name,Match
 79,SV Elversberg,1660,SV Elversberg,exact
 78,SV Elversberg,1660,SV Elversberg,exact
 18,Tai Po FC,4457,Wofoo Tai Po,contains
+263,Tapatío,14278,Tapatío,exact
 88,Telstar,427,Telstar,exact
 141,Tenerife,719,Tenerife,exact
+263,Tepatitlán FC,14279,Tepatitlán,normalized
 340,The Cong - Viettel,3681,Viettel,contains
 340,Thep Xanh Nam Dinh,3674,Nam Dinh,contains
+262,Tigres UANL,2279,Tigres UANL,exact
+263,Tlaxcala FC,14280,Tlaxcala,normalized
+262,Toluca,2281,Toluca,exact
 89,TOP Oss,423,FC OSS,contains
 135,Torino,503,Torino,exact
 253,Toronto FC,1601,Toronto FC,exact
@@ -414,6 +467,7 @@ League_Id,Doi_Bong,TeamId,Api_Name,Match
 297,Trat FC,2794,Trat FC,exact
 135,Udinese,494,Udinese,exact
 17,Ulsan HD,2767,Ulsan Hyundai FC,alias
+262,UNAM Pumas,2286,U.N.A.M. - Pumas,fuzzy 0.87
 78,Union Berlin,182,Union Berlin,exact
 2,Union St.-Gilloise,1393,Union St. Gilloise,normalized
 62,USL Dunkerque,1304,Dunkerque,contains
@@ -421,6 +475,7 @@ League_Id,Doi_Bong,TeamId,Api_Name,Match
 140,Valencia,532,Valencia,exact
 253,Vancouver Whitecaps,1603,Vancouver Whitecaps,exact
 71,Vasco,133,Vasco DA Gama,contains
+263,Venados FC,2311,Venados FC,exact
 135,Venezia,517,Venezia,exact
 78,VfB Stuttgart,172,VfB Stuttgart,exact
 79,VfL Bochum,176,VfL Bochum,exact
