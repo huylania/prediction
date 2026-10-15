@@ -46,7 +46,10 @@ public sealed class SyncOptions
     public int VenuesIntervalMinutes { get; set; } = 360;
     public int WeatherIntervalMinutes { get; set; } = 180;
 
-    /// <summary>Góc Live: kèo góc live + chốt/chấm khuyến nghị (chỉ gọi API khi có trận gần cửa sổ vàng).</summary>
+    /// <summary>Kèo live (chấp, tài xỉu, góc) từ odds/live — chỉ gọi API khi có trận theo dõi đang đá.</summary>
+    public int LiveOddsIntervalMinutes { get; set; } = 2;
+
+    /// <summary>Góc Live: chốt/chấm khuyến nghị góc (không gọi API; kèo góc lấy trong tác vụ kèo live).</summary>
     public int LiveCornersIntervalMinutes { get; set; } = 2;
 
     /// <summary>AI tự điền thông tin bên lề cho trận nhóm A/B (chỉ khi có Anthropic:ApiKey).</summary>
@@ -67,7 +70,6 @@ public sealed class DataSyncService(
 {
     public int RequestCount => api.RequestCount;
 
-    public bool IsConfigured => api.IsConfigured;
 
     private DateTime Now => clock.GetUtcNow().UtcDateTime;
 
@@ -776,48 +778,94 @@ public sealed class DataSyncService(
     };
 
     /// <summary>
-    /// Kèo góc live (1 request cho mọi trận đang đá) — chỉ gọi khi có trận theo dõi ở gần cửa sổ vàng
-    /// (hiệp 1 phút 20–32, hiệp 2 phút 70–82). Ghi khi mốc/odds đổi.
+    /// Kèo live từ odds/live (1 request cho mọi trận đang đá), chỉ gọi khi có trận theo dõi đang đá:
+    /// kèo chấp/tài xỉu bàn (cả trận; hiệp 1 khi đang hiệp 1) cho mọi trận, kèo góc cho trận gần cửa sổ vàng của Góc Live
+    /// (hiệp 1 phút 20–32, hiệp 2 phút 70–82). Chỉ ghi khi mức/odds đổi.
     /// </summary>
-    public async Task<int> SyncLiveCornerOddsAsync(CancellationToken ct)
+    public async Task<(int Goals, int Corners)> SyncLiveOddsAsync(CancellationToken ct)
     {
         var now = Now;
         var live = await db.Fixtures.AsNoTracking()
             .Where(f => f.League!.IsTracked && !f.League.IsDemo && f.KickoffUtc <= now && f.KickoffUtc >= now.AddHours(-3)
-                && (f.Status == "1H" && f.Elapsed >= 20 && f.Elapsed <= 32 || f.Status == "2H" && f.Elapsed >= 70 && f.Elapsed <= 82))
-            .Select(f => f.Id)
-            .ToListAsync(ct);
+                && (f.Status == "1H" || f.Status == "HT" || f.Status == "2H"))
+            .ToDictionaryAsync(f => f.Id, ct);
         if (live.Count == 0)
         {
-            return 0;
+            return (0, 0);
         }
 
-        var wanted = live.ToHashSet();
-        var latest = (await db.LiveCornerOdds.AsNoTracking()
-                .Where(o => wanted.Contains(o.FixtureId))
+        static bool NearCornerWindow(Fixture f) =>
+            f.Status == "1H" && f.Elapsed is >= 20 and <= 32 || f.Status == "2H" && f.Elapsed is >= 70 and <= 82;
+
+        var ids = live.Keys.ToList();
+        var latestGoals = (await db.LiveOddsSnapshots.AsNoTracking()
+                .Where(o => ids.Contains(o.FixtureId))
+                .GroupBy(o => new { o.FixtureId, o.Market, o.FirstHalf })
+                .Select(g => g.OrderByDescending(o => o.FetchedAtUtc).ThenByDescending(o => o.Id).First())
+                .ToListAsync(ct))
+            .ToDictionary(o => (o.FixtureId, o.Market, o.FirstHalf));
+        var latestCorners = (await db.LiveCornerOdds.AsNoTracking()
+                .Where(o => ids.Contains(o.FixtureId))
                 .GroupBy(o => new { o.FixtureId, o.Window })
                 .Select(g => g.OrderByDescending(o => o.FetchedAtUtc).ThenByDescending(o => o.Id).First())
                 .ToListAsync(ct))
             .ToDictionary(o => (o.FixtureId, o.Window));
-        var stored = 0;
-        foreach (var item in (await api.GetLiveOddsAsync(ct)).Where(i => wanted.Contains(i.Fixture.Id)))
+
+        int goals = 0, corners = 0;
+        foreach (var item in await api.GetLiveOddsAsync(ct))
         {
+            if (!live.TryGetValue(item.Fixture.Id, out var f))
+            {
+                continue;
+            }
+
+            foreach (var q in LiveOddsParser.ParseGoals(item).Where(q => !q.FirstHalf || f.Status == "1H"))
+            {
+                var key = (q.FixtureId, q.Market, q.FirstHalf);
+                if (latestGoals.TryGetValue(key, out var last) && last.SameQuote(q.Line, q.PriceA, q.PriceB))
+                {
+                    continue;
+                }
+
+                var row = new LiveOddsSnapshot
+                {
+                    FixtureId = q.FixtureId,
+                    Market = q.Market,
+                    FirstHalf = q.FirstHalf,
+                    Line = q.Line,
+                    PriceA = q.PriceA,
+                    PriceB = q.PriceB,
+                    Minute = q.Minute ?? f.Elapsed,
+                    HomeGoals = q.HomeGoals ?? f.HomeGoals ?? 0,
+                    AwayGoals = q.AwayGoals ?? f.AwayGoals ?? 0,
+                    FetchedAtUtc = now,
+                };
+                db.LiveOddsSnapshots.Add(row);
+                latestGoals[key] = row;
+                goals++;
+            }
+
+            if (!NearCornerWindow(f))
+            {
+                continue;
+            }
+
             foreach (var q in LiveOddsParser.Parse(item))
             {
-                if (latest.TryGetValue((q.FixtureId, q.Window), out var last) && last.Line == q.Line && last.OverOdds == q.OverOdds && last.UnderOdds == q.UnderOdds)
+                if (latestCorners.TryGetValue((q.FixtureId, q.Window), out var last) && last.Line == q.Line && last.OverOdds == q.OverOdds && last.UnderOdds == q.UnderOdds)
                 {
                     continue;
                 }
 
                 var row = new LiveCornerOdds { FixtureId = q.FixtureId, Window = q.Window, Line = q.Line, OverOdds = q.OverOdds, UnderOdds = q.UnderOdds, Minute = q.Minute, FetchedAtUtc = now };
                 db.LiveCornerOdds.Add(row);
-                latest[(q.FixtureId, q.Window)] = row;
-                stored++;
+                latestCorners[(q.FixtureId, q.Window)] = row;
+                corners++;
             }
         }
 
         await db.SaveChangesAsync(ct);
-        return stored;
+        return (goals, corners);
     }
 
     /// <summary>Còn quá ít request trong ngày: dừng các tác vụ phụ để dành cho kèo và trực tiếp.</summary>

@@ -1,0 +1,88 @@
+@* Diễn biến kèo chấp / tài xỉu trong trận (mới nhất trên cùng). Ô in đậm = vừa đổi; mức kèo đổi ≥ 0.5 tô đỏ. *@
+@if (_rows.Count > 0)
+{
+    <div class="table-responsive">
+        <table class="table table-sm small mb-1 align-middle">
+            <thead>
+                <tr>
+                    <th>Phút</th>
+                    <th class="text-center">Tỉ số</th>
+                    <th title="Mức chấp của đội nhà, tính từ tỉ số lúc báo kèo">Chấp (đội nhà, từ tỉ số)</th>
+                    <th>Tài xỉu</th>
+                    @if (_hasFirstHalf)
+                    {
+                        <th>Chấp H1</th>
+                        <th>Tài xỉu H1</th>
+                    }
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var r in Enumerable.Reverse(_rows))
+                {
+                    <tr>
+                        <td class="text-nowrap">@(r.Minute is { } m ? $"{m}'" : "—")</td>
+                        <td class="text-center">@r.HomeGoals-@r.AwayGoals</td>
+                        @Cell(r, (false, Market.AsianHandicap))
+                        @Cell(r, (false, Market.OverUnder))
+                        @if (_hasFirstHalf)
+                        {
+                            @Cell(r, (true, Market.AsianHandicap))
+                            @Cell(r, (true, Market.OverUnder))
+                        }
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    /// <summary>Các bản kèo live theo thời gian tăng dần.</summary>
+    [Parameter, EditorRequired] public IReadOnlyList<LiveOddsSnapshot> History { get; set; } = [];
+
+    private sealed record Row(int? Minute, int HomeGoals, int AwayGoals,
+        Dictionary<(bool FirstHalf, Market Market), LiveOddsSnapshot> State,
+        Dictionary<(bool FirstHalf, Market Market), decimal?> Changed);
+
+    private List<Row> _rows = [];
+    private bool _hasFirstHalf;
+
+    protected override void OnParametersSet()
+    {
+        _rows = [];
+        _hasFirstHalf = History.Any(o => o.FirstHalf);
+        var state = new Dictionary<(bool, Market), LiveOddsSnapshot>();
+        foreach (var batch in History.GroupBy(o => o.FetchedAtUtc))
+        {
+            var changed = new Dictionary<(bool, Market), decimal?>();
+            foreach (var o in batch)
+            {
+                var key = (o.FirstHalf, o.Market);
+                // Giá trị: mức kèo cũ (để so độ dịch), null nếu là bản đầu tiên. Kèo chấp so theo mức tính từ tỉ số hiện tại.
+                changed[key] = state.TryGetValue(key, out var previous) ? previous.FromScoreLine : null;
+                state[key] = o;
+            }
+
+            var first = batch.First();
+            _rows.Add(new Row(batch.Max(o => o.Minute), first.HomeGoals, first.AwayGoals, new(state), changed));
+        }
+    }
+
+    private RenderFragment Cell(Row r, (bool FirstHalf, Market Market) key) => __builder =>
+    {
+        // Kèo hiệp 1 đã đóng ở hiệp 2: không lặp lại mức cũ.
+        if (!r.State.TryGetValue(key, out var o) || key.FirstHalf && r.Minute > 45 && !r.Changed.ContainsKey(key))
+        {
+            <td class="text-muted">—</td>
+            return;
+        }
+
+        var isChanged = r.Changed.TryGetValue(key, out var previousLine);
+        var delta = previousLine is { } p ? o.FromScoreLine - p : 0;
+        var css = !isChanged ? "text-muted" : Math.Abs(delta) >= 0.5m ? "fw-semibold text-danger" : "fw-semibold";
+        <td class="@css text-nowrap">
+            @(key.Market == Market.AsianHandicap ? LineText.Signed(o.FromScoreLine) : LineText.Number(o.Line))@(delta > 0 ? " ▲" : delta < 0 ? " ▼" : "")
+            <span class="text-muted">· @LineText.Odds(o.PriceA)/@LineText.Odds(o.PriceB)@(key.Market == Market.AsianHandicap && o.FromScoreLine != o.Line ? $" · cả trận {LineText.Signed(o.Line)}" : "")</span>
+        </td>
+    };
+}

@@ -71,7 +71,8 @@
                     chấn thương @SyncOpts.Value.InjuriesIntervalMinutes phút · HLV @SyncOpts.Value.CoachesIntervalMinutes phút ·
                     dò đội hình @SyncOpts.Value.LineupsIntervalMinutes phút (trong @SyncOpts.Value.LineupsWindowMinutes phút trước trận, có đội hình là chụp kèo) ·
                     chụp kèo @SyncOpts.Value.PreKickoffMinutes phút trước trận · đối đầu & sân @SyncOpts.Value.H2HIntervalMinutes phút · thời tiết @SyncOpts.Value.WeatherIntervalMinutes phút (Open-Meteo, miễn phí) ·
-                    Góc Live @SyncOpts.Value.LiveCornersIntervalMinutes phút (kèo góc live chỉ lấy khi có trận ở phút 20–32 hoặc 70–82, 1 request cho mọi trận).
+                    kèo live (chấp, tài xỉu, góc) @SyncOpts.Value.LiveOddsIntervalMinutes phút (chỉ khi có trận đang đá, 1 request cho mọi trận) ·
+                    Góc Live chốt/chấm @SyncOpts.Value.LiveCornersIntervalMinutes phút.
                     Khi quota còn dưới @SyncOpts.Value.QuotaReserve request, các tác vụ phụ tạm dừng. Sửa trong <code>appsettings.json</code> mục <code>Sync</code>.
                 </div>
             </div>
@@ -101,13 +102,13 @@
                     <div class="alert alert-info py-2 small">Đang chạy: @SyncJobs.Label(job)…</div>
                 }
                 <div class="d-flex flex-wrap gap-2">
-                    @foreach (var j in new[] { SyncJobs.Leagues, SyncJobs.Fixtures, SyncJobs.Live, SyncJobs.Odds, SyncJobs.ClosingOdds, SyncJobs.Advice, SyncJobs.Stats, SyncJobs.Injuries, SyncJobs.Coaches, SyncJobs.Lineups, SyncJobs.HeadToHead, SyncJobs.Venues, SyncJobs.Weather })
+                    @foreach (var j in new[] { SyncJobs.Leagues, SyncJobs.Fixtures, SyncJobs.Live, SyncJobs.LiveOdds, SyncJobs.Odds, SyncJobs.ClosingOdds, SyncJobs.Advice, SyncJobs.Stats, SyncJobs.Injuries, SyncJobs.Coaches, SyncJobs.Lineups, SyncJobs.HeadToHead, SyncJobs.Venues, SyncJobs.Weather })
                     {
                         <button class="btn btn-sm btn-outline-primary" disabled="@(Sync.CurrentJob is not null || !Api.IsConfigured)" @onclick="() => RunJobAsync(j)">@SyncJobs.Label(j)</button>
                     }
                     <button class="btn btn-sm btn-outline-secondary" disabled="@(Sync.CurrentJob is not null)" @onclick="() => RunJobAsync(SyncJobs.Suggestions)">Cập nhật gợi ý</button>
                     <button class="btn btn-sm btn-outline-secondary" disabled="@(Sync.CurrentJob is not null)" @onclick="() => RunJobAsync(SyncJobs.Analysis)">Cập nhật phân tích chuyên sâu</button>
-                    <button class="btn btn-sm btn-outline-secondary" disabled="@(Sync.CurrentJob is not null)" @onclick="() => RunJobAsync(SyncJobs.LiveCorners)">Góc Live (kèo góc live + chốt/chấm)</button>
+                    <button class="btn btn-sm btn-outline-secondary" disabled="@(Sync.CurrentJob is not null)" @onclick="() => RunJobAsync(SyncJobs.LiveCorners)">Góc Live (chốt/chấm khuyến nghị)</button>
                 </div>
                 <div class="small text-muted mt-2">
                     Thống kê góc/thẻ/sút đã tải: <strong>@_statsDone</strong> / @_statsTotal trận đã đá (mùa hiện tại + @SyncOpts.Value.StatsPreviousSeasons mùa trước, giải thật).

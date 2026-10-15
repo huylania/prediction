@@ -90,6 +90,12 @@
         </div>
     }
 
+    @if (live && Match.LiveOdds.Count > 0)
+    {
+        <LiveOddsLine Fixture="f" Odds="Match.LiveOdds" Home="@Match.Home" Away="@Match.Away"
+                      ClosingHandicap="Match.Context.Handicap?.Current.Line" ClosingTotal="Match.Context.Totals?.Current.Line" />
+    }
+
     <div class="mc-markets">
         <MarketBox Outlook="Handicap" Match="Match" />
         <MarketBox Outlook="Totals" Match="Match" />

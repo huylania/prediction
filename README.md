@@ -79,6 +79,7 @@ Website tự đồng bộ ở chế độ nền theo chu kỳ:
 |---|---|---|
 | Lịch & kết quả | 2 giờ | 1 request/giải |
 | Tỉ số & thống kê trực tiếp | 2 phút | chỉ khi có trận đang đá; 1 request / 20 trận |
+| Kèo live | 2 phút | chỉ khi có trận đang đá; 1 request (`odds/live`) cho mọi trận: chấp, tài xỉu (cả trận + hiệp 1) và kèo góc cho Góc Live |
 | Kèo theo giải | 1 giờ | chấp, tài xỉu, góc, chấp góc, thẻ; bắt kèo mở và biến động |
 | Kèo sát giờ | 15 phút | từng trận, trong 3 giờ trước giờ bóng lăn → kèo đóng |
 | Tư vấn API | 6 giờ + 1 lần ~1 giờ trước trận | các trận trong 3 ngày tới |
@@ -95,6 +96,15 @@ Website tự đồng bộ ở chế độ nền theo chu kỳ:
 | AI điền thông tin bên lề | 30 phút | chỉ khi có key Claude: các trận nhóm A/B trong 24 giờ tới, tối đa $3/ngày |
 
 Chỉnh chu kỳ trong `appsettings.json`, mục `Sync`. Nhà cái mặc định là Bet365 (`ApiFootball:BookmakerId = 8`).
+
+**Kèo live (trong trận)**:
+- Thẻ trận đang đá có dòng *Kèo live*: kèo chấp, tài xỉu cả trận (và hiệp 1 khi đang hiệp 1), kèm kèo trước trận để so.
+- Trang chi tiết trận có bảng diễn biến kèo live theo phút.
+- `odds/live` không chọn được nhà cái, nên odds có thể khác Bet365.
+- API báo kèo chấp live theo **tỉ số cả trận**. Website quy về kiểu châu Á (tính từ tỉ số hiện tại) = mức cả trận + (bàn nhà − bàn khách).
+  - Ví dụ: Gangwon chấp 1.25 trước trận, đang thua 0-1 lúc nghỉ thì API ghi Gangwon +0.25. Tính từ 0-1, Gangwon vẫn chấp 3/4.
+- Tài xỉu live là tổng bàn cả trận, gồm bàn đã ghi.
+- Kèo live chỉ để xem. Gợi ý và phân tích vẫn chấm theo kèo đóng trước giờ bóng lăn.
 
 ## Viết quy tắc
 
@@ -183,7 +193,7 @@ Menu **Góc Live** (`/goc-live`) là mục **riêng**, chạy theo file kỹ nă
   - **H2 phút 75–80**, kèo góc cả trận: `Exp = C + (C/T) × K_tỉ số × K_động lực × K_cường độ × K_thẻ đỏ × (95.5 − T)`.
   - Ngưỡng ra Tài/Xỉu: H1 cần Δedge ±0.60. H2 cần Δedge ±0.55, kèm β ≥ 1.20 khi tỉ số chưa an bài (Tài) hoặc β ≤ 0.80 khi đã an bài (Xỉu).
   - Xác suất thắng/hoàn/thua tính theo phân phối nhị thức âm của số góc còn lại. Nếu EV theo odds live âm thì đứng ngoài. Kết quả có thêm điểm tin cậy /10 và mốc vào lệnh tối ưu.
-- **Dữ liệu tự động**: tác vụ trực tiếp (2 phút/lần) lưu thêm ảnh chụp số liệu theo phút (góc, sút, sút bị chặn, thẻ đỏ, tỉ số) và số góc hiệp 1. Tác vụ **Góc Live** (`Sync:LiveCornersIntervalMinutes`, mặc định 2 phút) chỉ gọi `odds/live` khi có trận theo dõi ở phút 20–32 hoặc 70–82. Mỗi lần gọi chỉ tốn 1 request và lấy về mọi trận. Kèo đọc được: *Asian Corners* / *Total Corners* (cả trận) và *Corners 1st Half* (hiệp 1).
+- **Dữ liệu tự động**: tác vụ trực tiếp (2 phút/lần) lưu thêm ảnh chụp số liệu theo phút (góc, sút, sút bị chặn, thẻ đỏ, tỉ số) và số góc hiệp 1. Kèo góc live lấy chung request `odds/live` với tác vụ **Kèo live** (`Sync:LiveOddsIntervalMinutes`, mặc định 2 phút), chỉ lưu cho trận ở phút 20–32 hoặc 70–82. Tác vụ **Góc Live** (`Sync:LiveCornersIntervalMinutes`) chỉ chốt/chấm khuyến nghị, không tốn request. Kèo đọc được: *Asian Corners* / *Total Corners* (cả trận) và *Corners 1st Half* (hiệp 1).
 - **Không có "tấn công nguy hiểm"**: API-Football không có số này. Website thay bằng (sút + góc)/phút và nhịp 10–15 phút gần nhất. Muốn có số chính xác thì dùng ảnh AiScore.
 - **Trang Góc Live**:
   - Thẻ từng trận đang trong cửa sổ, kèm bóc tách hệ số. Trang tự làm mới mỗi phút.

@@ -278,3 +278,10 @@ h1:focus {
 .gl-form label { display: block; font-size: .72rem; color: #64748b; margin-bottom: .1rem; }
 .gl-card .teams a:hover { text-decoration: underline; }
 .table .gl-call { font-size: .8rem; margin: 0; }
+.mc-live-odds { margin-top: .5rem; padding: .35rem .6rem; background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; font-size: .78rem; color: #475569; }
+.mc-live-odds .row-live { display: flex; flex-wrap: wrap; justify-content: center; gap: .2rem .9rem; }
+.mc-live-odds .lbl { color: #b91c1c; font-weight: 700; }
+.mc-live-odds strong { color: #0f172a; }
+.mc-live-odds .odds { font-variant-numeric: tabular-nums; color: #64748b; }
+.mc-live-odds .closing { text-align: center; font-size: .72rem; color: #94a3b8; }
+.mc-live-odds .full { font-size: .7rem; color: #94a3b8; margin-left: .25rem; }

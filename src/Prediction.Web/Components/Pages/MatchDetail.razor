@@ -155,6 +155,24 @@ else
         </div>
 
         <div class="col-lg-7">
+            @if (_liveOdds.Count > 0)
+            {
+                <div class="card mb-3">
+                    <div class="card-header d-flex justify-content-between">
+                        <span>Kèo live (chấp, tài xỉu trong trận)</span>
+                        <span class="small text-muted">ghi khi kèo đổi</span>
+                    </div>
+                    <div class="card-body">
+                        <LiveOddsTimeline History="_liveOdds" />
+                        <div class="hint">
+                            API báo kèo chấp live theo tỉ số <strong>cả trận</strong>; website quy về kiểu châu Á (tính từ tỉ số lúc báo kèo,
+                            bàn đã ghi không tính) = mức cả trận + (bàn nhà − bàn khách). Vd đội nhà chấp 1.25 trước trận, đang thua 0-1:
+                            API ghi +0.25, tức là tính từ 0-1 đội nhà vẫn chấp 3/4. Tài xỉu live là tổng bàn cả trận (gồm bàn đã ghi).
+                            Ô in đậm là lúc kèo đổi, mức kèo dịch từ 0.5 trở lên tô đỏ.
+                        </div>
+                    </div>
+                </div>
+            }
             @if (_ctx is not null)
             {
                 <div class="card mb-3">
@@ -285,6 +303,7 @@ else
 
     private bool _loading = true;
     private MatchInsight? _m;
+    private List<LiveOddsSnapshot> _liveOdds = [];
     private List<Suggestion> _suggestions = [];
     private readonly ManualOdds _manual = new();
     private string? _manualMessage;
@@ -309,6 +328,7 @@ else
         _m = await Insights.ForFixtureAsync(Id);
         _analysis = IsAnalysisTab && _m is not null ? await Analyses.ForFixtureAsync(Id) : null;
         _ctx = _m is not null && !IsAnalysisTab ? await Contexts.ForFixtureAsync(Id) : null;
+        _liveOdds = _m is not null && !IsAnalysisTab && !IsContextTab ? await Insights.LiveOddsHistoryAsync(Id) : [];
         await using var db = await DbFactory.CreateDbContextAsync();
         _suggestions = await db.Suggestions.AsNoTracking().Include(s => s.Rule).Where(s => s.FixtureId == Id).OrderBy(s => s.Rule!.Name).ToListAsync();
         _loading = false;

@@ -433,10 +433,12 @@ else
             var messages = new List<string>();
             if (Api.IsConfigured)
             {
-                var live = await Sync.RunNamedAsync(SyncJobs.Live, default);
-                if (live?.Message is { } lm)
+                foreach (var job in new[] { SyncJobs.Live, SyncJobs.LiveOdds })
                 {
-                    messages.Add(lm);
+                    if ((await Sync.RunNamedAsync(job, default))?.Message is { } m)
+                    {
+                        messages.Add(m);
+                    }
                 }
             }
 

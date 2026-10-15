@@ -1,0 +1,72 @@
+@* Kèo chấp / tài xỉu đang đá (odds/live) trên thẻ trận: cả trận, thêm hiệp 1 khi đang hiệp 1. *@
+@if (Get(false, Market.AsianHandicap) is not null || Get(false, Market.OverUnder) is not null)
+{
+    <div class="mc-live-odds">
+        @Row(false)
+        @if (Fixture.Status == "1H" && (Get(true, Market.AsianHandicap) is not null || Get(true, Market.OverUnder) is not null))
+        {
+            @Row(true)
+        }
+        @if (Closing is { } closing)
+        {
+            <div class="closing">Trước trận: @closing</div>
+        }
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public Fixture Fixture { get; set; } = default!;
+    [Parameter, EditorRequired] public IReadOnlyList<LiveOddsSnapshot> Odds { get; set; } = [];
+    [Parameter, EditorRequired] public string Home { get; set; } = "";
+    [Parameter, EditorRequired] public string Away { get; set; } = "";
+
+    /// <summary>Kèo chấp / tài xỉu cuối cùng trước giờ bóng lăn (để so).</summary>
+    [Parameter] public decimal? ClosingHandicap { get; set; }
+    [Parameter] public decimal? ClosingTotal { get; set; }
+
+    private LiveOddsSnapshot? Get(bool firstHalf, Market market) => Odds.FirstOrDefault(o => o.FirstHalf == firstHalf && o.Market == market);
+
+    private string? Closing
+    {
+        get
+        {
+            var parts = new List<string>();
+            if (ClosingHandicap is { } h)
+            {
+                parts.Add(LineText.HandicapSentence(h, Home, Away));
+            }
+
+            if (ClosingTotal is { } t)
+            {
+                parts.Add($"tài xỉu {LineText.Number(t)}");
+            }
+
+            return parts.Count == 0 ? null : string.Join(" · ", parts);
+        }
+    }
+
+    private RenderFragment Row(bool firstHalf) => __builder =>
+    {
+        var ah = Get(firstHalf, Market.AsianHandicap);
+        var ou = Get(firstHalf, Market.OverUnder);
+        var since = new[] { ah?.Minute, ou?.Minute }.Where(m => m is not null).Max();
+        <div class="row-live">
+            <span class="lbl">@(firstHalf ? "Kèo live H1" : "Kèo live")@(since is { } m ? $" (từ {m}')" : "")</span>
+            @if (ah is not null)
+            {
+                <span title="Tính từ tỉ số @ah.HomeGoals-@ah.AwayGoals (kiểu châu Á). Odds: đội nhà / đội khách">
+                    <strong>@LineText.HandicapSentence(ah.FromScoreLine, Home, Away)</strong>
+                    <span class="odds">@LineText.Odds(ah.PriceA) / @LineText.Odds(ah.PriceB)</span>
+                    @if (ah.FromScoreLine != ah.Line)
+                    {
+                        <span class="full">(từ @ah.HomeGoals-@ah.AwayGoals; cả trận @LineText.Signed(ah.Line))</span>
+                    }
+                </span>
+            }
+            @if (ou is not null)
+            {
+                <span title="Tổng bàn @(firstHalf ? "hiệp 1" : "cả trận"), gồm bàn đã ghi. Odds: tài / xỉu">Tài xỉu <strong>@LineText.Number(ou.Line)</strong> <span class="odds">@LineText.Odds(ou.PriceA) / @LineText.Odds(ou.PriceB)</span></span>
+            }
+        </div>
+    };
+}

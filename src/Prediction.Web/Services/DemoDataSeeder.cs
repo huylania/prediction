@@ -116,6 +116,7 @@ public sealed class DemoDataSeeder(IDbContextFactory<AppDbContext> dbFactory, Su
                         if (fixture.IsLive)
                         {
                             AddLiveCorners(db, random, fixture, stats, now);
+                            AddLiveOdds(db, random, fixture);
                         }
                         else if (fixture.IsFinished && kickoff > now.AddDays(-21) && random.NextDouble() < 0.6)
                         {
@@ -324,6 +325,40 @@ public sealed class DemoDataSeeder(IDbContextFactory<AppDbContext> dbFactory, Su
             FixtureId = fixture.Id, Window = window, Line = Math.Max(corners + 0.5m, line), OverOdds = 1.90m, UnderOdds = 1.90m,
             Minute = minute, FetchedAtUtc = now.AddMinutes(-1),
         });
+    }
+
+    /// <summary>Kèo chấp / tài xỉu live mẫu (khoảng 9 phút đổi một lần) cho trận demo đang đá.</summary>
+    private static void AddLiveOdds(AppDbContext db, Random random, Fixture fixture)
+    {
+        var minute = fixture.Elapsed ?? 0;
+        var baseHandicap = -0.75 + random.NextDouble() * 1.25;
+        for (var m = 3; m <= minute; m += 9)
+        {
+            var share = (double)m / Math.Max(1, minute);
+            var home = (int)Math.Floor((fixture.HomeGoals ?? 0) * share);
+            var away = (int)Math.Floor((fixture.AwayGoals ?? 0) * share);
+            var at = fixture.KickoffUtc.AddMinutes(m <= 45 ? m : m + 15);
+            void Add(Market market, bool firstHalf, decimal line)
+            {
+                var a = Math.Round(1.80m + (decimal)random.NextDouble() * 0.25m, 2);
+                db.LiveOddsSnapshots.Add(new LiveOddsSnapshot
+                {
+                    FixtureId = fixture.Id, Market = market, FirstHalf = firstHalf, Line = line, PriceA = a, PriceB = OtherSide(a),
+                    Minute = m, HomeGoals = home, AwayGoals = away, FetchedAtUtc = at,
+                });
+            }
+
+            // Chấp live tính từ tỉ số hiện tại nên nhỏ dần theo thời gian còn lại; tài xỉu = bàn đã ghi + bàn dự kiến còn lại.
+            var remaining = (90 - m) / 90.0;
+            Add(Market.AsianHandicap, false, Quarter(baseHandicap * remaining, -1.5m, 1.5m));
+            Add(Market.OverUnder, false, home + away + Quarter(2.7 * remaining + 0.3, 0.5m, 4m));
+            if (m <= 45)
+            {
+                var half = (45 - m) / 90.0;
+                Add(Market.AsianHandicap, true, Quarter(baseHandicap * half, -1m, 1m));
+                Add(Market.OverUnder, true, home + away + Quarter(2.7 * half + 0.25, 0.5m, 2.5m));
+            }
+        }
     }
 
     /// <summary>Khuyến nghị góc live mẫu (đã chấm) cho trận demo đã đá, để xem bảng thành tích mục Góc Live.</summary>

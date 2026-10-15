@@ -28,6 +28,7 @@ public static class SyncJobs
     public const string Weather = "weather";
     public const string SideInfo = "side-info";
     public const string LiveCorners = "live-corners";
+    public const string LiveOdds = "live-odds";
 
     /// <summary>Tác vụ phụ: tạm dừng khi quota trong ngày sắp hết.</summary>
     public static bool IsLowPriority(string job) => job is Stats or Coaches or Injuries or Advice or HeadToHead or Venues;
@@ -54,6 +55,7 @@ public static class SyncJobs
         Weather => "Thời tiết",
         SideInfo => "AI điền thông tin bên lề",
         LiveCorners => "Góc Live",
+        LiveOdds => "Kèo live",
         _ => job,
     };
 }
@@ -97,7 +99,7 @@ public sealed class SyncCoordinator(
             try
             {
                 message = await work(sync, ct);
-                if (job is not (SyncJobs.Suggestions or SyncJobs.Analysis or SyncJobs.SideInfo or SyncJobs.LiveCorners))
+                if (job is not (SyncJobs.Suggestions or SyncJobs.Analysis or SyncJobs.SideInfo or SyncJobs.LiveCorners or SyncJobs.LiveOdds))
                 {
                     var suggestionMessage = await suggestions.RefreshAsync(ct);
                     message = message is null || suggestionMessage is null ? message : $"{message} {suggestionMessage}";
@@ -158,11 +160,11 @@ public sealed class SyncCoordinator(
         SyncJobs.Venues => RunAsync(job, (s, c) => s.SyncVenuesAsync(c), ct),
         SyncJobs.Weather => RunAsync(job, (s, c) => s.SyncWeatherAsync(c), ct),
         SyncJobs.SideInfo => RunAsync(job, (_, c) => sideInfo.RunAutoAsync(c), ct),
-        SyncJobs.LiveCorners => RunAsync(job, async (s, c) =>
+        SyncJobs.LiveCorners => RunAsync(job, (_, c) => liveCorners.ProcessAsync(c), ct),
+        SyncJobs.LiveOdds => RunAsync(job, async (s, c) =>
         {
-            var odds = s.IsConfigured ? await s.SyncLiveCornerOddsAsync(c) : 0;
-            var message = await liveCorners.ProcessAsync(c);
-            return odds == 0 ? message : $"Kèo góc live: {odds} thay đổi. {message}".Trim();
+            var (goals, corners) = await s.SyncLiveOddsAsync(c);
+            return goals + corners == 0 ? null : $"Kèo live: {goals} thay đổi kèo chấp/tài xỉu, {corners} thay đổi kèo góc.";
         }, ct),
         _ => throw new ArgumentOutOfRangeException(nameof(job)),
     };
@@ -244,6 +246,7 @@ public sealed class SyncBackgroundService(
             yield return (SyncJobs.PreKickoff, o.PreKickoffIntervalMinutes);
             yield return (SyncJobs.Lineups, o.LineupsIntervalMinutes);
             yield return (SyncJobs.Live, o.LiveIntervalMinutes);
+            yield return (SyncJobs.LiveOdds, o.LiveOddsIntervalMinutes);
             yield return (SyncJobs.Injuries, o.InjuriesIntervalMinutes);
             yield return (SyncJobs.Coaches, o.CoachesIntervalMinutes);
             yield return (SyncJobs.Stats, o.StatsIntervalMinutes);

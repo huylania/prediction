@@ -292,7 +292,21 @@ public sealed class LiveOddsItem
     public LiveOddsFixture Fixture { get; set; } = new();
     public LeagueRef League { get; set; } = new();
     public DateTimeOffset? Update { get; set; }
+    public LiveOddsTeams? Teams { get; set; }
     public List<LiveBet> Odds { get; set; } = [];
+}
+
+/// <summary>Tỉ số tại thời điểm báo kèo (odds/live trả kèm).</summary>
+public sealed class LiveOddsTeams
+{
+    public LiveOddsTeam? Home { get; set; }
+    public LiveOddsTeam? Away { get; set; }
+}
+
+public sealed class LiveOddsTeam
+{
+    public int Id { get; set; }
+    public int? Goals { get; set; }
 }
 
 public sealed class LiveOddsFixture

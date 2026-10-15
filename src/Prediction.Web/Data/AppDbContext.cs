@@ -32,6 +32,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<LiveStatSnapshot> LiveStatSnapshots => Set<LiveStatSnapshot>();
     public DbSet<LiveCornerOdds> LiveCornerOdds => Set<LiveCornerOdds>();
     public DbSet<LiveCornerPick> LiveCornerPicks => Set<LiveCornerPick>();
+    public DbSet<LiveOddsSnapshot> LiveOddsSnapshots => Set<LiveOddsSnapshot>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -292,6 +293,15 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(x => x.UnderOdds).HasPrecision(8, 3);
             e.HasOne(x => x.Fixture).WithMany().HasForeignKey(x => x.FixtureId).OnDelete(DeleteBehavior.Cascade);
             e.HasIndex(x => new { x.FixtureId, x.Window, x.FetchedAtUtc });
+        });
+
+        b.Entity<LiveOddsSnapshot>(e =>
+        {
+            e.Property(x => x.Line).HasPrecision(6, 2);
+            e.Property(x => x.PriceA).HasPrecision(8, 3);
+            e.Property(x => x.PriceB).HasPrecision(8, 3);
+            e.HasOne(x => x.Fixture).WithMany().HasForeignKey(x => x.FixtureId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => new { x.FixtureId, x.Market, x.FirstHalf, x.FetchedAtUtc });
         });
 
         b.Entity<LiveCornerPick>(e =>

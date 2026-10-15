@@ -31,6 +31,9 @@ public sealed class MatchInsight
     /// <summary>Thống kê trận (đang đá hoặc đã đá), nếu có.</summary>
     public FixtureStats? Stats { get; init; }
 
+    /// <summary>Kèo chấp/tài xỉu live mới nhất (cả trận + hiệp 1) — chỉ với trận đang đá.</summary>
+    public IReadOnlyList<LiveOddsSnapshot> LiveOdds { get; init; } = [];
+
     public bool HasPicks => Advice.Picks.Count > 0;
 }
 
@@ -54,6 +57,14 @@ public sealed class InsightService(IDbContextFactory<AppDbContext> dbFactory, Ti
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         var fixture = await db.Fixtures.AsNoTracking().FirstOrDefaultAsync(f => f.Id == fixtureId, ct);
         return fixture is null ? null : (await BuildAsync(db, [fixture], ct)).FirstOrDefault();
+    }
+
+    /// <summary>Toàn bộ kèo chấp/tài xỉu live đã ghi của một trận (theo thời gian).</summary>
+    public async Task<List<LiveOddsSnapshot>> LiveOddsHistoryAsync(int fixtureId, CancellationToken ct = default)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        return await db.LiveOddsSnapshots.AsNoTracking().Where(o => o.FixtureId == fixtureId)
+            .OrderBy(o => o.FetchedAtUtc).ThenBy(o => o.Id).ToListAsync(ct);
     }
 
     /// <summary>Xét một quy tắc (có thể chưa lưu) trên các trận sắp đá — dùng cho "Xem trước" khi sửa quy tắc.</summary>
@@ -95,6 +106,16 @@ public sealed class InsightService(IDbContextFactory<AppDbContext> dbFactory, Ti
             }
         }
 
+        var liveIds = fixtures.Where(f => f.IsLive).Select(f => f.Id).ToList();
+        var liveOdds = liveIds.Count == 0
+            ? []
+            : await db.LiveOddsSnapshots.AsNoTracking()
+                .Where(o => liveIds.Contains(o.FixtureId))
+                .GroupBy(o => new { o.FixtureId, o.Market, o.FirstHalf })
+                .Select(g => g.OrderByDescending(o => o.FetchedAtUtc).ThenByDescending(o => o.Id).First())
+                .ToListAsync(ct);
+        var liveOddsById = liveOdds.ToLookup(o => o.FixtureId);
+
         var result = new List<MatchInsight>(fixtures.Count);
         foreach (var fixture in fixtures)
         {
@@ -121,6 +142,7 @@ public sealed class InsightService(IDbContextFactory<AppDbContext> dbFactory, Ti
                 InPlayAlerts = inPlay.GetValueOrDefault(fixture.Id) ?? [],
                 Stats = stats.GetValueOrDefault(fixture.Id),
                 OddsAlerts = oddsAlerts.GetValueOrDefault(fixture.Id) ?? [],
+                LiveOdds = liveOddsById[fixture.Id].ToList(),
             });
         }
 
