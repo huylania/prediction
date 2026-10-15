@@ -44,6 +44,16 @@
                             · Đã dùng hôm nay: <strong>@_status.Requests?.Current / @_status.Requests?.LimitDay</strong> request
                         </div>
                     }
+                    @if (ApiFootballClient.RemainingToday is { } remaining)
+                    {
+                        <div class="small mt-1">
+                            Còn lại hôm nay (theo request gần nhất): <strong>@remaining</strong>@(ApiFootballClient.DailyLimit is { } limit ? $" / {limit}" : "") request
+                            @if (DataSyncService.QuotaLow(SyncOpts.Value))
+                            {
+                                <span class="badge bg-warning text-dark ms-1">dưới @SyncOpts.Value.QuotaReserve — tạm dừng thống kê, HLV, chấn thương, tư vấn</span>
+                            }
+                        </div>
+                    }
                 }
                 else
                 {
@@ -54,7 +64,10 @@
                 <div class="small text-muted mt-2">
                     Chu kỳ: lịch/kết quả @SyncOpts.Value.FixturesIntervalMinutes phút · kèo theo giải @SyncOpts.Value.OddsIntervalMinutes phút ·
                     kèo sát giờ @SyncOpts.Value.ClosingOddsIntervalMinutes phút (trong @SyncOpts.Value.ClosingWindowMinutes phút trước trận) ·
-                    tư vấn API @SyncOpts.Value.AdviceIntervalMinutes phút · tỉ số trực tiếp @SyncOpts.Value.LiveIntervalMinutes phút (chỉ khi có trận đang đá). Sửa trong <code>appsettings.json</code> mục <code>Sync</code>.
+                    tư vấn API @SyncOpts.Value.AdviceIntervalMinutes phút · tỉ số và thống kê trực tiếp @SyncOpts.Value.LiveIntervalMinutes phút (chỉ khi có trận đang đá) ·
+                    thống kê trận đã đá @SyncOpts.Value.StatsIntervalMinutes phút (tối đa @SyncOpts.Value.StatsMaxRequests request/lần) ·
+                    chấn thương @SyncOpts.Value.InjuriesIntervalMinutes phút · HLV @SyncOpts.Value.CoachesIntervalMinutes phút.
+                    Khi quota còn dưới @SyncOpts.Value.QuotaReserve request, các tác vụ phụ tạm dừng. Sửa trong <code>appsettings.json</code> mục <code>Sync</code>.
                 </div>
             </div>
         </div>
@@ -67,11 +80,15 @@
                     <div class="alert alert-info py-2 small">Đang chạy: @SyncJobs.Label(job)…</div>
                 }
                 <div class="d-flex flex-wrap gap-2">
-                    @foreach (var j in new[] { SyncJobs.Leagues, SyncJobs.Fixtures, SyncJobs.Live, SyncJobs.Odds, SyncJobs.ClosingOdds, SyncJobs.Advice })
+                    @foreach (var j in new[] { SyncJobs.Leagues, SyncJobs.Fixtures, SyncJobs.Live, SyncJobs.Odds, SyncJobs.ClosingOdds, SyncJobs.Advice, SyncJobs.Stats, SyncJobs.Injuries, SyncJobs.Coaches })
                     {
                         <button class="btn btn-sm btn-outline-primary" disabled="@(Sync.CurrentJob is not null || !Api.IsConfigured)" @onclick="() => RunJobAsync(j)">@SyncJobs.Label(j)</button>
                     }
                     <button class="btn btn-sm btn-outline-secondary" disabled="@(Sync.CurrentJob is not null)" @onclick="() => RunJobAsync(SyncJobs.Suggestions)">Cập nhật gợi ý</button>
+                </div>
+                <div class="small text-muted mt-2">
+                    Thống kê góc/thẻ/sút đã tải: <strong>@_statsDone</strong> / @_statsTotal trận đã đá (mùa hiện tại + @SyncOpts.Value.StatsPreviousSeasons mùa trước, giải thật).
+                    Phần còn lại tự tải dần theo chu kỳ, mỗi request 20 trận.
                 </div>
             </div>
         </div>
@@ -195,6 +212,8 @@
     private bool _ok;
     private string _currentPassword = "";
     private string _newPassword = "";
+    private int _statsDone;
+    private int _statsTotal;
 
     private string MaskedKey
     {
@@ -225,6 +244,13 @@
         }
 
         _logs = await db.SyncLogs.AsNoTracking().OrderByDescending(l => l.StartedAtUtc).Take(40).ToListAsync();
+
+        var back = SyncOpts.Value.StatsPreviousSeasons;
+        var finished = db.Fixtures.AsNoTracking().Where(f => f.League!.IsTracked && !f.League.IsDemo
+            && f.Season >= f.League.CurrentSeason - back && f.Season <= f.League.CurrentSeason
+            && (f.Status == "FT" || f.Status == "AET" || f.Status == "PEN"));
+        _statsTotal = await finished.CountAsync();
+        _statsDone = await finished.CountAsync(f => db.FixtureStats.Any(s => s.FixtureId == f.Id && s.IsFinal));
     }
 
     private void Show(bool ok, string? message) => (_ok, _message) = (ok, message);

@@ -14,6 +14,11 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Suggestion> Suggestions => Set<Suggestion>();
     public DbSet<AdminUser> AdminUsers => Set<AdminUser>();
     public DbSet<SyncLog> SyncLogs => Set<SyncLog>();
+    public DbSet<FixtureStats> FixtureStats => Set<FixtureStats>();
+    public DbSet<FixtureInjury> FixtureInjuries => Set<FixtureInjury>();
+    public DbSet<TeamChange> TeamChanges => Set<TeamChange>();
+    public DbSet<LeagueDna> LeagueDnas => Set<LeagueDna>();
+    public DbSet<TeamDna> TeamDnas => Set<TeamDna>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -107,6 +112,50 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.HasIndex(x => x.StartedAtUtc);
         });
 
+        b.Entity<FixtureStats>(e =>
+        {
+            e.HasKey(x => x.FixtureId);
+            e.HasOne(x => x.Fixture).WithOne().HasForeignKey<FixtureStats>(x => x.FixtureId).OnDelete(DeleteBehavior.Cascade);
+            e.Property(x => x.HomeXg).HasPrecision(6, 2);
+            e.Property(x => x.AwayXg).HasPrecision(6, 2);
+            e.Property(x => x.GoalTimeline).HasMaxLength(500);
+            e.HasIndex(x => x.IsFinal);
+        });
+
+        b.Entity<FixtureInjury>(e =>
+        {
+            e.Property(x => x.PlayerName).HasMaxLength(150);
+            e.Property(x => x.Type).HasMaxLength(50);
+            e.Property(x => x.Reason).HasMaxLength(200);
+            e.HasOne(x => x.Fixture).WithMany().HasForeignKey(x => x.FixtureId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => x.FixtureId);
+        });
+
+        b.Entity<TeamChange>(e =>
+        {
+            e.Property(x => x.PersonName).HasMaxLength(150);
+            e.Property(x => x.Notes).HasMaxLength(500);
+            e.HasOne(x => x.Team).WithMany().HasForeignKey(x => x.TeamId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => new { x.TeamId, x.Kind });
+        });
+
+        b.Entity<LeagueDna>(e =>
+        {
+            e.HasKey(x => x.LeagueId);
+            e.Property(x => x.LeagueId).ValueGeneratedNever();
+            e.Property(x => x.LeagueName).HasMaxLength(200);
+            e.Property(x => x.Notes).HasMaxLength(1000);
+        });
+
+        b.Entity<TeamDna>(e =>
+        {
+            e.HasKey(x => x.TeamId);
+            e.Property(x => x.TeamId).ValueGeneratedNever();
+            e.Property(x => x.TeamName).HasMaxLength(200);
+            e.Property(x => x.Notes).HasMaxLength(1000);
+        });
+
         SeedData.Apply(b);
+        DnaSeed.Apply(b);
     }
 }

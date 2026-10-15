@@ -16,9 +16,26 @@ public sealed class MatchContext
 
     public MarketMovement? Totals { get; init; }
 
+    /// <summary>Tài xỉu phạt góc.</summary>
+    public MarketMovement? Corners { get; init; }
+
+    /// <summary>Chấp phạt góc (mức theo đội nhà).</summary>
+    public MarketMovement? CornersHandicap { get; init; }
+
+    /// <summary>Tài xỉu thẻ phạt.</summary>
+    public MarketMovement? Cards { get; init; }
+
     public ApiAdvice? Advice { get; init; }
 
-    public MarketMovement? MovementFor(Market market) => market == Market.AsianHandicap ? Handicap : Totals;
+    public MarketMovement? MovementFor(Market market) => market switch
+    {
+        Market.AsianHandicap => Handicap,
+        Market.OverUnder => Totals,
+        Market.CornersOverUnder => Corners,
+        Market.CornersHandicap => CornersHandicap,
+        Market.CardsOverUnder => Cards,
+        _ => null,
+    };
 }
 
 /// <summary>Một lựa chọn sinh ra khi quy tắc khớp.</summary>

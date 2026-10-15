@@ -17,6 +17,12 @@ public static class SyncJobs
     public const string Suggestions = "suggestions";
     public const string Live = "live";
     public const string Backfill = "backfill";
+    public const string Stats = "stats";
+    public const string Coaches = "coaches";
+    public const string Injuries = "injuries";
+
+    /// <summary>Tác vụ phụ: tạm dừng khi quota trong ngày sắp hết.</summary>
+    public static bool IsLowPriority(string job) => job is Stats or Coaches or Injuries or Advice;
 
     public static string Label(string job) => job switch
     {
@@ -29,6 +35,9 @@ public static class SyncJobs
         Suggestions => "Gợi ý",
         Live => "Trực tiếp",
         Backfill => "Tải mùa cũ",
+        Stats => "Thống kê trận (góc, thẻ, sút)",
+        Coaches => "HLV",
+        Injuries => "Chấn thương",
         _ => job,
     };
 }
@@ -120,6 +129,9 @@ public sealed class SyncCoordinator(
         SyncJobs.AdviceFinal => RunAsync(job, (s, c) => s.SyncAdviceAsync(true, c), ct),
         SyncJobs.Suggestions => RunAsync(job, async (_, c) => await suggestions.RefreshAsync(c), ct),
         SyncJobs.Live => RunAsync(job, (s, c) => s.SyncLiveAsync(c), ct),
+        SyncJobs.Stats => RunAsync(job, (s, c) => s.SyncStatsAsync(null, c), ct),
+        SyncJobs.Coaches => RunAsync(job, (s, c) => s.SyncCoachesAsync(c), ct),
+        SyncJobs.Injuries => RunAsync(job, (s, c) => s.SyncInjuriesAsync(c), ct),
         _ => throw new ArgumentOutOfRangeException(nameof(job)),
     };
 }
@@ -164,6 +176,11 @@ public sealed class SyncBackgroundService(
                     continue;
                 }
 
+                if (SyncJobs.IsLowPriority(job) && DataSyncService.QuotaLow(o))
+                {
+                    continue; // thử lại ở phút sau, khi quota được làm mới
+                }
+
                 _lastRun[job] = now;
                 try
                 {
@@ -193,6 +210,9 @@ public sealed class SyncBackgroundService(
             yield return (SyncJobs.Advice, o.AdviceIntervalMinutes);
             yield return (SyncJobs.AdviceFinal, 15);
             yield return (SyncJobs.Live, o.LiveIntervalMinutes);
+            yield return (SyncJobs.Injuries, o.InjuriesIntervalMinutes);
+            yield return (SyncJobs.Coaches, o.CoachesIntervalMinutes);
+            yield return (SyncJobs.Stats, o.StatsIntervalMinutes);
         }
 
         yield return (SyncJobs.Suggestions, o.SuggestionsIntervalMinutes);

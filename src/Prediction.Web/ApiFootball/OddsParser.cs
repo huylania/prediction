@@ -16,6 +16,9 @@ public static partial class OddsParser
 {
     public const string HandicapBetName = "Asian Handicap";
     public const string TotalsBetName = "Goals Over/Under";
+    public const string CornersTotalsBetName = "Corners Over Under";
+    public const string CornersHandicapBetName = "Corners Asian Handicap";
+    public const string CardsTotalsBetName = "Cards Over/Under";
 
     // Tổng nghịch đảo odds của một cặp kèo hai cửa thật (1 + lợi nhuận nhà cái).
     private const decimal MinOverround = 0.98m;
@@ -35,20 +38,22 @@ public static partial class OddsParser
             return [];
         }
 
-        var quotes = new List<ParsedQuote>(2);
-        var handicap = bookmaker.Bets.FirstOrDefault(b => string.Equals(b.Name?.Trim(), HandicapBetName, StringComparison.OrdinalIgnoreCase));
-        if (handicap is not null && MainHandicap(handicap.Values) is { } h)
-        {
-            quotes.Add(h);
-        }
-
-        var totals = bookmaker.Bets.FirstOrDefault(b => string.Equals(b.Name?.Trim(), TotalsBetName, StringComparison.OrdinalIgnoreCase));
-        if (totals is not null && MainTotals(totals.Values) is { } t)
-        {
-            quotes.Add(t);
-        }
-
+        var quotes = new List<ParsedQuote>(5);
+        Add(HandicapBetName, values => MainHandicap(values, Market.AsianHandicap));
+        Add(TotalsBetName, values => MainTotals(values, Market.OverUnder));
+        Add(CornersTotalsBetName, values => MainTotals(values, Market.CornersOverUnder));
+        Add(CornersHandicapBetName, values => MainHandicap(values, Market.CornersHandicap));
+        Add(CardsTotalsBetName, values => MainTotals(values, Market.CardsOverUnder));
         return quotes;
+
+        void Add(string betName, Func<List<BetValue>, ParsedQuote?> parse)
+        {
+            var bet = bookmaker.Bets.FirstOrDefault(b => string.Equals(b.Name?.Trim(), betName, StringComparison.OrdinalIgnoreCase));
+            if (bet is not null && parse(bet.Values) is { } quote)
+            {
+                quotes.Add(quote);
+            }
+        }
     }
 
     /// <summary>
@@ -56,7 +61,7 @@ public static partial class OddsParser
     /// của đội nhà (đã xác nhận với dữ liệu Bet365 thật). Vẫn thử thêm kiểu đối xứng ("Home -0.75" / "Away +0.75")
     /// phòng khi nhà cái khác ghi khác, và giữ kiểu cho nhiều cặp hợp lệ hơn (tổng xác suất ngầm định giống kèo thật).
     /// </summary>
-    public static ParsedQuote? MainHandicap(IEnumerable<BetValue> values)
+    public static ParsedQuote? MainHandicap(IEnumerable<BetValue> values, Market market = Market.AsianHandicap)
     {
         var home = new Dictionary<decimal, decimal>();
         var away = new Dictionary<decimal, decimal>();
@@ -77,10 +82,10 @@ public static partial class OddsParser
         // API-Football thật (đã kiểm tra với Bet365) dùng kiểu "cùng số"; chỉ chọn kiểu đối xứng khi nó cho nhiều cặp hợp lệ hơn hẳn.
         var chosen = mirrored.Count > sameNumber.Count ? mirrored : sameNumber;
 
-        return MainLine(chosen, Market.AsianHandicap);
+        return MainLine(chosen, market);
     }
 
-    public static ParsedQuote? MainTotals(IEnumerable<BetValue> values)
+    public static ParsedQuote? MainTotals(IEnumerable<BetValue> values, Market market = Market.OverUnder)
     {
         var over = new Dictionary<decimal, decimal>();
         var under = new Dictionary<decimal, decimal>();
@@ -96,7 +101,7 @@ public static partial class OddsParser
             target.TryAdd(line, odds);
         }
 
-        return MainLine(Pairs(over, l => under.TryGetValue(l, out var u) ? u : null), Market.OverUnder);
+        return MainLine(Pairs(over, l => under.TryGetValue(l, out var u) ? u : null), market);
     }
 
     private static List<(decimal Line, decimal A, decimal B)> Pairs(Dictionary<decimal, decimal> sideA, Func<decimal, decimal?> findB)

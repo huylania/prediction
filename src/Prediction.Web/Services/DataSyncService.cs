@@ -19,7 +19,20 @@ public sealed class SyncOptions
     public int AdviceIntervalMinutes { get; set; } = 360;
     public int AdviceLookaheadDays { get; set; } = 3;
     public int SuggestionsIntervalMinutes { get; set; } = 5;
-    public int LiveIntervalMinutes { get; set; } = 1;
+    public int LiveIntervalMinutes { get; set; } = 2;
+
+    /// <summary>Tải thống kê (góc, thẻ, sút, xG) các trận đã đá: chu kỳ và số request tối đa mỗi lần.</summary>
+    public int StatsIntervalMinutes { get; set; } = 30;
+    public int StatsMaxRequests { get; set; } = 20;
+
+    /// <summary>Số mùa trước mùa hiện tại cần tải thống kê (1 = mùa hiện tại + mùa trước).</summary>
+    public int StatsPreviousSeasons { get; set; } = 1;
+
+    public int CoachesIntervalMinutes { get; set; } = 1440;
+    public int InjuriesIntervalMinutes { get; set; } = 360;
+
+    /// <summary>Còn ít hơn số request này trong ngày thì tạm dừng các tác vụ phụ (thống kê, HLV, chấn thương, tư vấn).</summary>
+    public int QuotaReserve { get; set; } = 1000;
 }
 
 /// <summary>Các tác vụ lấy dữ liệu từ API-Football và ghi vào CSDL.</summary>
@@ -70,6 +83,14 @@ public sealed class DataSyncService(
             if (DateOnly.TryParse(current.Start, System.Globalization.CultureInfo.InvariantCulture, out var start))
             {
                 league.SeasonYearIsEndYear = start.Year < current.Year;
+                league.SeasonIsCalendarYear = DateOnly.TryParse(current.End, System.Globalization.CultureInfo.InvariantCulture, out var end)
+                    && start.Year == end.Year;
+            }
+
+            if (current.Coverage is { } coverage)
+            {
+                league.HasStatsCoverage = coverage.Fixtures?.StatisticsFixtures ?? true;
+                league.HasInjuriesCoverage = coverage.Injuries;
             }
         }
     }
@@ -163,9 +184,9 @@ public sealed class DataSyncService(
     }
 
     /// <summary>
-    /// Tỉ số và phút thi đấu của các trận đang diễn ra. Chỉ gọi API khi có trận trong khung giờ thi đấu.
-    /// Trận rời khỏi danh sách "live" được lấy lại theo id để có trạng thái cuối (FT, hoãn...).
-    /// Trả về thông điệp chỉ khi có trận vừa kết thúc, để nhật ký không bị lặp mỗi phút.
+    /// Tỉ số, phút thi đấu và thống kê (góc, thẻ, sút, diễn biến bàn thắng) của các trận đang diễn ra.
+    /// Chỉ gọi API khi có trận trong khung giờ thi đấu; lấy theo id (20 trận/request) để có kèm thống kê.
+    /// Trả về thông điệp chỉ khi có trận vừa kết thúc, để nhật ký không bị lặp mỗi lần chạy.
     /// </summary>
     public async Task<string?> SyncLiveAsync(CancellationToken ct)
     {
@@ -183,39 +204,256 @@ public sealed class DataSyncService(
             return null;
         }
 
-        var live = await api.GetLiveFixturesAsync(leagueIds, ct);
-        var liveIds = live.Select(i => i.Fixture.Id).ToHashSet();
-        var others = candidates.Where(f => !liveIds.Contains(f.Id)).Select(f => f.Id).ToList();
-        var items = live.ToList();
-        foreach (var chunk in others.Chunk(20))
-        {
-            items.AddRange(await api.GetFixturesByIdsAsync(chunk, ct));
-        }
-
+        var ids = candidates.Select(f => f.Id).ToList();
+        var stats = await db.FixtureStats.Where(s => ids.Contains(s.FixtureId)).ToDictionaryAsync(s => s.FixtureId, ct);
         var byId = candidates.ToDictionary(f => f.Id);
+        var live = 0;
         var finished = 0;
-        foreach (var item in items)
+        foreach (var chunk in ids.Chunk(20))
         {
-            if (!byId.TryGetValue(item.Fixture.Id, out var fixture))
+            foreach (var item in await api.GetFixturesByIdsAsync(chunk, ct))
             {
-                fixture = await db.Fixtures.FindAsync([item.Fixture.Id], ct);
-                if (fixture is null)
+                if (!byId.TryGetValue(item.Fixture.Id, out var fixture))
                 {
-                    continue; // trận chưa có trong CSDL: lần đồng bộ lịch tiếp theo sẽ thêm
+                    continue;
                 }
-            }
 
-            var wasFinished = fixture.IsFinished;
-            ApiMapper.Apply(fixture, item, leagues.GetValueOrDefault(fixture.LeagueId)?.Type, now);
-            if (!wasFinished && fixture.IsFinished)
-            {
-                finished++;
+                ApiMapper.Apply(fixture, item, leagues.GetValueOrDefault(fixture.LeagueId)?.Type, now);
+                live += fixture.IsLive ? 1 : 0;
+                finished += fixture.IsFinished ? 1 : 0;
+                if (fixture.IsLive || fixture.IsFinished)
+                {
+                    ApplyStats(stats, fixture, item, now);
+                }
             }
         }
 
         await db.SaveChangesAsync(ct);
-        return finished == 0 ? null : $"Trực tiếp: {live.Count} trận đang đá, {finished} trận vừa kết thúc.";
+        return finished == 0 ? null : $"Trực tiếp: {live} trận đang đá, {finished} trận vừa kết thúc.";
     }
+
+    /// <summary>
+    /// Thống kê các trận đã đá (mùa hiện tại và mùa trước), ưu tiên trận gần nhất. Mỗi request lấy 20 trận.
+    /// Trận đã có thống kê cuối cùng thì bỏ qua; trận không có thống kê sau 1 ngày thì đánh dấu để khỏi lấy lại.
+    /// </summary>
+    public async Task<string?> SyncStatsAsync(int? maxRequests, CancellationToken ct)
+    {
+        var o = options.Value;
+        var now = Now;
+        var settledBefore = now.AddHours(-3);
+        var leagues = await db.Leagues.AsNoTracking().Where(l => l.IsTracked && !l.IsDemo && l.HasStatsCoverage).ToListAsync(ct);
+        var limit = maxRequests ?? o.StatsMaxRequests;
+        var pending = new List<(int Id, DateTime Kickoff)>();
+        foreach (var league in leagues)
+        {
+            var oldest = league.CurrentSeason - o.StatsPreviousSeasons;
+            pending.AddRange((await db.Fixtures.AsNoTracking()
+                    .Where(f => f.LeagueId == league.Id && f.Season >= oldest && f.Season <= league.CurrentSeason
+                        && f.KickoffUtc <= settledBefore
+                        && (f.Status == "FT" || f.Status == "AET" || f.Status == "PEN")
+                        && !db.FixtureStats.Any(s => s.FixtureId == f.Id && s.IsFinal))
+                    .OrderByDescending(f => f.KickoffUtc)
+                    .Select(f => new { f.Id, f.KickoffUtc })
+                    .Take(limit * 20)
+                    .ToListAsync(ct))
+                .Select(f => (f.Id, f.KickoffUtc)));
+        }
+
+        if (pending.Count == 0)
+        {
+            return null;
+        }
+
+        var batch = pending.OrderByDescending(p => p.Kickoff).Take(limit * 20).Select(p => p.Id).ToList();
+        var leagueTypes = leagues.ToDictionary(l => l.Id, l => l.Type);
+        var fixtures = await db.Fixtures.Where(f => batch.Contains(f.Id)).ToDictionaryAsync(f => f.Id, ct);
+        var stats = await db.FixtureStats.Where(s => batch.Contains(s.FixtureId)).ToDictionaryAsync(s => s.FixtureId, ct);
+        var withStats = 0;
+        var requests = 0;
+        foreach (var chunk in batch.Chunk(20))
+        {
+            if (requests > 0 && QuotaLow(o))
+            {
+                break;
+            }
+
+            requests++;
+            var items = await api.GetFixturesByIdsAsync(chunk, ct);
+            var returned = new HashSet<int>();
+            foreach (var item in items)
+            {
+                if (!fixtures.TryGetValue(item.Fixture.Id, out var fixture))
+                {
+                    continue;
+                }
+
+                returned.Add(fixture.Id);
+                ApiMapper.Apply(fixture, item, leagueTypes.GetValueOrDefault(fixture.LeagueId), now);
+                var row = ApplyStats(stats, fixture, item, now);
+                if (row.HomeCorners.HasValue)
+                {
+                    withStats++;
+                }
+
+                // Có thống kê, hoặc đã qua 1 ngày mà API vẫn không có: không lấy lại nữa.
+                row.IsFinal = row.HomeCorners.HasValue || fixture.KickoffUtc < now.AddDays(-1);
+            }
+
+            // Trận API không trả về (bị xóa/đổi id): đánh dấu để khỏi hỏi lại mãi.
+            foreach (var id in chunk.Where(id => !returned.Contains(id)))
+            {
+                var row = stats.GetValueOrDefault(id) ?? AddStats(stats, id, now);
+                row.IsFinal = true;
+            }
+
+            await db.SaveChangesAsync(ct);
+        }
+
+        var remaining = pending.Count - batch.Count;
+        return $"Thống kê trận: {batch.Count} trận ({withStats} có số liệu góc/thẻ), {requests} request."
+            + (remaining > 0 ? $" Còn ít nhất {remaining} trận chờ tải." : "");
+    }
+
+    /// <summary>
+    /// HLV hiện tại của các đội có trận trong 3 ngày tới (mỗi đội kiểm tra tối đa 1 lần/tuần).
+    /// HLV nhận việc trong vòng 180 ngày được ghi thành "HLV mới" để áp quy tắc chờ ổn định.
+    /// </summary>
+    public async Task<string?> SyncCoachesAsync(CancellationToken ct)
+    {
+        var now = Now;
+        var checkedAfter = now.AddDays(-7);
+        var teamIds = (await db.Fixtures.AsNoTracking()
+                .Where(f => f.KickoffUtc > now && f.KickoffUtc <= now.AddDays(3) && f.League!.IsTracked && !f.League.IsDemo)
+                .Select(f => new { f.HomeTeamId, f.AwayTeamId })
+                .ToListAsync(ct))
+            .SelectMany(f => new[] { f.HomeTeamId, f.AwayTeamId })
+            .Distinct()
+            .ToList();
+        var teams = await db.Teams
+            .Where(t => teamIds.Contains(t.Id) && (t.CoachCheckedAtUtc == null || t.CoachCheckedAtUtc < checkedAfter))
+            .Take(150)
+            .ToListAsync(ct);
+        if (teams.Count == 0)
+        {
+            return null;
+        }
+
+        var added = new List<string>();
+        foreach (var team in teams)
+        {
+            if (QuotaLow(options.Value))
+            {
+                break;
+            }
+
+            var coach = CurrentCoach(await api.GetCoachesAsync(team.Id, ct), team.Id);
+            team.CoachCheckedAtUtc = now;
+            if (coach is { } c && c.Start >= now.AddDays(-180))
+            {
+                var exists = await db.TeamChanges.AnyAsync(x => x.TeamId == team.Id && x.Kind == TeamChangeKind.NewManager && x.PersonName == c.Name, ct);
+                if (!exists)
+                {
+                    db.TeamChanges.Add(new TeamChange
+                    {
+                        TeamId = team.Id,
+                        Kind = TeamChangeKind.NewManager,
+                        PersonName = c.Name,
+                        StartDate = c.Start,
+                        Source = TeamChangeSource.Api,
+                        UpdatedAtUtc = now,
+                    });
+                    added.Add($"{team.Name}: {c.Name} ({c.Start:dd/MM/yyyy})");
+                }
+            }
+
+            await db.SaveChangesAsync(ct);
+        }
+
+        return $"HLV: kiểm tra {teams.Count} đội." + (added.Count > 0 ? $" HLV mới: {string.Join("; ", added)}." : "");
+    }
+
+    /// <summary>HLV đang dẫn dắt đội (mục sự nghiệp của đội chưa có ngày kết thúc, bắt đầu gần nhất).</summary>
+    public static (string Name, DateTime Start)? CurrentCoach(IEnumerable<CoachItem> coaches, int teamId)
+    {
+        (string Name, DateTime Start)? best = null;
+        foreach (var coach in coaches)
+        {
+            foreach (var career in coach.Career.Where(c => c.Team.Id == teamId && string.IsNullOrEmpty(c.End)))
+            {
+                if (DateTime.TryParse(career.Start, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AdjustToUniversal | System.Globalization.DateTimeStyles.AssumeUniversal, out var start)
+                    && (best is null || start > best.Value.Start))
+                {
+                    best = (coach.Name, start);
+                }
+            }
+        }
+
+        return best;
+    }
+
+    /// <summary>Danh sách vắng mặt của các trận trong 24 giờ tới (thay toàn bộ danh sách cũ của trận).</summary>
+    public async Task<string?> SyncInjuriesAsync(CancellationToken ct)
+    {
+        var now = Now;
+        var ids = await db.Fixtures.AsNoTracking()
+            .Where(f => f.KickoffUtc > now && f.KickoffUtc <= now.AddHours(24) && (f.Status == "NS" || f.Status == "TBD")
+                && f.League!.IsTracked && !f.League.IsDemo && f.League.HasInjuriesCoverage)
+            .OrderBy(f => f.KickoffUtc)
+            .Select(f => f.Id)
+            .ToListAsync(ct);
+        if (ids.Count == 0)
+        {
+            return null;
+        }
+
+        var players = 0;
+        foreach (var id in ids)
+        {
+            if (QuotaLow(options.Value))
+            {
+                break;
+            }
+
+            var items = await api.GetInjuriesAsync(id, ct);
+            await db.FixtureInjuries.Where(i => i.FixtureId == id).ExecuteDeleteAsync(ct);
+            foreach (var item in items.DistinctBy(i => (i.Team.Id, i.Player.Id, i.Player.Name)))
+            {
+                db.FixtureInjuries.Add(new FixtureInjury
+                {
+                    FixtureId = id,
+                    TeamId = item.Team.Id,
+                    PlayerName = Truncate(item.Player.Name, 150),
+                    Type = Truncate(item.Player.Type ?? "", 50),
+                    Reason = item.Player.Reason is null ? null : Truncate(item.Player.Reason, 200),
+                });
+                players++;
+            }
+
+            await db.SaveChangesAsync(ct);
+        }
+
+        return $"Chấn thương/treo giò: {ids.Count} trận, {players} cầu thủ.";
+    }
+
+    /// <summary>Còn quá ít request trong ngày: dừng các tác vụ phụ để dành cho kèo và trực tiếp.</summary>
+    public static bool QuotaLow(SyncOptions o) => ApiFootballClient.RemainingToday is { } r && r < o.QuotaReserve;
+
+    private FixtureStats ApplyStats(Dictionary<int, FixtureStats> stats, Fixture fixture, FixtureItem item, DateTime now)
+    {
+        var row = stats.GetValueOrDefault(fixture.Id) ?? AddStats(stats, fixture.Id, now);
+        ApiMapper.ApplyStats(row, item, now);
+        return row;
+    }
+
+    private FixtureStats AddStats(Dictionary<int, FixtureStats> stats, int fixtureId, DateTime now)
+    {
+        var row = new FixtureStats { FixtureId = fixtureId, UpdatedAtUtc = now };
+        db.FixtureStats.Add(row);
+        stats[fixtureId] = row;
+        return row;
+    }
+
+    private static string Truncate(string text, int max) => text.Length <= max ? text : text[..max];
 
     /// <summary>Kèo theo giải cho mọi trận sắp đá đã có kèo (bắt kèo mở và biến động trong ngày).</summary>
     public async Task<string> SyncLeagueOddsAsync(CancellationToken ct)

@@ -40,6 +40,13 @@ public sealed class ApiFootballClient(HttpClient http, IOptions<ApiFootballOptio
     /// <summary>Số request đã gửi bằng instance này.</summary>
     public int RequestCount { get; private set; }
 
+    /// <summary>Số request còn lại trong ngày theo header gần nhất (null nếu chưa biết).</summary>
+    public static int? RemainingToday { get; private set; }
+
+    public static int? DailyLimit { get; private set; }
+
+    public static DateTime? QuotaUpdatedUtc { get; private set; }
+
     public Task<StatusResponse?> GetStatusAsync(CancellationToken ct) => GetObjectAsync<StatusResponse>("status", ct);
 
     public async Task<LeagueItem?> GetLeagueAsync(int leagueId, CancellationToken ct) =>
@@ -64,6 +71,12 @@ public sealed class ApiFootballClient(HttpClient http, IOptions<ApiFootballOptio
 
     public Task<List<OddsItem>> GetFixtureOddsAsync(int fixtureId, CancellationToken ct) =>
         GetListAsync<OddsItem>($"odds?fixture={fixtureId}&bookmaker={BookmakerId}", ct);
+
+    public Task<List<InjuryItem>> GetInjuriesAsync(int fixtureId, CancellationToken ct) =>
+        GetListAsync<InjuryItem>($"injuries?fixture={fixtureId}", ct);
+
+    public Task<List<CoachItem>> GetCoachesAsync(int teamId, CancellationToken ct) =>
+        GetListAsync<CoachItem>($"coachs?team={teamId}", ct);
 
     public async Task<PredictionItem?> GetPredictionAsync(int fixtureId, CancellationToken ct) =>
         (await GetListAsync<PredictionItem>($"predictions?fixture={fixtureId}", ct)).FirstOrDefault();
@@ -119,6 +132,7 @@ public sealed class ApiFootballClient(HttpClient http, IOptions<ApiFootballOptio
                 continue;
             }
 
+            ReadQuota(response);
             if (!response.IsSuccessStatusCode)
             {
                 throw new ApiFootballException($"API-Football lỗi HTTP {(int)response.StatusCode} khi gọi {pathAndQuery}.");
@@ -135,6 +149,20 @@ public sealed class ApiFootballClient(HttpClient http, IOptions<ApiFootballOptio
             }
 
             return envelope;
+        }
+    }
+
+    private static void ReadQuota(HttpResponseMessage response)
+    {
+        if (response.Headers.TryGetValues("x-ratelimit-requests-remaining", out var remaining) && int.TryParse(remaining.FirstOrDefault(), out var r))
+        {
+            RemainingToday = r;
+            QuotaUpdatedUtc = DateTime.UtcNow;
+        }
+
+        if (response.Headers.TryGetValues("x-ratelimit-requests-limit", out var limit) && int.TryParse(limit.FirstOrDefault(), out var l))
+        {
+            DailyLimit = l;
         }
     }
 

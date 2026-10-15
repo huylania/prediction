@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 using Prediction.Core.Entities;
 
 namespace Prediction.Web.ApiFootball;
@@ -77,6 +78,108 @@ public static class ApiMapper
         target.TotalHome = Percent(c?.Total?.Home);
         target.TotalAway = Percent(c?.Total?.Away);
     }
+
+    /// <summary>
+    /// Thống kê trận từ phản hồi fixtures?ids=. Trả về false nếu API chưa có thống kê cho trận này.
+    /// </summary>
+    public static bool ApplyStats(FixtureStats target, FixtureItem item, DateTime nowUtc)
+    {
+        var homeId = item.Teams.Home.Id;
+        var awayId = item.Teams.Away.Id;
+        var stats = item.Statistics ?? [];
+        var home = stats.FirstOrDefault(s => s.Team.Id == homeId)?.Statistics;
+        var away = stats.FirstOrDefault(s => s.Team.Id == awayId)?.Statistics;
+
+        target.HalftimeHome = item.Score?.Halftime?.Home;
+        target.HalftimeAway = item.Score?.Halftime?.Away;
+        target.GoalTimeline = GoalTimeline(item);
+        target.UpdatedAtUtc = nowUtc;
+
+        if (home is null || away is null || home.Count == 0 || away.Count == 0)
+        {
+            return false;
+        }
+
+        // Có bảng thống kê thì giá trị null nghĩa là 0 (vd chưa có thẻ đỏ nào).
+        target.HomeCorners = Int(home, "Corner Kicks") ?? 0;
+        target.AwayCorners = Int(away, "Corner Kicks") ?? 0;
+        target.HomeShots = Int(home, "Total Shots") ?? 0;
+        target.AwayShots = Int(away, "Total Shots") ?? 0;
+        target.HomeShotsOnTarget = Int(home, "Shots on Goal") ?? 0;
+        target.AwayShotsOnTarget = Int(away, "Shots on Goal") ?? 0;
+        target.HomeYellow = Int(home, "Yellow Cards") ?? 0;
+        target.AwayYellow = Int(away, "Yellow Cards") ?? 0;
+        target.HomeRed = Int(home, "Red Cards") ?? 0;
+        target.AwayRed = Int(away, "Red Cards") ?? 0;
+        target.HomePossession = Percent(Text(home, "Ball Possession"));
+        target.AwayPossession = Percent(Text(away, "Ball Possession"));
+        target.HomeXg = Dec(home, "expected_goals");
+        target.AwayXg = Dec(away, "expected_goals");
+        return true;
+    }
+
+    /// <summary>
+    /// Bàn thắng theo thứ tự "12H,34A". Phản lưới nhà: API có thể ghi theo đội của cầu thủ phản lưới hoặc đội được hưởng,
+    /// nên chọn cách gán khớp với tỉ số hiện tại.
+    /// </summary>
+    public static string? GoalTimeline(FixtureItem item)
+    {
+        var goals = (item.Events ?? [])
+            .Where(e => string.Equals(e.Type, "Goal", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(e.Detail, "Missed Penalty", StringComparison.OrdinalIgnoreCase)
+                && e.Time.Elapsed is <= 120)
+            .OrderBy(e => e.Time.Elapsed).ThenBy(e => e.Time.Extra ?? 0)
+            .ToList();
+        if (goals.Count == 0)
+        {
+            return null;
+        }
+
+        string Build(bool invertOwnGoals) => string.Join(",", goals.Select(e =>
+        {
+            var home = e.Team.Id == item.Teams.Home.Id;
+            if (invertOwnGoals && string.Equals(e.Detail, "Own Goal", StringComparison.OrdinalIgnoreCase))
+            {
+                home = !home;
+            }
+
+            var minute = e.Time.Extra is > 0 ? $"{e.Time.Elapsed}+{e.Time.Extra}" : $"{e.Time.Elapsed}";
+            return $"{minute}{(home ? 'H' : 'A')}";
+        }));
+
+        var asIs = Build(false);
+        if (!goals.Any(e => string.Equals(e.Detail, "Own Goal", StringComparison.OrdinalIgnoreCase)))
+        {
+            return asIs;
+        }
+
+        var homeGoals = item.Goals.Home ?? 0;
+        return asIs.Count(c => c == 'H') == homeGoals ? asIs : Build(true);
+    }
+
+    private static JsonElement? Value(List<StatisticItem> stats, string type) =>
+        stats.FirstOrDefault(s => string.Equals(s.Type, type, StringComparison.OrdinalIgnoreCase))?.Value;
+
+    private static int? Int(List<StatisticItem> stats, string type) => Value(stats, type) switch
+    {
+        { ValueKind: JsonValueKind.Number } v when v.TryGetInt32(out var i) => i,
+        { ValueKind: JsonValueKind.String } v when int.TryParse(v.GetString()?.TrimEnd('%'), out var i) => i,
+        _ => null,
+    };
+
+    private static decimal? Dec(List<StatisticItem> stats, string type) => Value(stats, type) switch
+    {
+        { ValueKind: JsonValueKind.Number } v when v.TryGetDecimal(out var d) => d,
+        { ValueKind: JsonValueKind.String } v when decimal.TryParse(v.GetString(), NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var d) => d,
+        _ => null,
+    };
+
+    private static string? Text(List<StatisticItem> stats, string type) => Value(stats, type) switch
+    {
+        { ValueKind: JsonValueKind.String } v => v.GetString(),
+        { ValueKind: JsonValueKind.Number } v => v.GetRawText(),
+        _ => null,
+    };
 
     /// <summary>"45%" → 45.</summary>
     public static int? Percent(string? text)

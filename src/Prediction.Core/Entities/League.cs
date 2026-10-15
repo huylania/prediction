@@ -22,12 +22,21 @@ public class League
     /// </summary>
     public bool SeasonYearIsEndYear { get; set; }
 
+    /// <summary>Mùa giải gói trong một năm dương lịch (MLS, Brazil...).</summary>
+    public bool SeasonIsCalendarYear { get; set; }
+
     public bool IsTracked { get; set; } = true;
+
+    /// <summary>API có thống kê trận (góc, thẻ, sút) cho mùa hiện tại.</summary>
+    public bool HasStatsCoverage { get; set; } = true;
+
+    /// <summary>API có dữ liệu chấn thương/treo giò cho mùa hiện tại.</summary>
+    public bool HasInjuriesCoverage { get; set; } = true;
 
     public bool IsDemo { get; set; }
 
     /// <summary>Nhãn mùa dễ đọc, vd "2026/27".</summary>
-    public string SeasonLabel(int season) => SeasonText.Label(season, SeasonYearIsEndYear);
+    public string SeasonLabel(int season) => SeasonIsCalendarYear ? season.ToString() : SeasonText.Label(season, SeasonYearIsEndYear);
 }
 
 public static class SeasonText

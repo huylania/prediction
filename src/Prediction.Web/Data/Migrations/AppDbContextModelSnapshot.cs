@@ -183,6 +183,113 @@ namespace Prediction.Web.Data.Migrations
                     b.ToTable("Fixtures");
                 });
 
+            modelBuilder.Entity("Prediction.Core.Entities.FixtureInjury", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<int>("FixtureId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("PlayerName")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int>("TeamId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FixtureId");
+
+                    b.ToTable("FixtureInjuries");
+                });
+
+            modelBuilder.Entity("Prediction.Core.Entities.FixtureStats", b =>
+                {
+                    b.Property<int>("FixtureId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("AwayCorners")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("AwayPossession")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("AwayRed")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("AwayShots")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("AwayShotsOnTarget")
+                        .HasColumnType("int");
+
+                    b.Property<decimal?>("AwayXg")
+                        .HasPrecision(6, 2)
+                        .HasColumnType("decimal(6,2)");
+
+                    b.Property<int?>("AwayYellow")
+                        .HasColumnType("int");
+
+                    b.Property<string>("GoalTimeline")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int?>("HalftimeAway")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("HalftimeHome")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("HomeCorners")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("HomePossession")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("HomeRed")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("HomeShots")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("HomeShotsOnTarget")
+                        .HasColumnType("int");
+
+                    b.Property<decimal?>("HomeXg")
+                        .HasPrecision(6, 2)
+                        .HasColumnType("decimal(6,2)");
+
+                    b.Property<int?>("HomeYellow")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsFinal")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("FixtureId");
+
+                    b.HasIndex("IsFinal");
+
+                    b.ToTable("FixtureStats");
+                });
+
             modelBuilder.Entity("Prediction.Core.Entities.League", b =>
                 {
                     b.Property<int>("Id")
@@ -194,6 +301,12 @@ namespace Prediction.Web.Data.Migrations
 
                     b.Property<int>("CurrentSeason")
                         .HasColumnType("int");
+
+                    b.Property<bool>("HasInjuriesCoverage")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("HasStatsCoverage")
+                        .HasColumnType("bit");
 
                     b.Property<bool>("IsDemo")
                         .HasColumnType("bit");
@@ -209,6 +322,9 @@ namespace Prediction.Web.Data.Migrations
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
+
+                    b.Property<bool>("SeasonIsCalendarYear")
+                        .HasColumnType("bit");
 
                     b.Property<bool>("SeasonYearIsEndYear")
                         .HasColumnType("bit");
@@ -227,9 +343,12 @@ namespace Prediction.Web.Data.Migrations
                             Id = 39,
                             Country = "England",
                             CurrentSeason = 2026,
+                            HasInjuriesCoverage = true,
+                            HasStatsCoverage = true,
                             IsDemo = false,
                             IsTracked = true,
                             Name = "Premier League",
+                            SeasonIsCalendarYear = false,
                             SeasonYearIsEndYear = false,
                             Type = "League"
                         },
@@ -238,9 +357,12 @@ namespace Prediction.Web.Data.Migrations
                             Id = 140,
                             Country = "Spain",
                             CurrentSeason = 2026,
+                            HasInjuriesCoverage = true,
+                            HasStatsCoverage = true,
                             IsDemo = false,
                             IsTracked = true,
                             Name = "La Liga",
+                            SeasonIsCalendarYear = false,
                             SeasonYearIsEndYear = false,
                             Type = "League"
                         },
@@ -249,9 +371,12 @@ namespace Prediction.Web.Data.Migrations
                             Id = 135,
                             Country = "Italy",
                             CurrentSeason = 2026,
+                            HasInjuriesCoverage = true,
+                            HasStatsCoverage = true,
                             IsDemo = false,
                             IsTracked = true,
                             Name = "Serie A",
+                            SeasonIsCalendarYear = false,
                             SeasonYearIsEndYear = false,
                             Type = "League"
                         },
@@ -260,9 +385,12 @@ namespace Prediction.Web.Data.Migrations
                             Id = 78,
                             Country = "Germany",
                             CurrentSeason = 2026,
+                            HasInjuriesCoverage = true,
+                            HasStatsCoverage = true,
                             IsDemo = false,
                             IsTracked = true,
                             Name = "Bundesliga",
+                            SeasonIsCalendarYear = false,
                             SeasonYearIsEndYear = false,
                             Type = "League"
                         },
@@ -271,9 +399,12 @@ namespace Prediction.Web.Data.Migrations
                             Id = 61,
                             Country = "France",
                             CurrentSeason = 2026,
+                            HasInjuriesCoverage = true,
+                            HasStatsCoverage = true,
                             IsDemo = false,
                             IsTracked = true,
                             Name = "Ligue 1",
+                            SeasonIsCalendarYear = false,
                             SeasonYearIsEndYear = false,
                             Type = "League"
                         },
@@ -282,9 +413,12 @@ namespace Prediction.Web.Data.Migrations
                             Id = 2,
                             Country = "World",
                             CurrentSeason = 2026,
+                            HasInjuriesCoverage = true,
+                            HasStatsCoverage = true,
                             IsDemo = false,
                             IsTracked = true,
                             Name = "UEFA Champions League",
+                            SeasonIsCalendarYear = false,
                             SeasonYearIsEndYear = false,
                             Type = "Cup"
                         },
@@ -293,11 +427,346 @@ namespace Prediction.Web.Data.Migrations
                             Id = 340,
                             Country = "Vietnam",
                             CurrentSeason = 2027,
+                            HasInjuriesCoverage = true,
+                            HasStatsCoverage = true,
                             IsDemo = false,
                             IsTracked = true,
                             Name = "V.League 1",
+                            SeasonIsCalendarYear = false,
                             SeasonYearIsEndYear = true,
                             Type = "League"
+                        },
+                        new
+                        {
+                            Id = 79,
+                            Country = "Germany",
+                            CurrentSeason = 2026,
+                            HasInjuriesCoverage = true,
+                            HasStatsCoverage = true,
+                            IsDemo = false,
+                            IsTracked = true,
+                            Name = "2. Bundesliga",
+                            SeasonIsCalendarYear = false,
+                            SeasonYearIsEndYear = false,
+                            Type = "League"
+                        },
+                        new
+                        {
+                            Id = 88,
+                            Country = "Netherlands",
+                            CurrentSeason = 2026,
+                            HasInjuriesCoverage = true,
+                            HasStatsCoverage = true,
+                            IsDemo = false,
+                            IsTracked = true,
+                            Name = "Eredivisie",
+                            SeasonIsCalendarYear = false,
+                            SeasonYearIsEndYear = false,
+                            Type = "League"
+                        },
+                        new
+                        {
+                            Id = 89,
+                            Country = "Netherlands",
+                            CurrentSeason = 2026,
+                            HasInjuriesCoverage = true,
+                            HasStatsCoverage = true,
+                            IsDemo = false,
+                            IsTracked = true,
+                            Name = "Eerste Divisie",
+                            SeasonIsCalendarYear = false,
+                            SeasonYearIsEndYear = false,
+                            Type = "League"
+                        },
+                        new
+                        {
+                            Id = 253,
+                            Country = "USA",
+                            CurrentSeason = 2026,
+                            HasInjuriesCoverage = true,
+                            HasStatsCoverage = true,
+                            IsDemo = false,
+                            IsTracked = true,
+                            Name = "Major League Soccer",
+                            SeasonIsCalendarYear = true,
+                            SeasonYearIsEndYear = false,
+                            Type = "League"
+                        },
+                        new
+                        {
+                            Id = 71,
+                            Country = "Brazil",
+                            CurrentSeason = 2026,
+                            HasInjuriesCoverage = true,
+                            HasStatsCoverage = true,
+                            IsDemo = false,
+                            IsTracked = true,
+                            Name = "Serie A",
+                            SeasonIsCalendarYear = true,
+                            SeasonYearIsEndYear = false,
+                            Type = "League"
+                        },
+                        new
+                        {
+                            Id = 72,
+                            Country = "Brazil",
+                            CurrentSeason = 2026,
+                            HasInjuriesCoverage = true,
+                            HasStatsCoverage = true,
+                            IsDemo = false,
+                            IsTracked = true,
+                            Name = "Serie B",
+                            SeasonIsCalendarYear = true,
+                            SeasonYearIsEndYear = false,
+                            Type = "League"
+                        },
+                        new
+                        {
+                            Id = 62,
+                            Country = "France",
+                            CurrentSeason = 2026,
+                            HasInjuriesCoverage = true,
+                            HasStatsCoverage = true,
+                            IsDemo = false,
+                            IsTracked = true,
+                            Name = "Ligue 2",
+                            SeasonIsCalendarYear = false,
+                            SeasonYearIsEndYear = false,
+                            Type = "League"
+                        },
+                        new
+                        {
+                            Id = 141,
+                            Country = "Spain",
+                            CurrentSeason = 2026,
+                            HasInjuriesCoverage = true,
+                            HasStatsCoverage = true,
+                            IsDemo = false,
+                            IsTracked = true,
+                            Name = "Segunda División",
+                            SeasonIsCalendarYear = false,
+                            SeasonYearIsEndYear = false,
+                            Type = "League"
+                        });
+                });
+
+            modelBuilder.Entity("Prediction.Core.Entities.LeagueDna", b =>
+                {
+                    b.Property<int>("LeagueId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("LeagueName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<int>("Tags")
+                        .HasColumnType("int");
+
+                    b.HasKey("LeagueId");
+
+                    b.ToTable("LeagueDnas");
+
+                    b.HasData(
+                        new
+                        {
+                            LeagueId = 78,
+                            LeagueName = "Bundesliga (Đức)",
+                            Notes = "Gegenpressing, hàng thủ dâng cao, ít câu giờ. ~3.10–3.35 bàn/trận. Ưu tiên Tài (H1 & FT) và BTTS; hạn chế Xỉu pre-match.",
+                            Tags = 1
+                        },
+                        new
+                        {
+                            LeagueId = 79,
+                            LeagueName = "2. Bundesliga (Đức)",
+                            Notes = "Phòng ngự chênh lệch, tâm lý tấn công phóng khoáng; bàn thắng dày cả H1 lẫn cuối H2. Ưu tiên Tài & BTTS.",
+                            Tags = 1
+                        },
+                        new
+                        {
+                            LeagueId = 88,
+                            LeagueName = "Eredivisie (Hà Lan)",
+                            Notes = "Tấn công tổng lực 4-3-3; cửa trên muốn thắng đậm. ~3.15–3.45 bàn/trận. Ưu tiên Tài (kể cả 3.0–3.5), Tài H1, cửa trên thắng cách biệt.",
+                            Tags = 1
+                        },
+                        new
+                        {
+                            LeagueId = 89,
+                            LeagueName = "Eerste Divisie (Hà Lan 2)",
+                            Notes = "Các đội trẻ (Jong Ajax, Jong PSV, Jong AZ, Jong Utrecht) đá cống hiến, phòng ngự lỏng. Ưu tiên Tài.",
+                            Tags = 1
+                        },
+                        new
+                        {
+                            LeagueId = 253,
+                            LeagueName = "MLS (Mỹ)",
+                            Notes = "Ngôi sao dồn cho hàng công, hàng thủ trung bình; thể lực sụp sau phút 65. ~2.95–3.15 bàn/trận. Ưu tiên Tài 2.75–3.0, BTTS, Tài H2 in-play.",
+                            Tags = 65
+                        },
+                        new
+                        {
+                            LeagueId = 207,
+                            LeagueName = "Super League (Thụy Sĩ)",
+                            Notes = "Phòng ngự chuyển trạng thái mỏng, lên bóng trực diện. Tài 2.75–3.25.",
+                            Tags = 1
+                        },
+                        new
+                        {
+                            LeagueId = 218,
+                            LeagueName = "Bundesliga (Áo)",
+                            Notes = "Phòng ngự chuyển trạng thái mỏng, lên bóng trực diện. Tài 2.75–3.25.",
+                            Tags = 1
+                        },
+                        new
+                        {
+                            LeagueId = 103,
+                            LeagueName = "Eliteserien (Na Uy)",
+                            Notes = "Tài bàn thắng 2.75–3.25 và Tài phạt góc.",
+                            Tags = 17
+                        },
+                        new
+                        {
+                            LeagueId = 188,
+                            LeagueName = "A-League (Úc)",
+                            Notes = "Tài bàn thắng, Tài góc; thể lực hàng thủ đuối cuối trận.",
+                            Tags = 81
+                        },
+                        new
+                        {
+                            LeagueId = 119,
+                            LeagueName = "Superliga (Đan Mạch)",
+                            Notes = "Tài bàn thắng 2.75–3.25.",
+                            Tags = 1
+                        },
+                        new
+                        {
+                            LeagueId = 72,
+                            LeagueName = "Serie B (Brazil)",
+                            Notes = "Khách bay chặng dài, tử thủ nhưng hụt hơi cuối trận. Chủ nhà chấp −0.25/−0.5 thắng kèo ~58–65%; ~2.00–2.15 bàn/trận. Ưu tiên cửa chủ nhà + Xỉu; kỵ đội khách chấp.",
+                            Tags = 70
+                        },
+                        new
+                        {
+                            LeagueId = 71,
+                            LeagueName = "Serie A (Brazil)",
+                            Notes = "Lợi thế sân nhà rất lớn (di chuyển xa, khí hậu, mặt sân).",
+                            Tags = 4
+                        },
+                        new
+                        {
+                            LeagueId = 128,
+                            LeagueName = "Liga Profesional (Argentina)",
+                            Notes = "Khán đài cuồng nhiệt; kỷ luật phòng ngự, nhịp chậm. Chủ nhà thắng kèo, Xỉu bàn, Xỉu góc.",
+                            Tags = 38
+                        },
+                        new
+                        {
+                            LeagueId = 239,
+                            LeagueName = "Primera A (Colombia)",
+                            Notes = "Độ cao và địa lý khắc nghiệt: cộng +0.50 đến +0.75 lợi thế sân nhà.",
+                            Tags = 4
+                        },
+                        new
+                        {
+                            LeagueId = 344,
+                            LeagueName = "Primera División (Bolivia)",
+                            Notes = "Độ cao cực lớn: cộng +0.50 đến +0.75 lợi thế sân nhà.",
+                            Tags = 4
+                        },
+                        new
+                        {
+                            LeagueId = 242,
+                            LeagueName = "Liga Pro (Ecuador)",
+                            Notes = "Độ cao: cộng +0.50 đến +0.75 lợi thế sân nhà.",
+                            Tags = 4
+                        },
+                        new
+                        {
+                            LeagueId = 281,
+                            LeagueName = "Primera División (Peru)",
+                            Notes = "Lợi thế sân nhà lớn.",
+                            Tags = 4
+                        },
+                        new
+                        {
+                            LeagueId = 203,
+                            LeagueName = "Süper Lig (Thổ Nhĩ Kỳ)",
+                            Notes = "Sức ép khán đài: ưu tiên chủ nhà thắng kèo châu Á và chấp góc chủ nhà.",
+                            Tags = 4
+                        },
+                        new
+                        {
+                            LeagueId = 62,
+                            LeagueName = "Ligue 2 (Pháp)",
+                            Notes = "Low-block, nhịp chậm, phạm lỗi chiến thuật. Xỉu 2.0–2.25, cửa dưới được chấp +0.25/+0.5, Xỉu góc, Tài thẻ.",
+                            Tags = 34
+                        },
+                        new
+                        {
+                            LeagueId = 141,
+                            LeagueName = "La Liga 2 (Tây Ban Nha)",
+                            Notes = "Thực dụng, kỷ luật phòng ngự. Xỉu bàn, cửa dưới được chấp, Xỉu góc, Tài thẻ.",
+                            Tags = 34
+                        },
+                        new
+                        {
+                            LeagueId = 197,
+                            LeagueName = "Super League (Hy Lạp)",
+                            Notes = "Thực dụng: Xỉu bàn, cửa dưới được chấp, Tài thẻ.",
+                            Tags = 2
+                        },
+                        new
+                        {
+                            LeagueId = 290,
+                            LeagueName = "Persian Gulf Pro League (Iran)",
+                            Notes = "Thực dụng: Xỉu bàn.",
+                            Tags = 2
+                        },
+                        new
+                        {
+                            LeagueId = 233,
+                            LeagueName = "Premier League (Ai Cập)",
+                            Notes = "Thực dụng: Xỉu bàn.",
+                            Tags = 2
+                        },
+                        new
+                        {
+                            LeagueId = 39,
+                            LeagueName = "Premier League (Anh)",
+                            Notes = "Thiên hướng Tài góc, cày góc biên.",
+                            Tags = 16
+                        },
+                        new
+                        {
+                            LeagueId = 40,
+                            LeagueName = "Championship (Anh)",
+                            Notes = "Thiên hướng Tài góc.",
+                            Tags = 16
+                        },
+                        new
+                        {
+                            LeagueId = 179,
+                            LeagueName = "Premiership (Scotland)",
+                            Notes = "Thiên hướng Tài góc.",
+                            Tags = 16
+                        },
+                        new
+                        {
+                            LeagueId = 94,
+                            LeagueName = "Primeira Liga (Bồ Đào Nha)",
+                            Notes = "Tài góc khi nhóm Big 3 ép sân.",
+                            Tags = 16
+                        },
+                        new
+                        {
+                            LeagueId = 135,
+                            LeagueName = "Serie A (Ý)",
+                            Notes = "Cặp giằng co trung lộ: thiên hướng Xỉu góc.",
+                            Tags = 32
                         });
                 });
 
@@ -605,6 +1074,9 @@ namespace Prediction.Web.Data.Migrations
                     b.Property<int>("Id")
                         .HasColumnType("int");
 
+                    b.Property<DateTime?>("CoachCheckedAtUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<string>("LogoUrl")
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
@@ -625,6 +1097,527 @@ namespace Prediction.Web.Data.Migrations
                         {
                             Id = 33,
                             Name = "Manchester United"
+                        });
+                });
+
+            modelBuilder.Entity("Prediction.Core.Entities.TeamChange", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<bool>("IsIgnored")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("PersonName")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<int>("Source")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("StartDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("TeamId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TeamId", "Kind");
+
+                    b.ToTable("TeamChanges");
+                });
+
+            modelBuilder.Entity("Prediction.Core.Entities.TeamDna", b =>
+                {
+                    b.Property<int>("TeamId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<int>("Tags")
+                        .HasColumnType("int");
+
+                    b.Property<string>("TeamName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.HasKey("TeamId");
+
+                    b.ToTable("TeamDnas");
+
+                    b.HasData(
+                        new
+                        {
+                            TeamId = 499,
+                            Notes = "Pressing 1-kèm-1 toàn sân, wing-back dâng cao, đôi công với mọi đối thủ: Tài 2.5–3.0 và Tài góc cao.",
+                            Tags = 17,
+                            TeamName = "Atalanta"
+                        },
+                        new
+                        {
+                            TeamId = 157,
+                            Notes = "Tấn công cường độ cao, dâng đội hình: chuyên Tài bàn thắng & BTTS.",
+                            Tags = 17,
+                            TeamName = "Bayern München"
+                        },
+                        new
+                        {
+                            TeamId = 168,
+                            Notes = "Tấn công cường độ cao, dâng đội hình: chuyên Tài bàn thắng & BTTS.",
+                            Tags = 17,
+                            TeamName = "Bayer Leverkusen"
+                        },
+                        new
+                        {
+                            TeamId = 165,
+                            Notes = "Tấn công cường độ cao, dâng đội hình: chuyên Tài bàn thắng & BTTS.",
+                            Tags = 1,
+                            TeamName = "Borussia Dortmund"
+                        },
+                        new
+                        {
+                            TeamId = 169,
+                            Notes = "Tấn công cường độ cao, dâng đội hình: chuyên Tài bàn thắng & BTTS.",
+                            Tags = 1,
+                            TeamName = "Eintracht Frankfurt"
+                        },
+                        new
+                        {
+                            TeamId = 172,
+                            Notes = "Tấn công cường độ cao, dâng đội hình: chuyên Tài bàn thắng & BTTS.",
+                            Tags = 1,
+                            TeamName = "VfB Stuttgart"
+                        },
+                        new
+                        {
+                            TeamId = 162,
+                            Notes = "Tấn công cường độ cao, dâng đội hình: chuyên Tài bàn thắng & BTTS.",
+                            Tags = 1,
+                            TeamName = "Werder Bremen"
+                        },
+                        new
+                        {
+                            TeamId = 167,
+                            Notes = "Tấn công cường độ cao, dâng đội hình: chuyên Tài bàn thắng & BTTS.",
+                            Tags = 1,
+                            TeamName = "1899 Hoffenheim"
+                        },
+                        new
+                        {
+                            TeamId = 197,
+                            Notes = "Áp đặt một chiều, không dừng khi dẫn 1–2 bàn: Tài và kèo chấp sâu.",
+                            Tags = 1,
+                            TeamName = "PSV Eindhoven"
+                        },
+                        new
+                        {
+                            TeamId = 209,
+                            Notes = "Áp đặt một chiều: Tài và kèo chấp sâu.",
+                            Tags = 1,
+                            TeamName = "Feyenoord"
+                        },
+                        new
+                        {
+                            TeamId = 194,
+                            Notes = "Áp đặt một chiều: Tài và kèo chấp sâu.",
+                            Tags = 1,
+                            TeamName = "Ajax"
+                        },
+                        new
+                        {
+                            TeamId = 201,
+                            Notes = "Áp đặt một chiều: Tài và kèo chấp sâu.",
+                            Tags = 1,
+                            TeamName = "AZ Alkmaar"
+                        },
+                        new
+                        {
+                            TeamId = 415,
+                            Notes = "Áp đặt một chiều: Tài và kèo chấp sâu.",
+                            Tags = 1,
+                            TeamName = "Twente"
+                        },
+                        new
+                        {
+                            TeamId = 47,
+                            Notes = "Lối chơi trực diện, bẫy việt vị cao: nhạy Tài bàn và Tài góc.",
+                            Tags = 17,
+                            TeamName = "Tottenham"
+                        },
+                        new
+                        {
+                            TeamId = 51,
+                            Notes = "Lối chơi trực diện: nhạy Tài bàn và Tài góc.",
+                            Tags = 17,
+                            TeamName = "Brighton"
+                        },
+                        new
+                        {
+                            TeamId = 66,
+                            Notes = "Lối chơi trực diện: nhạy Tài bàn và Tài góc.",
+                            Tags = 1,
+                            TeamName = "Aston Villa"
+                        },
+                        new
+                        {
+                            TeamId = 49,
+                            Notes = "Lối chơi trực diện: nhạy Tài bàn và Tài góc.",
+                            Tags = 1,
+                            TeamName = "Chelsea"
+                        },
+                        new
+                        {
+                            TeamId = 35,
+                            Notes = "Lối chơi trực diện: nhạy Tài bàn và Tài góc.",
+                            Tags = 1,
+                            TeamName = "Bournemouth"
+                        },
+                        new
+                        {
+                            TeamId = 529,
+                            Notes = "Hỏa lực mạnh, dâng cao đội hình.",
+                            Tags = 1,
+                            TeamName = "Barcelona"
+                        },
+                        new
+                        {
+                            TeamId = 541,
+                            Notes = "Hỏa lực mạnh, tạt cánh tần suất cao.",
+                            Tags = 17,
+                            TeamName = "Real Madrid"
+                        },
+                        new
+                        {
+                            TeamId = 533,
+                            Notes = "Hỏa lực mạnh, dâng cao đội hình.",
+                            Tags = 1,
+                            TeamName = "Villarreal"
+                        },
+                        new
+                        {
+                            TeamId = 547,
+                            Notes = "Hỏa lực mạnh, dâng cao đội hình.",
+                            Tags = 1,
+                            TeamName = "Girona"
+                        },
+                        new
+                        {
+                            TeamId = 9568,
+                            Notes = "Hàng công sắc, tuyến dưới hở 20 phút cuối: chuyên Tài.",
+                            Tags = 1,
+                            TeamName = "Inter Miami"
+                        },
+                        new
+                        {
+                            TeamId = 1616,
+                            Notes = "Hàng công sắc, tuyến dưới hở 20 phút cuối: chuyên Tài.",
+                            Tags = 1,
+                            TeamName = "Los Angeles FC"
+                        },
+                        new
+                        {
+                            TeamId = 1605,
+                            Notes = "Hàng công sắc, tuyến dưới hở 20 phút cuối: chuyên Tài.",
+                            Tags = 1,
+                            TeamName = "Los Angeles Galaxy"
+                        },
+                        new
+                        {
+                            TeamId = 1613,
+                            Notes = "Hàng công sắc, tuyến dưới hở 20 phút cuối: chuyên Tài.",
+                            Tags = 1,
+                            TeamName = "Columbus Crew"
+                        },
+                        new
+                        {
+                            TeamId = 1608,
+                            Notes = "Hàng công sắc, tuyến dưới hở 20 phút cuối: chuyên Tài.",
+                            Tags = 1,
+                            TeamName = "Atlanta United FC"
+                        },
+                        new
+                        {
+                            TeamId = 34,
+                            Notes = "St James' Park: pressing nghẹt thở, thắng kèo châu Á và kèo góc sân nhà rất cao. Sân khách: hay thua kèo, nguy hiểm khi chấp −0.25 đến −0.75.",
+                            Tags = 28,
+                            TeamName = "Newcastle"
+                        },
+                        new
+                        {
+                            TeamId = 36,
+                            Notes = "Mạnh sân nhà, hay thua kèo sân khách. Sân nhà: +0.25 tin cậy, sáng khi chấp nhẹ/được chấp. Sân khách làm cửa trên chấp −0.25 đến −0.75: CẢNH BÁO ĐỎ.",
+                            Tags = 12,
+                            TeamName = "Fulham"
+                        },
+                        new
+                        {
+                            TeamId = 55,
+                            Notes = "Mạnh sân nhà, hay thua kèo sân khách. Sân nhà: +0.25 tin cậy, sáng khi chấp nhẹ/được chấp. Sân khách làm cửa trên chấp −0.25 đến −0.75: CẢNH BÁO ĐỎ.",
+                            Tags = 12,
+                            TeamName = "Brentford"
+                        },
+                        new
+                        {
+                            TeamId = 45,
+                            Notes = "Mạnh sân nhà, hay thua kèo sân khách. Sân nhà: +0.25 tin cậy, sáng khi chấp nhẹ/được chấp. Sân khách làm cửa trên chấp −0.25 đến −0.75: CẢNH BÁO ĐỎ.",
+                            Tags = 12,
+                            TeamName = "Everton"
+                        },
+                        new
+                        {
+                            TeamId = 65,
+                            Notes = "Mạnh sân nhà, hay thua kèo sân khách. Sân nhà: +0.25 tin cậy, sáng khi chấp nhẹ/được chấp. Sân khách làm cửa trên chấp −0.25 đến −0.75: CẢNH BÁO ĐỎ.",
+                            Tags = 12,
+                            TeamName = "Nottingham Forest"
+                        },
+                        new
+                        {
+                            TeamId = 48,
+                            Notes = "Mạnh sân nhà, hay thua kèo sân khách. Sân nhà: +0.25 tin cậy, sáng khi chấp nhẹ/được chấp. Sân khách làm cửa trên chấp −0.25 đến −0.75: CẢNH BÁO ĐỎ.",
+                            Tags = 12,
+                            TeamName = "West Ham"
+                        },
+                        new
+                        {
+                            TeamId = 531,
+                            Notes = "Cực mạnh tại San Mamés, giảm sút khi đi khách; tạt cánh nhiều.",
+                            Tags = 28,
+                            TeamName = "Athletic Club"
+                        },
+                        new
+                        {
+                            TeamId = 727,
+                            Notes = "Mạnh sân nhà, hay thua kèo sân khách. Sân nhà: +0.25 tin cậy, sáng khi chấp nhẹ/được chấp. Sân khách làm cửa trên chấp −0.25 đến −0.75: CẢNH BÁO ĐỎ.",
+                            Tags = 12,
+                            TeamName = "Osasuna"
+                        },
+                        new
+                        {
+                            TeamId = 532,
+                            Notes = "Mạnh sân nhà, hay thua kèo sân khách. Sân nhà: +0.25 tin cậy, sáng khi chấp nhẹ/được chấp. Sân khách làm cửa trên chấp −0.25 đến −0.75: CẢNH BÁO ĐỎ.",
+                            Tags = 12,
+                            TeamName = "Valencia"
+                        },
+                        new
+                        {
+                            TeamId = 536,
+                            Notes = "Mạnh sân nhà, hay thua kèo sân khách. Sân nhà: +0.25 tin cậy, sáng khi chấp nhẹ/được chấp. Sân khách làm cửa trên chấp −0.25 đến −0.75: CẢNH BÁO ĐỎ.",
+                            Tags = 12,
+                            TeamName = "Sevilla"
+                        },
+                        new
+                        {
+                            TeamId = 546,
+                            Notes = "Mạnh sân nhà, hay thua kèo sân khách. Sân nhà: +0.25 tin cậy, sáng khi chấp nhẹ/được chấp. Sân khách làm cửa trên chấp −0.25 đến −0.75: CẢNH BÁO ĐỎ. Thực dụng / phá lối chơi: ưu tiên Xỉu bàn hoặc chịu góc khi làm cửa dưới.",
+                            Tags = 140,
+                            TeamName = "Getafe"
+                        },
+                        new
+                        {
+                            TeamId = 538,
+                            Notes = "Mạnh sân nhà, hay thua kèo sân khách. Sân nhà: +0.25 tin cậy, sáng khi chấp nhẹ/được chấp. Sân khách làm cửa trên chấp −0.25 đến −0.75: CẢNH BÁO ĐỎ.",
+                            Tags = 12,
+                            TeamName = "Celta Vigo"
+                        },
+                        new
+                        {
+                            TeamId = 487,
+                            Notes = "Mạnh sân nhà, hay thua kèo sân khách. Sân nhà: +0.25 tin cậy, sáng khi chấp nhẹ/được chấp. Sân khách làm cửa trên chấp −0.25 đến −0.75: CẢNH BÁO ĐỎ.",
+                            Tags = 12,
+                            TeamName = "Lazio"
+                        },
+                        new
+                        {
+                            TeamId = 502,
+                            Notes = "Mạnh sân nhà, hay thua kèo sân khách. Sân nhà: +0.25 tin cậy, sáng khi chấp nhẹ/được chấp. Sân khách làm cửa trên chấp −0.25 đến −0.75: CẢNH BÁO ĐỎ.",
+                            Tags = 12,
+                            TeamName = "Fiorentina"
+                        },
+                        new
+                        {
+                            TeamId = 500,
+                            Notes = "Mạnh sân nhà, hay thua kèo sân khách. Sân nhà: +0.25 tin cậy, sáng khi chấp nhẹ/được chấp. Sân khách làm cửa trên chấp −0.25 đến −0.75: CẢNH BÁO ĐỎ.",
+                            Tags = 12,
+                            TeamName = "Bologna"
+                        },
+                        new
+                        {
+                            TeamId = 497,
+                            Notes = "Mạnh sân nhà, hay thua kèo sân khách. Sân nhà: +0.25 tin cậy, sáng khi chấp nhẹ/được chấp. Sân khách làm cửa trên chấp −0.25 đến −0.75: CẢNH BÁO ĐỎ.",
+                            Tags = 12,
+                            TeamName = "AS Roma"
+                        },
+                        new
+                        {
+                            TeamId = 494,
+                            Notes = "Mạnh sân nhà, hay thua kèo sân khách. Sân nhà: +0.25 tin cậy, sáng khi chấp nhẹ/được chấp. Sân khách làm cửa trên chấp −0.25 đến −0.75: CẢNH BÁO ĐỎ.",
+                            Tags = 12,
+                            TeamName = "Udinese"
+                        },
+                        new
+                        {
+                            TeamId = 503,
+                            Notes = "Mạnh sân nhà, hay thua kèo sân khách. Sân nhà: +0.25 tin cậy, sáng khi chấp nhẹ/được chấp. Sân khách làm cửa trên chấp −0.25 đến −0.75: CẢNH BÁO ĐỎ. Thực dụng / phá lối chơi: ưu tiên Xỉu bàn hoặc chịu góc khi làm cửa dưới.",
+                            Tags = 140,
+                            TeamName = "Torino"
+                        },
+                        new
+                        {
+                            TeamId = 163,
+                            Notes = "Mạnh sân nhà, hay thua kèo sân khách. Sân nhà: +0.25 tin cậy, sáng khi chấp nhẹ/được chấp. Sân khách làm cửa trên chấp −0.25 đến −0.75: CẢNH BÁO ĐỎ.",
+                            Tags = 12,
+                            TeamName = "Borussia Mönchengladbach"
+                        },
+                        new
+                        {
+                            TeamId = 182,
+                            Notes = "Mạnh sân nhà, hay thua kèo sân khách. Sân nhà: +0.25 tin cậy, sáng khi chấp nhẹ/được chấp. Sân khách làm cửa trên chấp −0.25 đến −0.75: CẢNH BÁO ĐỎ.",
+                            Tags = 12,
+                            TeamName = "Union Berlin"
+                        },
+                        new
+                        {
+                            TeamId = 164,
+                            Notes = "Mạnh sân nhà, hay thua kèo sân khách. Sân nhà: +0.25 tin cậy, sáng khi chấp nhẹ/được chấp. Sân khách làm cửa trên chấp −0.25 đến −0.75: CẢNH BÁO ĐỎ.",
+                            Tags = 12,
+                            TeamName = "FSV Mainz 05"
+                        },
+                        new
+                        {
+                            TeamId = 160,
+                            Notes = "Mạnh sân nhà, hay thua kèo sân khách. Sân nhà: +0.25 tin cậy, sáng khi chấp nhẹ/được chấp. Sân khách làm cửa trên chấp −0.25 đến −0.75: CẢNH BÁO ĐỎ.",
+                            Tags = 12,
+                            TeamName = "SC Freiburg"
+                        },
+                        new
+                        {
+                            TeamId = 170,
+                            Notes = "Mạnh sân nhà, hay thua kèo sân khách. Sân nhà: +0.25 tin cậy, sáng khi chấp nhẹ/được chấp. Sân khách làm cửa trên chấp −0.25 đến −0.75: CẢNH BÁO ĐỎ.",
+                            Tags = 12,
+                            TeamName = "FC Augsburg"
+                        },
+                        new
+                        {
+                            TeamId = 645,
+                            Notes = "Chảo lửa sân nhà; làm khách ở cúp châu Âu thường thua kèo sâu.",
+                            Tags = 12,
+                            TeamName = "Galatasaray"
+                        },
+                        new
+                        {
+                            TeamId = 611,
+                            Notes = "Chảo lửa sân nhà; làm khách ở cúp châu Âu thường thua kèo sâu.",
+                            Tags = 12,
+                            TeamName = "Fenerbahçe"
+                        },
+                        new
+                        {
+                            TeamId = 247,
+                            Notes = "Chảo lửa sân nhà; làm khách ở cúp châu Âu thường thua kèo sâu.",
+                            Tags = 12,
+                            TeamName = "Celtic"
+                        },
+                        new
+                        {
+                            TeamId = 257,
+                            Notes = "Chảo lửa sân nhà; làm khách ở cúp châu Âu thường thua kèo sâu.",
+                            Tags = 12,
+                            TeamName = "Rangers"
+                        },
+                        new
+                        {
+                            TeamId = 50,
+                            Notes = "Cày góc mạnh: ưu tiên Tài góc & chấp góc.",
+                            Tags = 16,
+                            TeamName = "Manchester City"
+                        },
+                        new
+                        {
+                            TeamId = 40,
+                            Notes = "Cày góc mạnh: ưu tiên Tài góc & chấp góc.",
+                            Tags = 16,
+                            TeamName = "Liverpool"
+                        },
+                        new
+                        {
+                            TeamId = 42,
+                            Notes = "Cày góc mạnh: ưu tiên Tài góc & chấp góc.",
+                            Tags = 16,
+                            TeamName = "Arsenal"
+                        },
+                        new
+                        {
+                            TeamId = 505,
+                            Notes = "Cày góc mạnh: ưu tiên Tài góc & chấp góc.",
+                            Tags = 16,
+                            TeamName = "Inter"
+                        },
+                        new
+                        {
+                            TeamId = 228,
+                            Notes = "Cày góc mạnh: ưu tiên Tài góc & chấp góc.",
+                            Tags = 16,
+                            TeamName = "Sporting CP"
+                        },
+                        new
+                        {
+                            TeamId = 211,
+                            Notes = "Cày góc mạnh: ưu tiên Tài góc & chấp góc.",
+                            Tags = 16,
+                            TeamName = "Benfica"
+                        },
+                        new
+                        {
+                            TeamId = 212,
+                            Notes = "Cày góc mạnh: ưu tiên Tài góc & chấp góc.",
+                            Tags = 16,
+                            TeamName = "FC Porto"
+                        },
+                        new
+                        {
+                            TeamId = 530,
+                            Notes = "Thực dụng khi làm khách trận cầu đinh: Xỉu bàn.",
+                            Tags = 128,
+                            TeamName = "Atletico Madrid"
+                        },
+                        new
+                        {
+                            TeamId = 798,
+                            Notes = "Thực dụng / phá lối chơi: ưu tiên Xỉu bàn hoặc chịu góc khi làm cửa dưới.",
+                            Tags = 128,
+                            TeamName = "Mallorca"
+                        },
+                        new
+                        {
+                            TeamId = 495,
+                            Notes = "Thực dụng / phá lối chơi: ưu tiên Xỉu bàn hoặc chịu góc khi làm cửa dưới.",
+                            Tags = 128,
+                            TeamName = "Genoa"
+                        },
+                        new
+                        {
+                            TeamId = 511,
+                            Notes = "Thực dụng / phá lối chơi: ưu tiên Xỉu bàn hoặc chịu góc khi làm cửa dưới.",
+                            Tags = 128,
+                            TeamName = "Empoli"
                         });
                 });
 
@@ -664,6 +1657,28 @@ namespace Prediction.Web.Data.Migrations
                     b.Navigation("HomeTeam");
 
                     b.Navigation("League");
+                });
+
+            modelBuilder.Entity("Prediction.Core.Entities.FixtureInjury", b =>
+                {
+                    b.HasOne("Prediction.Core.Entities.Fixture", "Fixture")
+                        .WithMany()
+                        .HasForeignKey("FixtureId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Fixture");
+                });
+
+            modelBuilder.Entity("Prediction.Core.Entities.FixtureStats", b =>
+                {
+                    b.HasOne("Prediction.Core.Entities.Fixture", "Fixture")
+                        .WithOne()
+                        .HasForeignKey("Prediction.Core.Entities.FixtureStats", "FixtureId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Fixture");
                 });
 
             modelBuilder.Entity("Prediction.Core.Entities.OddsSnapshot", b =>
@@ -711,6 +1726,17 @@ namespace Prediction.Web.Data.Migrations
                     b.Navigation("Fixture");
 
                     b.Navigation("Rule");
+                });
+
+            modelBuilder.Entity("Prediction.Core.Entities.TeamChange", b =>
+                {
+                    b.HasOne("Prediction.Core.Entities.Team", "Team")
+                        .WithMany()
+                        .HasForeignKey("TeamId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Team");
                 });
 #pragma warning restore 612, 618
         }

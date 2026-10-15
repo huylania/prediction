@@ -5,6 +5,9 @@ public enum Market
 {
     AsianHandicap = 1,
     OverUnder = 2,
+    CornersOverUnder = 3,
+    CornersHandicap = 4,
+    CardsOverUnder = 5,
 }
 
 /// <summary>Nguồn của một bản ghi kèo.</summary>

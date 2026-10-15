@@ -27,6 +27,78 @@ public sealed class FixtureItem
     public TeamsPair Teams { get; set; } = new();
     public GoalsPair Goals { get; set; } = new();
     public ScoreInfo? Score { get; set; }
+
+    /// <summary>Chỉ có khi lấy theo id (fixtures?id= / ?ids=).</summary>
+    public List<FixtureEvent>? Events { get; set; }
+
+    /// <summary>Chỉ có khi lấy theo id (fixtures?id= / ?ids=).</summary>
+    public List<TeamStatistics>? Statistics { get; set; }
+}
+
+public sealed class FixtureEvent
+{
+    public EventTime Time { get; set; } = new();
+    public TeamRef Team { get; set; } = new();
+    public string? Type { get; set; }
+    public string? Detail { get; set; }
+    public string? Comments { get; set; }
+}
+
+public sealed class EventTime
+{
+    public int? Elapsed { get; set; }
+    public int? Extra { get; set; }
+}
+
+public sealed class TeamStatistics
+{
+    public TeamRef Team { get; set; } = new();
+    public List<StatisticItem> Statistics { get; set; } = [];
+}
+
+public sealed class StatisticItem
+{
+    public string Type { get; set; } = "";
+    public JsonElement Value { get; set; }
+}
+
+// --- /injuries ---
+
+public sealed class InjuryItem
+{
+    public InjuryPlayer Player { get; set; } = new();
+    public TeamRef Team { get; set; } = new();
+}
+
+public sealed class InjuryPlayer
+{
+    public int? Id { get; set; }
+    public string Name { get; set; } = "";
+    public string? Type { get; set; }
+    public string? Reason { get; set; }
+}
+
+// --- /coachs ---
+
+public sealed class CoachItem
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = "";
+    public List<CoachCareer> Career { get; set; } = [];
+}
+
+public sealed class CoachCareer
+{
+    /// <summary>Đội trong sự nghiệp HLV (id có thể null với đội không có trên API).</summary>
+    public CareerTeam Team { get; set; } = new();
+    public string? Start { get; set; }
+    public string? End { get; set; }
+}
+
+public sealed class CareerTeam
+{
+    public int? Id { get; set; }
+    public string? Name { get; set; }
 }
 
 public sealed class FixtureInfo
@@ -108,6 +180,21 @@ public sealed class SeasonInfo
     public bool Current { get; set; }
     public string? Start { get; set; }
     public string? End { get; set; }
+    public SeasonCoverage? Coverage { get; set; }
+}
+
+public sealed class SeasonCoverage
+{
+    public FixtureCoverage? Fixtures { get; set; }
+    public bool Injuries { get; set; }
+    public bool Predictions { get; set; }
+    public bool Odds { get; set; }
+}
+
+public sealed class FixtureCoverage
+{
+    public bool Events { get; set; }
+    public bool StatisticsFixtures { get; set; }
 }
 
 // --- /odds ---

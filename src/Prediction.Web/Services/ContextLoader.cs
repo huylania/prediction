@@ -83,6 +83,9 @@ public static class ContextLoader
                 Away = standing.Away,
                 Handicap = MarketMovement.Build(snapshots, Market.AsianHandicap, cutoff),
                 Totals = MarketMovement.Build(snapshots, Market.OverUnder, cutoff),
+                Corners = MarketMovement.Build(snapshots, Market.CornersOverUnder, cutoff),
+                CornersHandicap = MarketMovement.Build(snapshots, Market.CornersHandicap, cutoff),
+                Cards = MarketMovement.Build(snapshots, Market.CardsOverUnder, cutoff),
                 Advice = advice.GetValueOrDefault(fixture.Id),
             };
         }
