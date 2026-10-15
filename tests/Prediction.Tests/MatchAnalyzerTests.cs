@@ -213,6 +213,24 @@ public class MatchAnalyzerTests
     }
 
     [Fact]
+    public void High_altitude_venue_adds_home_advantage()
+    {
+        var input = Input(ah: -1m);
+        var high = MatchAnalyzer.Analyze(new AnalysisInput
+        {
+            Fixture = input.Fixture,
+            HomeHistory = input.HomeHistory,
+            AwayHistory = input.AwayHistory,
+            League = input.League,
+            Handicap = input.Handicap,
+            VenueElevationM = 3640,
+        });
+
+        Assert.Equal(0.30 + 0.25, high.Handicap.HomeAdvantage, 6);
+        Assert.Contains(high.Handicap.HomeAdvantageNotes, n => n.Contains("3640 m"));
+    }
+
+    [Fact]
     public void Under_requires_expectation_below_league_average()
     {
         var a = MatchAnalyzer.Analyze(Input(home: History(10, 1, 0), away: History(10, 0, 1), ou: 2.5m));
@@ -317,6 +335,7 @@ public class MatchAnalyzerTests
     [Theory]
     [InlineData("League Stage - 8", true)]
     [InlineData("League Stage - 3", false)]
+    [InlineData("League Phase - 7", true)]
     [InlineData("2nd Qualifying Round", true)]
     [InlineData("Regular Season - 34", false)]
     public void Red_flag_4_motivation(string round, bool expected)

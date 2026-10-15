@@ -26,6 +26,7 @@
             <AnalysisBadge Group="best.Group" Score="best.Score" HasFlags="best.Flags.Count > 0" />
         </div>
         <div class="meta">Thắng @Pct(best.Probability.WinAny) · thua @Pct(best.Probability.LossAny) · EV @Signed(best.ExpectedValue)</div>
+        <OddsAlertChips Alerts="R.OddsAlerts" />
         @if (a.Flags.Count > 0)
         {
             <div class="mt-1">

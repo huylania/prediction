@@ -1,0 +1,13 @@
+@if (Alerts.Count > 0)
+{
+    <div class="odds-alerts">
+        @foreach (var a in Alerts)
+        {
+            <span class="odds-alert" title="@a.Detail">⚠ @a.Title</span>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public IReadOnlyList<OddsAlert> Alerts { get; set; } = [];
+}

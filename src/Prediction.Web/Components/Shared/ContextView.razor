@@ -1,0 +1,180 @@
+@inject MatchContextService Contexts
+@inject SyncCoordinator Sync
+@inject ApiFootballClient Api
+@inject TimeDisplay Time
+@using Prediction.Web.ApiFootball
+@{
+    var v = V;
+    var f = v.Fixture;
+}
+
+<div class="an-section">
+    <h2>Đối đầu @v.HeadToHead.Count lần gần nhất</h2>
+    @if (v.HeadToHead.Count == 0)
+    {
+        <div class="small text-muted mb-2">Chưa có dữ liệu đối đầu@(v.HeadToHeadCheckedAtUtc is { } c ? $" (đã hỏi API lúc {Time.Short(c)})" : "").</div>
+    }
+    else
+    {
+        <HistoryTable Rows="v.HeadToHead" TeamId="f.HomeTeamId" TeamName="@v.Home" ShowLeague="true" EditId="_editId" OnEdit="StartEdit" />
+    }
+    @if (Api.IsConfigured)
+    {
+        <button class="btn btn-sm btn-outline-secondary mt-1" disabled="@_busy" @onclick="FetchHeadToHeadAsync">Tải lại đối đầu từ API (1 request)</button>
+    }
+    <div class="hint mt-2">
+        Kèo chấp quy về phía <strong>@v.Home</strong> (đội nhà hôm nay); lần gặp đổi sân thì mức chấp tự nhiên đã khác do lợi thế sân.
+        Cảnh báo khi kèo hôm nay lệch ≥ 0.5 so với lần gặp gần nhất, hoặc biên độ kèo các lần gặp > 0.5.
+        API-Football không giữ kèo của trận đã đá: kèo cũ do website tự ghi (từ khi chạy), nhập tay, hoặc AI tra cứu (nhãn <span class="origin origin-ai">AI</span>, cần kiểm tra).
+    </div>
+</div>
+
+@if (_editId is { } editing)
+{
+    <div class="an-section">
+        <h2>Nhập kèo tay cho trận #@editing</h2>
+        <div class="row g-2 align-items-end">
+            <div class="col-sm-4">
+                <label class="form-label small mb-0">Kèo chấp của <strong>đội nhà trận đó</strong> (âm = đội nhà chấp, vd -0.75)</label>
+                <input type="number" step="0.25" class="form-control form-control-sm" @bind="_editAh" />
+            </div>
+            <div class="col-sm-3">
+                <label class="form-label small mb-0">Tài xỉu (vd 2.5)</label>
+                <input type="number" step="0.25" class="form-control form-control-sm" @bind="_editOu" />
+            </div>
+            <div class="col-sm-5 d-flex gap-2">
+                <button class="btn btn-sm btn-primary" @onclick="SaveEditAsync">Lưu</button>
+                <button class="btn btn-sm btn-outline-secondary" @onclick="() => _editId = null">Hủy</button>
+                <span class="hint align-self-center">Để trống cả hai rồi Lưu = xóa kèo nhập tay.</span>
+            </div>
+        </div>
+        @if (_editError is not null)
+        {
+            <div class="text-danger small mt-1">@_editError</div>
+        }
+    </div>
+}
+
+<div class="row g-3">
+    <div class="col-xl-6">
+        <div class="an-section">
+            <h2>5 trận gần nhất – @v.Home</h2>
+            <HistoryTable Rows="v.HomeRecent" TeamId="f.HomeTeamId" TeamName="@v.Home" EditId="_editId" OnEdit="StartEdit" />
+        </div>
+    </div>
+    <div class="col-xl-6">
+        <div class="an-section">
+            <h2>5 trận gần nhất – @v.Away</h2>
+            <HistoryTable Rows="v.AwayRecent" TeamId="f.AwayTeamId" TeamName="@v.Away" EditId="_editId" OnEdit="StartEdit" />
+        </div>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-xl-6">
+        <div class="an-section">
+            <h2>Sân & thời tiết</h2>
+            @if (v.Venue is { } venue)
+            {
+                <div class="small">
+                    <div><strong>@venue.Name</strong>@(venue.City is null ? "" : $" · {venue.City}")@(venue.Country is null ? "" : $", {venue.Country}")</div>
+                    <div>Mặt sân: <strong>@SurfaceText(venue.Surface ?? v.SideInfo?.Surface)</strong> · Sức chứa: @(venue.Capacity?.ToString("N0") ?? "—")</div>
+                    <div>Độ cao: <strong>@((venue.ElevationM ?? v.SideInfo?.AltitudeM) is { } alt ? $"{alt} m" : "—")</strong>
+                        <span class="hint">(@(venue.ElevationM is not null ? venue.GeoSource : v.SideInfo?.AltitudeM is not null ? "AI tra cứu" : "chưa có — Open-Meteo hoặc AI sẽ điền"))</span></div>
+                </div>
+            }
+            else
+            {
+                <div class="small text-muted">@(f.VenueName is null ? "Chưa có thông tin sân." : $"{f.VenueName} — chưa tải chi tiết sân (tác vụ \"Sân vận động\").")</div>
+            }
+            <div class="small mt-2">
+                @if (v.Weather is { } w)
+                {
+                    <div>Thời tiết giờ bóng lăn: <strong>@OpenMeteoClient.Describe(w.WeatherCode)</strong>, @w.TemperatureC?.ToString("0")°C,
+                        mưa @w.PrecipitationMm?.ToString("0.#") mm (khả năng @w.PrecipitationProbability%), gió @w.WindKph?.ToString("0") km/h, độ ẩm @w.HumidityPercent%
+                        <span class="hint">· @w.Source @Time.Short(w.FetchedAtUtc)</span></div>
+                }
+                else if (v.SideInfo?.Weather is { } aiWeather)
+                {
+                    <div>Thời tiết (AI tra cứu): @aiWeather</div>
+                }
+                else
+                {
+                    <div class="text-muted">Chưa có dự báo (Open-Meteo, các trận trong 48 giờ tới).</div>
+                }
+            </div>
+            @if (v.Conditions.Count > 0)
+            {
+                <ul class="small mt-2 mb-0">@foreach (var n in v.Conditions) { <li class="text-warning-emphasis">@n</li> }</ul>
+            }
+        </div>
+    </div>
+    <div class="col-xl-6">
+        <div class="an-section">
+            <h2>Đội hình ra sân</h2>
+            @if (v.Lineup is { } l)
+            {
+                <div class="hint mb-1">Công bố lúc @Time.Short(l.DetectedAtUtc)</div>
+                <div class="small fw-semibold">@v.Home (@l.HomeFormation) @(l.HomeCoach is null ? "" : $"· HLV {l.HomeCoach}")</div>
+                <div class="lineup-xi mb-2">@l.HomeStartXI</div>
+                <div class="small fw-semibold">@v.Away (@l.AwayFormation) @(l.AwayCoach is null ? "" : $"· HLV {l.AwayCoach}")</div>
+                <div class="lineup-xi">@l.AwayStartXI</div>
+            }
+            else
+            {
+                <div class="small text-muted">Chưa có. Website dò đội hình 5 phút/lần trong 75 phút trước trận; khi có sẽ chụp kèo ngay.</div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public MatchContextView V { get; set; } = default!;
+
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private int? _editId;
+    private decimal? _editAh;
+    private decimal? _editOu;
+    private string? _editError;
+    private bool _busy;
+
+    private void StartEdit(HistoryLine row)
+    {
+        _editId = row.FixtureId;
+        _editAh = row.HandicapLine;
+        _editOu = row.TotalLine;
+        _editError = null;
+    }
+
+    private async Task SaveEditAsync()
+    {
+        if (_editAh is { } a && a * 4 != decimal.Truncate(a * 4) || _editOu is { } o && (o <= 0 || o * 4 != decimal.Truncate(o * 4)))
+        {
+            _editError = "Mức kèo phải là bội số của 0.25 (tài xỉu > 0).";
+            return;
+        }
+
+        await Contexts.SaveManualLineAsync(_editId!.Value, _editAh, _editOu);
+        _editId = null;
+        await OnChanged.InvokeAsync();
+    }
+
+    private async Task FetchHeadToHeadAsync()
+    {
+        _busy = true;
+        var f = V.Fixture;
+        await Sync.RunAsync(SyncJobs.HeadToHead, async (s, c) => $"Đối đầu {V.Home} – {V.Away}: {await s.FetchHeadToHeadAsync(f.HomeTeamId, f.AwayTeamId, c)} trận.", default);
+        _busy = false;
+        await OnChanged.InvokeAsync();
+    }
+
+    private static string SurfaceText(string? surface) => surface switch
+    {
+        null => "chưa rõ",
+        var s when s.Contains("artificial", StringComparison.OrdinalIgnoreCase) => "cỏ nhân tạo",
+        var s when s.Contains("hybrid", StringComparison.OrdinalIgnoreCase) => "cỏ lai (hybrid)",
+        var s when s.Contains("grass", StringComparison.OrdinalIgnoreCase) => "cỏ tự nhiên",
+        var s => s,
+    };
+}

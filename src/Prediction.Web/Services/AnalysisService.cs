@@ -17,6 +17,9 @@ public sealed class MatchAnalysisResult
     public Team? AwayTeam { get; init; }
     public required AnalysisInput Input { get; init; }
     public required MatchAnalysis Analysis { get; init; }
+
+    /// <summary>Cảnh báo kèo chấp/tài xỉu dịch ≥ 0.5 hoặc lệch lịch sử đối đầu.</summary>
+    public IReadOnlyList<OddsAlert> OddsAlerts { get; init; } = [];
 }
 
 /// <summary>
@@ -82,6 +85,13 @@ public sealed class AnalysisService(IDbContextFactory<AppDbContext> dbFactory, T
                 .ToListAsync(ct))
             .ToLookup(s => s.FixtureId, s => s.Side);
 
+        var venueIds = fixtures.Where(f => f.VenueId.HasValue).Select(f => f.VenueId!.Value).Distinct().ToList();
+        var elevations = await db.Venues.AsNoTracking().Where(v => venueIds.Contains(v.Id) && v.ElevationM != null)
+            .ToDictionaryAsync(v => v.Id, v => v.ElevationM, ct);
+        var aiAltitude = await db.MatchSideInfos.AsNoTracking().Where(s => ids.Contains(s.FixtureId) && s.AltitudeM != null)
+            .ToDictionaryAsync(s => s.FixtureId, s => s.AltitudeM, ct);
+
+        var oddsAlerts = await MatchContextService.AlertsAsync(db, fixtures, contexts, now, ct);
         var history = await LoadHistoryAsync(db, teamIds, fixtures.Min(f => f.KickoffUtc).AddDays(-400), fixtures.Max(f => f.KickoffUtc), ct);
         var baselines = new Dictionary<(int, int), LeagueBaseline>();
         foreach (var key in fixtures.Select(f => (f.LeagueId, f.Season)).Distinct())
@@ -121,6 +131,7 @@ public sealed class AnalysisService(IDbContextFactory<AppDbContext> dbFactory, T
                 Injuries = injuries[fixture.Id].ToList(),
                 Advice = ctx.Advice,
                 RuleSides = ruleSides[fixture.Id].Distinct().ToList(),
+                VenueElevationM = (fixture.VenueId is { } vid ? elevations.GetValueOrDefault(vid) : null) ?? aiAltitude.GetValueOrDefault(fixture.Id),
             };
 
             result[fixture.Id] = new MatchAnalysisResult
@@ -133,6 +144,7 @@ public sealed class AnalysisService(IDbContextFactory<AppDbContext> dbFactory, T
                 AwayTeam = contexts.Teams.GetValueOrDefault(fixture.AwayTeamId),
                 Input = input,
                 Analysis = MatchAnalyzer.Analyze(input),
+                OddsAlerts = oddsAlerts.GetValueOrDefault(fixture.Id) ?? [],
             };
         }
 

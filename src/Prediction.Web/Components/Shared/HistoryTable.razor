@@ -1,0 +1,68 @@
+@inject TimeDisplay Time
+@if (Rows.Count == 0)
+{
+    <div class="small text-muted">Chưa có trận nào trong CSDL.</div>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table table-sm hist-table mb-0">
+            <thead>
+                <tr>
+                    <th>Ngày</th>
+                    @if (ShowLeague) { <th>Giải</th> }
+                    <th>Trận</th>
+                    <th>Chấp (@TeamName)</th>
+                    <th>KQ kèo</th>
+                    <th>Tài xỉu</th>
+                    <th>KQ T/X</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var r in Rows)
+                {
+                    var ah = r.HandicapOutcome(TeamId);
+                    var ou = r.OverOutcome;
+                    <tr class="@(EditId == r.FixtureId ? "table-warning" : "")">
+                        <td class="text-nowrap">@Time.ToLocal(r.KickoffUtc).ToString("dd/MM/yy")</td>
+                        @if (ShowLeague) { <td class="text-muted">@r.LeagueName</td> }
+                        <td>
+                            <span class="@(r.HomeTeamId == TeamId ? "fw-semibold" : "")">@r.HomeName</span>
+                            <strong class="mx-1">@(r.HasScore ? $"{r.HomeGoals}-{r.AwayGoals}" : "vs")</strong>
+                            <span class="@(r.AwayTeamId == TeamId ? "fw-semibold" : "")">@r.AwayName</span>
+                        </td>
+                        <td class="text-nowrap">
+                            @(r.HandicapFor(TeamId) is { } line ? LineText.Signed(line) : "—")
+                            <Origin Value="r.Origin" Note="@r.Note" />
+                        </td>
+                        <td><Result Outcome="ah" /></td>
+                        <td>@(r.TotalLine is { } t ? LineText.Number(t) : "—")</td>
+                        <td><Result Outcome="ou" Totals="true" /></td>
+                        <td>
+                            @if (r.Origin != LineOrigin.Recorded)
+                            {
+                                <button class="btn btn-sm btn-link p-0" title="Nhập/sửa kèo tay" @onclick="() => OnEdit.InvokeAsync(r)">✎</button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<HistoryLine> Rows { get; set; } = [];
+
+    /// <summary>Đội dùng để quy đổi mức chấp và kết quả kèo.</summary>
+    [Parameter] public int TeamId { get; set; }
+
+    [Parameter] public string TeamName { get; set; } = "";
+
+    [Parameter] public bool ShowLeague { get; set; }
+
+    [Parameter] public int? EditId { get; set; }
+
+    [Parameter] public EventCallback<HistoryLine> OnEdit { get; set; }
+}

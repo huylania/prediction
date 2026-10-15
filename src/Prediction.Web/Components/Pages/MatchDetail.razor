@@ -5,6 +5,7 @@
 @inject IDbContextFactory<AppDbContext> DbFactory
 @inject SuggestionService Suggestions
 @inject AnalysisService Analyses
+@inject MatchContextService Contexts
 @inject TimeDisplay Time
 
 <PageTitle>@(_m is null ? "Trận đấu" : $"{_m.Home} – {_m.Away}")</PageTitle>
@@ -41,7 +42,16 @@ else
     }
 
     <ul class="nav mc-tabs gap-2 mb-3">
-        <li class="nav-item"><a class="nav-link @(IsAnalysisTab ? "" : "active")" href="tran-dau/@Id">Tổng quan & kèo</a></li>
+        <li class="nav-item"><a class="nav-link @(IsAnalysisTab || IsContextTab ? "" : "active")" href="tran-dau/@Id">Tổng quan & kèo</a></li>
+        <li class="nav-item">
+            <a class="nav-link @(IsContextTab ? "active" : "")" href="tran-dau/@Id?tab=boi-canh">
+                Lịch sử & bên lề
+                @if (_ctx is { Alerts.Count: > 0 } c)
+                {
+                    <span class="odds-alert py-0">⚠ @c.Alerts.Count</span>
+                }
+            </a>
+        </li>
         <li class="nav-item">
             <a class="nav-link @(IsAnalysisTab ? "active" : "")" href="tran-dau/@Id?tab=phan-tich">
                 Phân tích chuyên sâu
@@ -53,7 +63,22 @@ else
         </li>
     </ul>
 
-    @if (IsAnalysisTab)
+    @if (IsContextTab)
+    {
+        @if (_ctx is null)
+        {
+            <p class="text-muted">Đang tải…</p>
+        }
+        else
+        {
+            <div class="an-section">
+                <h2>Mốc kèo & cảnh báo ≥ 0.5</h2>
+                <OddsTimeline V="_ctx" />
+            </div>
+            <ContextView V="_ctx" OnChanged="ReloadContextAsync" />
+        }
+    }
+    else if (IsAnalysisTab)
     {
         @if (_analysis is null)
         {
@@ -130,6 +155,16 @@ else
         </div>
 
         <div class="col-lg-7">
+            @if (_ctx is not null)
+            {
+                <div class="card mb-3">
+                    <div class="card-header d-flex justify-content-between">
+                        <span>Mốc kèo: mở → có đội hình → 5' trước trận</span>
+                        <a class="small" href="tran-dau/@Id?tab=boi-canh">Lịch sử kèo & bên lề →</a>
+                    </div>
+                    <div class="card-body"><OddsTimeline V="_ctx" /></div>
+                </div>
+            }
             <div class="card mb-3">
                 <div class="card-header">Biến động kèo chấp</div>
                 <div class="card-body">
@@ -242,6 +277,10 @@ else
 
     private bool IsAnalysisTab => Tab == "phan-tich";
 
+    private bool IsContextTab => Tab == "boi-canh";
+
+    private MatchContextView? _ctx;
+
     private MatchAnalysisResult? _analysis;
 
     private bool _loading = true;
@@ -269,10 +308,13 @@ else
         _loading = true;
         _m = await Insights.ForFixtureAsync(Id);
         _analysis = IsAnalysisTab && _m is not null ? await Analyses.ForFixtureAsync(Id) : null;
+        _ctx = _m is not null && !IsAnalysisTab ? await Contexts.ForFixtureAsync(Id) : null;
         await using var db = await DbFactory.CreateDbContextAsync();
         _suggestions = await db.Suggestions.AsNoTracking().Include(s => s.Rule).Where(s => s.FixtureId == Id).OrderBy(s => s.Rule!.Name).ToListAsync();
         _loading = false;
     }
+
+    private async Task ReloadContextAsync() => _ctx = await Contexts.ForFixtureAsync(Id);
 
     private async Task AddManualAsync()
     {

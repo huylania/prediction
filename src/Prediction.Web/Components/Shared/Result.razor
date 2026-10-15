@@ -1,0 +1,19 @@
+@if (Outcome is { } o)
+{
+    var (css, text) = o switch
+    {
+        BetOutcome.Win => ("res-w", Totals ? "Tài" : "Thắng"),
+        BetOutcome.HalfWin => ("res-w", Totals ? "Tài ½" : "Thắng ½"),
+        BetOutcome.Push => ("res-p", "Hòa"),
+        BetOutcome.HalfLoss => ("res-l", Totals ? "Xỉu ½" : "Thua ½"),
+        _ => ("res-l", Totals ? "Xỉu" : "Thua"),
+    };
+    <span class="res @css">@text</span>
+}
+
+@code {
+    [Parameter] public BetOutcome? Outcome { get; set; }
+
+    /// <summary>Kết quả của cửa Tài (thắng = Tài, thua = Xỉu).</summary>
+    [Parameter] public bool Totals { get; set; }
+}

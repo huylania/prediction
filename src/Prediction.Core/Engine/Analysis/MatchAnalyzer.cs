@@ -23,6 +23,9 @@ public static class MatchAnalyzer
     public const double FortressLeagueHomeAdvantage = 0.60;
     public const double TeamVenueAdjustment = 0.25;
 
+    /// <summary>Sân từ độ cao này (m) được cộng thêm lợi thế sân nhà (Bolivia, Ecuador, Colombia...).</summary>
+    public const int HighAltitudeM = 2000;
+
     public const double FormWeight = 0.6;
     public const double TableWeight = 0.4;
 
@@ -201,6 +204,12 @@ public static class MatchAnalyzer
         {
             ha += TeamVenueAdjustment;
             notes.Add($"{input.AwayName} yếu sân khách +{Num(TeamVenueAdjustment)}");
+        }
+
+        if (input.VenueElevationM >= HighAltitudeM)
+        {
+            ha += TeamVenueAdjustment;
+            notes.Add($"sân cao {input.VenueElevationM} m +{Num(TeamVenueAdjustment)}");
         }
 
         var supremacy = tablePart is { } t ? FormWeight * formPart + TableWeight * t + ha : formPart + ha;
@@ -683,10 +692,11 @@ public static class MatchAnalyzer
             return $"Vòng loại / vòng ngoài ({round})";
         }
 
-        if (round.StartsWith("League Stage", StringComparison.OrdinalIgnoreCase)
+        // UEFA: "League Stage - 7"; AFC Champions League Elite: "League Phase - 7" (đều 8 lượt).
+        if ((round.StartsWith("League Stage", StringComparison.OrdinalIgnoreCase) || round.StartsWith("League Phase", StringComparison.OrdinalIgnoreCase))
             && int.TryParse(round.Split('-').Last().Trim(), out var md) && md >= 7)
         {
-            return $"Lượt {md}/8 league phase cúp châu Âu: đội đã an bài dễ xoay tua";
+            return $"Lượt {md}/8 vòng phân hạng cúp châu lục: đội đã an bài dễ xoay tua";
         }
 
         if (round.StartsWith("Group", StringComparison.OrdinalIgnoreCase) && round.TrimEnd().EndsWith("- 6", StringComparison.Ordinal))

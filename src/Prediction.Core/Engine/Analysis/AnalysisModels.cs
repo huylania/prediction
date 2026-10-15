@@ -93,6 +93,9 @@ public sealed class AnalysisInput
 
     public ApiAdvice? Advice { get; init; }
 
+    /// <summary>Độ cao sân (m), nếu biết.</summary>
+    public int? VenueElevationM { get; init; }
+
     /// <summary>Các cửa (kèo chấp / tài xỉu bàn) mà quy tắc của bạn đang gợi ý cho trận này.</summary>
     public IReadOnlyList<PickSide> RuleSides { get; init; } = [];
 }

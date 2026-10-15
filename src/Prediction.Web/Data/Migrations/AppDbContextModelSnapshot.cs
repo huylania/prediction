@@ -841,6 +841,62 @@ namespace Prediction.Web.Data.Migrations
                             SeasonIsCalendarYear = false,
                             SeasonYearIsEndYear = false,
                             Type = "League"
+                        },
+                        new
+                        {
+                            Id = 17,
+                            Country = "World",
+                            CurrentSeason = 2026,
+                            HasInjuriesCoverage = true,
+                            HasStatsCoverage = true,
+                            IsDemo = false,
+                            IsTracked = true,
+                            Name = "AFC Champions League Elite",
+                            SeasonIsCalendarYear = false,
+                            SeasonYearIsEndYear = false,
+                            Type = "Cup"
+                        },
+                        new
+                        {
+                            Id = 18,
+                            Country = "World",
+                            CurrentSeason = 2026,
+                            HasInjuriesCoverage = true,
+                            HasStatsCoverage = true,
+                            IsDemo = false,
+                            IsTracked = true,
+                            Name = "AFC Champions League Two",
+                            SeasonIsCalendarYear = false,
+                            SeasonYearIsEndYear = false,
+                            Type = "Cup"
+                        },
+                        new
+                        {
+                            Id = 296,
+                            Country = "Thailand",
+                            CurrentSeason = 2026,
+                            HasInjuriesCoverage = true,
+                            HasStatsCoverage = true,
+                            IsDemo = false,
+                            IsTracked = true,
+                            Name = "Thai League 1",
+                            SeasonIsCalendarYear = false,
+                            SeasonYearIsEndYear = false,
+                            Type = "League"
+                        },
+                        new
+                        {
+                            Id = 297,
+                            Country = "Thailand",
+                            CurrentSeason = 2026,
+                            HasInjuriesCoverage = false,
+                            HasStatsCoverage = false,
+                            IsDemo = false,
+                            IsTracked = true,
+                            Name = "Thai League 2",
+                            SeasonIsCalendarYear = false,
+                            SeasonYearIsEndYear = false,
+                            Type = "League"
                         });
                 });
 

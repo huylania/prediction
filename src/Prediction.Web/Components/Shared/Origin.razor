@@ -1,0 +1,15 @@
+@switch (Value)
+{
+    case LineOrigin.Ai:
+        <span class="origin origin-ai" title="AI tra cứu web — cần kiểm tra. @Note">AI</span>
+        break;
+    case LineOrigin.Manual:
+        <span class="origin origin-manual" title="Nhập tay">tay</span>
+        break;
+}
+
+@code {
+    [Parameter] public LineOrigin Value { get; set; }
+
+    [Parameter] public string? Note { get; set; }
+}

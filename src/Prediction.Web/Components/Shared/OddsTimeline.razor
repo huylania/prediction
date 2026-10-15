@@ -1,0 +1,62 @@
+@inject TimeDisplay Time
+@{
+    var points = new[] { V.Open, V.Lineups, V.PreKickoff, V.Current };
+}
+<div class="table-responsive">
+    <table class="table table-sm timeline-table mb-2">
+        <thead>
+            <tr><th>Mốc</th><th>Thời điểm</th><th>Kèo chấp (@V.Home)</th><th>Odds nhà / khách</th><th>Tài xỉu</th><th>Odds tài / xỉu</th></tr>
+        </thead>
+        <tbody>
+            @foreach (var (label, p) in new[] { ("Mở kèo", V.Open), ("Khi có đội hình", V.Lineups), ("5 phút trước trận", V.PreKickoff), (V.Current?.Label ?? "Hiện tại", V.Current) })
+            {
+                <tr>
+                    <td class="fw-semibold">@label</td>
+                    @if (p is null)
+                    {
+                        <td colspan="5" class="text-muted">@Missing(label)</td>
+                    }
+                    else
+                    {
+                        <td>@(p.AtUtc is { } at ? Time.Short(at) : "—")@if (p.BookmakerUpdatedAtUtc is { } bu) { <div class="hint">nhà cái cập nhật @Time.Short(bu)</div> }</td>
+                        <td class="@(Jump(p.HandicapLine, V.Open?.HandicapLine) ? "jump" : "")">@(p.HandicapLine is { } h ? LineText.Signed(h) : "—")</td>
+                        <td>@Fmt.Odds(p.HandicapHome) / @Fmt.Odds(p.HandicapAway)</td>
+                        <td class="@(Jump(p.TotalLine, V.Open?.TotalLine) ? "jump" : "")">@(p.TotalLine is { } t ? LineText.Number(t) : "—")</td>
+                        <td>@Fmt.Odds(p.Over) / @Fmt.Odds(p.Under)</td>
+                    }
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+<div class="hint mb-2">
+    Kèo mở là bản kèo đầu tiên website ghi nhận (kèo theo giải lấy mỗi giờ). Khi API công bố đội hình (~1 giờ trước trận) website lấy kèo ngay; kèo cuối chụp ~5 phút trước giờ bóng lăn.
+    Ô đỏ: lệch ≥ 0.5 so với kèo mở.
+</div>
+@if (V.Alerts.Count > 0)
+{
+    <div class="odds-alert-list">
+        @foreach (var a in V.Alerts)
+        {
+            <div class="item"><span class="t">⚠ @a.Title</span>@a.Detail</div>
+        }
+    </div>
+}
+else
+{
+    <div class="small text-success">✓ Không có biến động kèo ≥ 0.5 hay lệch lịch sử đối đầu.</div>
+}
+
+@code {
+    [Parameter, EditorRequired] public MatchContextView V { get; set; } = default!;
+
+    private static bool Jump(decimal? value, decimal? open) => value is { } v && open is { } o && Math.Abs(v - o) >= OddsAlerts.Threshold;
+
+    private string Missing(string label) => label switch
+    {
+        "Mở kèo" => "Chưa có kèo.",
+        "Khi có đội hình" => V.Lineup is null ? "Chưa có đội hình (website dò 75 phút trước trận)." : "Có đội hình nhưng chưa lấy được kèo.",
+        "5 phút trước trận" => "Chưa tới mốc 5 phút trước trận.",
+        _ => "—",
+    };
+}

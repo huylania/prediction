@@ -95,6 +95,7 @@
         <MarketBox Outlook="Totals" Match="Match" />
     </div>
 
+    <OddsAlertChips Alerts="Match.OddsAlerts" />
     <InPlayAlerts Alerts="Match.InPlayAlerts" />
 
     @if (Match.Analysis is not null || ExtraMarkets is not null)
@@ -159,5 +160,5 @@
     };
 
     private static string RoundText(string round) =>
-        round.Replace("Regular Season - ", "Vòng ").Replace("League Stage - ", "Lượt ");
+        round.Replace("Regular Season - ", "Vòng ").Replace("League Stage - ", "Lượt ").Replace("League Phase - ", "Lượt ");
 }

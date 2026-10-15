@@ -25,6 +25,9 @@ public sealed class MatchInsight
     /// <summary>Cảnh báo In-play (chỉ với trận đang đá).</summary>
     public IReadOnlyList<InPlayAlert> InPlayAlerts { get; init; } = [];
 
+    /// <summary>Cảnh báo kèo chấp/tài xỉu dịch ≥ 0.5 hoặc lệch lịch sử đối đầu.</summary>
+    public IReadOnlyList<OddsAlert> OddsAlerts { get; init; } = [];
+
     /// <summary>Thống kê trận (đang đá hoặc đã đá), nếu có.</summary>
     public FixtureStats? Stats { get; init; }
 
@@ -81,6 +84,7 @@ public sealed class InsightService(IDbContextFactory<AppDbContext> dbFactory, Ti
         var leagues = await db.Leagues.AsNoTracking().Where(l => leagueIds.Contains(l.Id)).ToDictionaryAsync(l => l.Id, ct);
         var analyses = await AnalysisService.BestPicksAsync(db, fixtures.Select(f => f.Id).ToList(), ct);
         var inPlay = await AnalysisService.InPlayAlertsAsync(db, fixtures, contexts, ct);
+        var oddsAlerts = await MatchContextService.AlertsAsync(db, fixtures, contexts, now, ct);
         var started = fixtures.Where(f => f.IsLive || f.IsFinished).Select(f => f.Id).ToList();
         var stats = new Dictionary<int, FixtureStats>();
         foreach (var chunk in started.Chunk(500))
@@ -116,6 +120,7 @@ public sealed class InsightService(IDbContextFactory<AppDbContext> dbFactory, Ti
                 Analysis = analyses.GetValueOrDefault(fixture.Id),
                 InPlayAlerts = inPlay.GetValueOrDefault(fixture.Id) ?? [],
                 Stats = stats.GetValueOrDefault(fixture.Id),
+                OddsAlerts = oddsAlerts.GetValueOrDefault(fixture.Id) ?? [],
             });
         }
 

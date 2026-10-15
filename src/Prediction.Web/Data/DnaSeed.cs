@@ -21,7 +21,11 @@ public static class DnaSeed
             new League { Id = 71, Name = "Serie A", Country = "Brazil", Type = "League", CurrentSeason = 2026, SeasonIsCalendarYear = true, IsTracked = true },
             new League { Id = 72, Name = "Serie B", Country = "Brazil", Type = "League", CurrentSeason = 2026, SeasonIsCalendarYear = true, IsTracked = true },
             new League { Id = 62, Name = "Ligue 2", Country = "France", Type = "League", CurrentSeason = 2026, IsTracked = true },
-            new League { Id = 141, Name = "Segunda División", Country = "Spain", Type = "League", CurrentSeason = 2026, IsTracked = true });
+            new League { Id = 141, Name = "Segunda División", Country = "Spain", Type = "League", CurrentSeason = 2026, IsTracked = true },
+            new League { Id = 17, Name = "AFC Champions League Elite", Country = "World", Type = "Cup", CurrentSeason = 2026, IsTracked = true },
+            new League { Id = 18, Name = "AFC Champions League Two", Country = "World", Type = "Cup", CurrentSeason = 2026, IsTracked = true },
+            new League { Id = 296, Name = "Thai League 1", Country = "Thailand", Type = "League", CurrentSeason = 2026, IsTracked = true },
+            new League { Id = 297, Name = "Thai League 2", Country = "Thailand", Type = "League", CurrentSeason = 2026, IsTracked = true, HasStatsCoverage = false, HasInjuriesCoverage = false });
 
         b.Entity<LeagueDna>().HasData(
             L(78, "Bundesliga (Đức)", DnaTag.OverGoals, "Gegenpressing, hàng thủ dâng cao, ít câu giờ. ~3.10–3.35 bàn/trận. Ưu tiên Tài (H1 & FT) và BTTS; hạn chế Xỉu pre-match."),
