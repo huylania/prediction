@@ -155,6 +155,56 @@ else
         </div>
 
         <div class="col-lg-7">
+            @if (_m.Stats is { } st && (st.HomeShots is not null || st.HomeCorners is not null || st.HomeXg is not null))
+            {
+                <div class="card mb-3">
+                    <div class="card-header d-flex justify-content-between">
+                        <span>Thống kê trận @(f.IsLive ? "(đang đá)" : "")</span>
+                        <span class="small text-muted">cập nhật @Time.Short(st.UpdatedAtUtc)</span>
+                    </div>
+                    <div class="card-body p-0">
+                        <table class="table table-sm mb-0 stats-table">
+                            <thead><tr><th></th><th class="text-end">@_m.Home</th><th class="text-end">@_m.Away</th></tr></thead>
+                            <tbody>
+                                <tr class="fw-semibold">
+                                    <td>xG (bàn thắng kỳ vọng)</td>
+                                    @if (st.HomeXg is not null)
+                                    {
+                                        <td class="text-end">@Fmt.Num(st.HomeXg)</td><td class="text-end">@Fmt.Num(st.AwayXg)</td>
+                                    }
+                                    else
+                                    {
+                                        <td colspan="2" class="text-end text-muted fw-normal small">API không có xG cho giải này</td>
+                                    }
+                                </tr>
+                                <tr><td>Sút (trúng đích)</td><td class="text-end">@Val(st.HomeShots) (@Val(st.HomeShotsOnTarget))</td><td class="text-end">@Val(st.AwayShots) (@Val(st.AwayShotsOnTarget))</td></tr>
+                                @if (st.HomeShotsInBox is not null)
+                                {
+                                    <tr><td>Sút trong vòng cấm</td><td class="text-end">@st.HomeShotsInBox</td><td class="text-end">@st.AwayShotsInBox</td></tr>
+                                }
+                                <tr>
+                                    <td>Phạt góc</td>
+                                    <td class="text-end">@Val(st.HomeCorners)@if (st.FirstHalfHomeCorners is { } h1) { <span class="text-muted small"> (H1 @h1)</span> }</td>
+                                    <td class="text-end">@Val(st.AwayCorners)@if (st.FirstHalfAwayCorners is { } a1) { <span class="text-muted small"> (H1 @a1)</span> }</td>
+                                </tr>
+                                @if (st.HomePossession is not null)
+                                {
+                                    <tr><td>Kiểm soát bóng</td><td class="text-end">@st.HomePossession%</td><td class="text-end">@st.AwayPossession%</td></tr>
+                                }
+                                <tr>
+                                    <td>Thẻ vàng / đỏ</td>
+                                    <td class="text-end">@Val(st.HomeYellow) / @(st.HomeRed ?? 0)</td>
+                                    <td class="text-end">@Val(st.AwayYellow) / @(st.AwayRed ?? 0)</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        @if (f.IsLive)
+                        {
+                            <div class="hint px-2 pb-2">Trận đang đá: số liệu do tác vụ "Trực tiếp" cập nhật vài phút một lần; tải lại trang để xem số mới.</div>
+                        }
+                    </div>
+                </div>
+            }
             @if (_liveOdds.Count > 0)
             {
                 <div class="card mb-3">
@@ -390,6 +440,8 @@ else
     private static string Whl(TeamSnapshot? s) => s is null ? "—" : $"{s.Won}-{s.Drawn}-{s.Lost}";
 
     private static string P(int? value) => value is null ? "—" : $"{value}%";
+
+    private static string Val(int? value) => value?.ToString() ?? "—";
 
     private sealed class ManualOdds
     {

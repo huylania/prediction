@@ -172,7 +172,11 @@
         }
         @if (a.HomeForm.XgFor is not null || a.AwayForm.XgFor is not null)
         {
-            <span>xG tạo ra/để lọt: @N(a.HomeForm.XgFor)/@N(a.HomeForm.XgAgainst) · @N(a.AwayForm.XgFor)/@N(a.AwayForm.XgAgainst).</span>
+            <span>xG tạo ra/để lọt: @N(a.HomeForm.XgFor)/@N(a.HomeForm.XgAgainst) · @N(a.AwayForm.XgFor)/@N(a.AwayForm.XgAgainst) — @XgStatus(a).</span>
+        }
+        else
+        {
+            <span>Không có xG (giải này API-Football không có xG hoặc chưa tải thống kê) → số bàn kỳ vọng chỉ dùng bàn thắng thật.</span>
         }
     </div>
     <div class="table-responsive">
@@ -198,7 +202,7 @@
         </table>
     </div>
     <div class="hint mt-2">
-        Kỳ vọng bàn = ((Ghi nhà + Thủng khách) + (Ghi khách + Thủng nhà)) / 2; tương tự với góc (trộn 50/50 số liệu chung và theo sân).
+        Kỳ vọng bàn = ((Ghi nhà + Thủng khách) + (Ghi khách + Thủng nhà)) / 2, đội có ≥ 5 trận có xG thì Ghi/Thủng = 50% bàn thật + 50% xG; tương tự với góc (trộn 50/50 số liệu chung và theo sân).
         Ngưỡng: Tài/Xỉu bàn |Δ| ≥ 0.40 cùng chiều TB giải; góc |Δ| ≥ 1.2 + phong cách; chấp góc chênh ≥ 2.0 góc/trận. Mẫu dưới 5 trận được kéo về TB giải.
     </div>
 </div>
@@ -211,6 +215,19 @@
     private static string N(double? v) => v is { } x ? x.ToString("0.##", Inv) : "—";
 
     private static string Signed(double v) => (v >= 0 ? "+" : "−") + Math.Abs(v).ToString("0.00", Inv);
+
+    private string XgStatus(MatchAnalysis a)
+    {
+        var used = MatchAnalyzer.UsesXg(a.HomeForm) && MatchAnalyzer.UsesXg(a.AwayForm);
+        var missing = new[] { (R.Home, a.HomeForm), (R.Away, a.AwayForm) }
+            .Where(t => !MatchAnalyzer.UsesXg(t.Item2))
+            .Select(t => $"{t.Item1} {t.Item2.XgMatches} trận")
+            .ToList();
+        var weight = (MatchAnalyzer.XgWeight * 100).ToString("0", Inv);
+        return used
+            ? $"đã dùng {weight}% xG vào số bàn kỳ vọng"
+            : $"chưa đủ {MatchAnalyzer.MinSample} trận có xG ({string.Join(", ", missing)}) nên đội đó dùng bàn thắng thật";
+    }
 
     private static string P(double v) => v < 0.06 ? "" : (v * 100).ToString("0", Inv) + "%";
 

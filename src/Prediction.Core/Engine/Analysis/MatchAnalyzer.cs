@@ -32,6 +32,9 @@ public static class MatchAnalyzer
     /// <summary>Mẫu ít hơn số trận này thì kéo trung bình về trung bình giải.</summary>
     public const int MinSample = 5;
 
+    /// <summary>Tỉ trọng xG trong số bàn kỳ vọng khi đội có ≥ <see cref="MinSample"/> trận có xG (phần còn lại là bàn thắng thật).</summary>
+    public const double XgWeight = 0.5;
+
     public const double CornerDispersion = 1.4;
     public const double CardDispersion = 1.6;
 
@@ -59,12 +62,12 @@ public static class MatchAnalyzer
         var ctx = new Ctx(input, leagueTags, homeTags, awayTags, homeRegime, awayRegime, homeForm, awayForm,
             homeAbsent.Count(i => i.IsMissing), awayAbsent.Count(i => i.IsMissing), homeRest, awayRest);
 
-        // 4a. Bàn thắng: kỳ vọng kết hợp (mẫu ít trận kéo về trung bình giải).
+        // 4a. Bàn thắng: kỳ vọng kết hợp (bàn thật trộn xG khi đủ mẫu; mẫu ít trận kéo về trung bình giải).
         var gHalf = league.Goals / 2;
-        var gsH = Shrink(homeForm.GoalsFor, homeForm.Matches, gHalf);
-        var gcH = Shrink(homeForm.GoalsAgainst, homeForm.Matches, gHalf);
-        var gsA = Shrink(awayForm.GoalsFor, awayForm.Matches, gHalf);
-        var gcA = Shrink(awayForm.GoalsAgainst, awayForm.Matches, gHalf);
+        var gsH = Shrink(ScoringRate(homeForm), homeForm.Matches, gHalf);
+        var gcH = Shrink(ConcedingRate(homeForm), homeForm.Matches, gHalf);
+        var gsA = Shrink(ScoringRate(awayForm), awayForm.Matches, gHalf);
+        var gcA = Shrink(ConcedingRate(awayForm), awayForm.Matches, gHalf);
         var lambdaHome0 = (gsH + gcA) / 2;
         var lambdaAway0 = (gsA + gcH) / 2;
         var expGoals = lambdaHome0 + lambdaAway0;
@@ -370,13 +373,15 @@ public static class MatchAnalyzer
             verdict = line is null ? "Chưa có kèo tài xỉu." : "Chưa đủ biên an toàn (cần |Δ| ≥ 0.40 cùng chiều TB giải).";
         }
 
+        verdict += XgNote(c);
+
         return new LayerRow
         {
             Name = "Bàn thắng",
             LeagueAverage = leagueAvg,
             LeagueDnaText = DnaText(c.LeagueTags, DnaTag.OverGoals, DnaTag.UnderGoals),
-            HomeText = $"Ghi {Num(c.HomeForm.GoalsFor)} / Thủng {Num(c.HomeForm.GoalsAgainst)} (TB {Num(c.HomeForm.TotalGoals)}, Tài 2.5: {Pct(c.HomeForm.Over25Rate)})",
-            AwayText = $"Ghi {Num(c.AwayForm.GoalsFor)} / Thủng {Num(c.AwayForm.GoalsAgainst)} (TB {Num(c.AwayForm.TotalGoals)}, Tài 2.5: {Pct(c.AwayForm.Over25Rate)})",
+            HomeText = $"Ghi {Num(c.HomeForm.GoalsFor)} / Thủng {Num(c.HomeForm.GoalsAgainst)}{XgText(c.HomeForm)} (TB {Num(c.HomeForm.TotalGoals)}, Tài 2.5: {Pct(c.HomeForm.Over25Rate)})",
+            AwayText = $"Ghi {Num(c.AwayForm.GoalsFor)} / Thủng {Num(c.AwayForm.GoalsAgainst)}{XgText(c.AwayForm)} (TB {Num(c.AwayForm.TotalGoals)}, Tài 2.5: {Pct(c.AwayForm.Over25Rate)})",
             Expected = expGoals,
             MarketLine = line,
             MarketText = MoveText(input.Totals),
@@ -683,6 +688,26 @@ public static class MatchAnalyzer
     }
 
     private static double Attack(TeamForm form) => form.XgMatches >= MinSample && form.XgFor is { } xg ? xg : form.GoalsFor;
+
+    /// <summary>Đội có ≥ <see cref="MinSample"/> trận có xG thì số bàn kỳ vọng trộn xG.</summary>
+    public static bool UsesXg(TeamForm form) => form.XgMatches >= MinSample && form.XgFor.HasValue && form.XgAgainst.HasValue;
+
+    private static double ScoringRate(TeamForm form) =>
+        UsesXg(form) ? (1 - XgWeight) * form.GoalsFor + XgWeight * form.XgFor!.Value : form.GoalsFor;
+
+    private static double ConcedingRate(TeamForm form) =>
+        UsesXg(form) ? (1 - XgWeight) * form.GoalsAgainst + XgWeight * form.XgAgainst!.Value : form.GoalsAgainst;
+
+    private static string XgText(TeamForm form) =>
+        form is { XgMatches: > 0, XgFor: { } xf, XgAgainst: { } xa } ? $" · xG {Num(xf)}/{Num(xa)} ({form.XgMatches} trận)" : "";
+
+    private static string XgNote(Ctx c) => (UsesXg(c.HomeForm), UsesXg(c.AwayForm)) switch
+    {
+        (true, true) => $" · kỳ vọng = {Pct(1 - XgWeight)} bàn thật + {Pct(XgWeight)} xG",
+        (true, false) => $" · kỳ vọng trộn {Pct(XgWeight)} xG cho {c.Input.HomeName} ({c.Input.AwayName} chưa đủ {MinSample} trận có xG)",
+        (false, true) => $" · kỳ vọng trộn {Pct(XgWeight)} xG cho {c.Input.AwayName} ({c.Input.HomeName} chưa đủ {MinSample} trận có xG)",
+        _ => "",
+    };
 
     /// <summary>Vòng đấu dễ có động lực ảo: 2 lượt cuối league phase cúp châu Âu, vòng loại, giao hữu.</summary>
     public static string? MotivationRisk(AnalysisInput input)

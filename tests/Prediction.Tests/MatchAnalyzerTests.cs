@@ -502,6 +502,30 @@ public class MatchAnalyzerTests
     }
 
     [Fact]
+    public void Expected_goals_blend_xg_when_five_matches_have_xg()
+    {
+        static List<TeamMatch> WithXg(int count, decimal xgFor, decimal xgAgainst) =>
+            History(10, 1, 1).Select((m, i) => i < count ? m with { XgFor = xgFor, XgAgainst = xgAgainst } : m).ToList();
+
+        var plain = MatchAnalyzer.Analyze(Input(home: History(10, 1, 1), away: History(10, 1, 1), ou: 2.5m));
+        Assert.Equal(2.0, plain.Goals.Expected!.Value, 6);
+        Assert.DoesNotContain("xG", plain.Goals.Verdict);
+
+        // Nhà: 50% × (1, 1) + 50% × xG (2, 0.5) = ghi 1.5 / thủng 0.75; khách giữ 1 / 1 → (1.5 + 1) / 2 + (1 + 0.75) / 2 = 2.125.
+        var blended = MatchAnalyzer.Analyze(Input(home: WithXg(10, 2.0m, 0.5m), away: WithXg(6, 1.0m, 1.0m), ou: 2.5m));
+        Assert.Equal(2.125, blended.Goals.Expected!.Value, 6);
+        Assert.Contains("xG 2/0.5 (10 trận)", blended.Goals.HomeText);
+        Assert.Contains("50% xG", blended.Goals.Verdict);
+        Assert.True(MatchAnalyzer.UsesXg(blended.AwayForm));
+
+        // Chỉ 3 trận có xG: chưa dùng, kỳ vọng như không có xG.
+        var thin = MatchAnalyzer.Analyze(Input(home: WithXg(3, 2.0m, 0.5m), away: History(10, 1, 1), ou: 2.5m));
+        Assert.Equal(2.0, thin.Goals.Expected!.Value, 6);
+        Assert.Contains("(3 trận)", thin.Goals.HomeText);
+        Assert.DoesNotContain("xG", thin.Goals.Verdict);
+    }
+
+    [Fact]
     public void Red_flag_names_for_cards()
     {
         Assert.Equal("Kèo lạ / xung đột tín hiệu", RedFlagText.Short(2));
