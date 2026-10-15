@@ -1,0 +1,89 @@
+@using System.Globalization
+@using Prediction.Core.Engine.LiveCorners
+
+@* Kết quả công thức góc live theo mục 5 của file kỹ năng phan-tich-goc: số liệu, hệ số, kết luận. *@
+<div class="gl-call @CallCss(R.Call)">@R.Headline</div>
+
+<div class="gl-nums">
+    <div><div class="v">@I.Corners</div><div class="l">góc (@I.HomeCorners-@I.AwayCorners)</div></div>
+    <div><div class="v">@(R.Line is { } l ? LineText.Number(l) : "—")</div><div class="l">mốc live @(I.Window == CornerWindow.FirstHalf ? "H1" : "FT")</div></div>
+    <div><div class="v">@R.ExpectedTotal.ToString("0.0", Inv)</div><div class="l">Exp góc</div></div>
+    <div><div class="v @EdgeCss">@(R.Edge is { } e ? e.ToString("+0.00;-0.00;0.00", Inv) : "—")</div><div class="l">Δedge</div></div>
+</div>
+
+<div class="small">
+    <span class="text-muted">Sút</span> @(I.Shots?.ToString() ?? "—") / <span class="text-muted">trúng</span> @(I.ShotsOnTarget?.ToString() ?? "—") / <span class="text-muted">chặn</span> @(I.BlockedShots?.ToString() ?? "—")
+    @if (I.DangerousAttacks is { } da)
+    {
+        <span class="ms-2"><span class="text-muted">TCNH</span> @da</span>
+    }
+    @if (I.HomeRed + I.AwayRed > 0)
+    {
+        <span class="ms-2 badge bg-danger">Thẻ đỏ @I.HomeRed-@I.AwayRed</span>
+    }
+    @if (I.OverOdds is not null || I.UnderOdds is not null)
+    {
+        <span class="ms-2"><span class="text-muted">Tài</span> @Fmt.Odds(I.OverOdds) · <span class="text-muted">Xỉu</span> @Fmt.Odds(I.UnderOdds)</span>
+    }
+</div>
+
+<div class="small mt-1">
+    R = @I.Corners/@R.Minute = <strong>@R.Rate.ToString("0.000", Inv)</strong> góc/phút ·
+    @(I.Window == CornerWindow.FirstHalf ? "α" : "β") = <strong>@R.Multiplier.ToString("0.00", Inv)</strong> ·
+    ΔT = @R.RemainingMinutes.ToString("0.#", Inv)' → còn ≈ @R.ExpectedRemaining.ToString("0.0", Inv) góc
+    @if (I.Window == CornerWindow.SecondHalf)
+    {
+        <span class="ms-1 badge @(R.Settled ? "bg-secondary" : "bg-warning text-dark")">@(R.Settled ? "đã an bài" : "chưa an bài")</span>
+    }
+</div>
+<ul class="gl-factors">
+    @foreach (var f in R.Factors)
+    {
+        <li><strong>@f.Name = @f.Value.ToString("0.00", Inv)</strong> — @f.Reason</li>
+    }
+</ul>
+
+@if (R.Probability is { } p)
+{
+    <div class="small mt-1">
+        Xác suất @(R.ProbabilitySide == PickSide.Over ? "Tài" : "Xỉu") @(R.Line is { } ln ? LineText.Number(ln) : ""):
+        <strong>@Pct(p.WinAny)</strong> thắng
+        @if (p.Push > 0.001)
+        {
+            <span>· @Pct(p.Push) hoàn</span>
+        }
+        · @Pct(p.LossAny) thua
+        @if (R.ExpectedValue is { } ev)
+        {
+            <span>· EV <span class="@(ev >= 0 ? "text-success" : "text-danger")">@ev.ToString("+0.00;-0.00;0.00", Inv)</span></span>
+        }
+        · tin cậy <strong>@R.Confidence.ToString("0.0", Inv)/10</strong>
+    </div>
+}
+@if (!string.IsNullOrEmpty(R.Timing))
+{
+    <div class="hint mt-1">⏱ @R.Timing</div>
+}
+@foreach (var n in R.Notes)
+{
+    <div class="hint">• @n</div>
+}
+
+@code {
+    private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
+
+    [Parameter, EditorRequired] public LiveCornerInput I { get; set; } = default!;
+    [Parameter, EditorRequired] public LiveCornerResult R { get; set; } = default!;
+
+    private string EdgeCss => R.Edge switch { >= 0.55 => "text-success", <= -0.55 => "text-primary", _ => "" };
+
+    public static string CallCss(CornerCall call) => call switch
+    {
+        CornerCall.Over => "over",
+        CornerCall.Under => "under",
+        CornerCall.Watch => "watch",
+        _ => "nobet",
+    };
+
+    private static string Pct(double value) => (value * 100).ToString("0", Inv) + "%";
+}

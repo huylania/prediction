@@ -1,0 +1,98 @@
+@implements IDisposable
+@using Markdig
+@using Prediction.Core.Engine.LiveCorners
+@inject CornerAiService CornerAi
+
+@* Nút "Claude nhận định" của mục Góc Live (file kỹ năng phan-tich-goc riêng). Bấm khi cần, không lưu lại. *@
+@if (CornerAi.IsConfigured)
+{
+    <div class="d-flex flex-wrap gap-2 align-items-center mt-2">
+        @if (_running)
+        {
+            <span class="spinner-border spinner-border-sm text-success"></span>
+            <span class="small">Claude đang nhận định…</span>
+            <button class="btn btn-sm btn-outline-secondary" @onclick="Cancel">Dừng</button>
+        }
+        else
+        {
+            <button class="btn btn-sm btn-outline-success" @onclick="RunAsync">@(_markdown is null ? "Claude nhận định" : "Nhận định lại")</button>
+            @if (_cost is { } c)
+            {
+                <span class="hint">@c.Model · ~$@c.CostUsd.ToString("0.000")</span>
+            }
+        }
+    </div>
+    @if (_error is not null)
+    {
+        <div class="alert alert-danger py-1 px-2 small mt-2 mb-0">@_error</div>
+    }
+    @if (_running ? _buffer.Length > 0 : _markdown is not null)
+    {
+        <div class="ai-markdown small mt-2">@((MarkupString)Markdown.ToHtml(_running ? _buffer.ToString() : _markdown!, Pipeline))</div>
+    }
+}
+
+@code {
+    [Parameter, EditorRequired] public string Match { get; set; } = "";
+    [Parameter, EditorRequired] public LiveCornerInput Input { get; set; } = default!;
+    [Parameter, EditorRequired] public LiveCornerResult Result { get; set; } = default!;
+    [Parameter] public string? Notes { get; set; }
+
+    private static readonly MarkdownPipeline Pipeline = new MarkdownPipelineBuilder().UseAdvancedExtensions().DisableHtml().Build();
+
+    private bool _running;
+    private string? _markdown;
+    private string? _error;
+    private CornerAiCost? _cost;
+    private readonly System.Text.StringBuilder _buffer = new();
+    private CancellationTokenSource? _cts;
+    private DateTime _lastRender;
+
+    private async Task RunAsync()
+    {
+        _cts = new CancellationTokenSource();
+        _running = true;
+        _error = null;
+        _buffer.Clear();
+        try
+        {
+            (_markdown, _cost) = await CornerAi.CommentaryAsync(Match, Input, Result, Notes, OnUpdateAsync, _cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            _error = "Đã dừng.";
+        }
+        catch (Exception ex)
+        {
+            _error = $"Lỗi khi gọi Claude: {ex.Message}";
+        }
+        finally
+        {
+            _running = false;
+            _cts?.Dispose();
+            _cts = null;
+        }
+    }
+
+    private async Task OnUpdateAsync(AiReportUpdate update)
+    {
+        if (update.Text is { } text)
+        {
+            _buffer.Append(text);
+        }
+
+        if (DateTime.UtcNow - _lastRender > TimeSpan.FromMilliseconds(250))
+        {
+            _lastRender = DateTime.UtcNow;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void Cancel() => _cts?.Cancel();
+
+    public void Dispose()
+    {
+        _cts?.Cancel();
+        _cts?.Dispose();
+    }
+}

@@ -51,6 +51,13 @@ public sealed class AiReportOptions
     public decimal SideInfoDailyBudgetUsd { get; set; } = 3m;
 
     public int SideInfoMaxPerRun { get; set; } = 10;
+
+    /// <summary>Model cho mục Góc Live (đọc ảnh AiScore, "Claude nhận định").</summary>
+    public string CornerModel { get; set; } = "claude-sonnet-5-5";
+
+    public string CornerEffort { get; set; } = "medium";
+
+    public int CornerMaxTokens { get; set; } = 6000;
 }
 
 /// <summary>Một cập nhật khi đang nhận báo cáo: đoạn văn bản mới hoặc trạng thái (vd đang tra cứu web).</summary>

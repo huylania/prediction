@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Prediction.Core.Engine;
 using Prediction.Core.Entities;
 using Prediction.Web.Data;
 
@@ -69,7 +70,7 @@ public sealed class DemoDataSeeder(IDbContextFactory<AppDbContext> dbFactory, Su
                     var kickoff = season == 2026 && r == 9
                         ? m switch
                         {
-                            0 => now.AddMinutes(-70),
+                            0 => now.AddMinutes(-93),
                             1 => now.AddMinutes(-28),
                             2 => now.AddHours(-4),
                             _ => Round(now.AddHours(3 + (m - 3) * 7)),
@@ -111,7 +112,15 @@ public sealed class DemoDataSeeder(IDbContextFactory<AppDbContext> dbFactory, Su
                     db.Fixtures.Add(fixture);
                     if (fixture.HomeGoals.HasValue)
                     {
-                        AddStats(db, random, fixture, strength[home] - strength[away], lambdaHome, lambdaAway, now);
+                        var stats = AddStats(db, random, fixture, strength[home] - strength[away], lambdaHome, lambdaAway, now);
+                        if (fixture.IsLive)
+                        {
+                            AddLiveCorners(db, random, fixture, stats, now);
+                        }
+                        else if (fixture.IsFinished && kickoff > now.AddDays(-21) && random.NextDouble() < 0.6)
+                        {
+                            AddCornerPick(db, random, fixture, stats);
+                        }
                     }
 
                     // Mùa trước không có kèo (giống thực tế API chỉ giữ kèo ~7 ngày); mùa này có kèo + tư vấn.
@@ -264,8 +273,104 @@ public sealed class DemoDataSeeder(IDbContextFactory<AppDbContext> dbFactory, Su
         db.OddsSnapshots.Add(Snapshot(fixture.Id, Market.CardsOverUnder, random.NextDouble() < 0.5 ? 3.5m : 4.5m, 1.90m, lastAllowed));
     }
 
+    /// <summary>Góc Live demo: thống kê theo phút (2 phút/lần) và kèo góc live của trận đang đá.</summary>
+    private static void AddLiveCorners(AppDbContext db, Random random, Fixture fixture, FixtureStats stats, DateTime now)
+    {
+        var minute = fixture.Elapsed ?? 0;
+        for (var m = 2; m <= minute; m += 2)
+        {
+            // Nhịp tăng dần về cuối để có cảnh "dồn ép".
+            var share = Math.Pow((double)m / minute, 1.15);
+            int Part(int? total) => (int)Math.Floor((total ?? 0) * share);
+            db.LiveStatSnapshots.Add(new LiveStatSnapshot
+            {
+                FixtureId = fixture.Id,
+                Minute = m,
+                Status = m <= 45 ? "1H" : "2H",
+                CapturedAtUtc = fixture.KickoffUtc.AddMinutes(m <= 45 ? m : m + 15),
+                HomeGoals = Math.Min(fixture.HomeGoals ?? 0, Part(fixture.HomeGoals)),
+                AwayGoals = Math.Min(fixture.AwayGoals ?? 0, Part(fixture.AwayGoals)),
+                HomeCorners = Part(stats.HomeCorners),
+                AwayCorners = Part(stats.AwayCorners),
+                HomeShots = Part(stats.HomeShots),
+                AwayShots = Part(stats.AwayShots),
+                HomeOnTarget = Part(stats.HomeShotsOnTarget),
+                AwayOnTarget = Part(stats.AwayShotsOnTarget),
+                HomeBlocked = Part(stats.HomeBlocked),
+                AwayBlocked = Part(stats.AwayBlocked),
+            });
+        }
+
+        if (minute > 45)
+        {
+            var h1 = Math.Pow(45.0 / minute, 1.15);
+            stats.FirstHalfHomeCorners = (int)Math.Floor((stats.HomeCorners ?? 0) * h1);
+            stats.FirstHalfAwayCorners = (int)Math.Floor((stats.AwayCorners ?? 0) * h1);
+        }
+
+        var corners = (stats.HomeCorners ?? 0) + (stats.AwayCorners ?? 0);
+        var rate = (double)corners / Math.Max(1, minute);
+        var window = minute <= 45 ? CornerWindow.FirstHalf : CornerWindow.SecondHalf;
+        var end = window == CornerWindow.FirstHalf ? 47.5 : 95.5;
+        var fair = corners + rate * (end - minute);
+        var line = Math.Floor((decimal)(fair - 0.8 + random.NextDouble() * 0.6)) + 0.5m;
+        db.LiveCornerOdds.Add(new LiveCornerOdds
+        {
+            FixtureId = fixture.Id, Window = window, Line = Math.Max(corners + 0.5m, line + 1), OverOdds = 1.85m, UnderOdds = 1.95m,
+            Minute = Math.Max(1, minute - 12), FetchedAtUtc = now.AddMinutes(-12),
+        });
+        db.LiveCornerOdds.Add(new LiveCornerOdds
+        {
+            FixtureId = fixture.Id, Window = window, Line = Math.Max(corners + 0.5m, line), OverOdds = 1.90m, UnderOdds = 1.90m,
+            Minute = minute, FetchedAtUtc = now.AddMinutes(-1),
+        });
+    }
+
+    /// <summary>Khuyến nghị góc live mẫu (đã chấm) cho trận demo đã đá, để xem bảng thành tích mục Góc Live.</summary>
+    private static void AddCornerPick(AppDbContext db, Random random, Fixture fixture, FixtureStats stats)
+    {
+        var home = stats.HomeCorners ?? 0;
+        var away = stats.AwayCorners ?? 0;
+        stats.FirstHalfHomeCorners = (int)Math.Round(home * (0.35 + random.NextDouble() * 0.2));
+        stats.FirstHalfAwayCorners = (int)Math.Round(away * (0.35 + random.NextDouble() * 0.2));
+
+        var window = random.NextDouble() < 0.5 ? CornerWindow.FirstHalf : CornerWindow.SecondHalf;
+        var (finalHome, finalAway) = window == CornerWindow.FirstHalf
+            ? (stats.FirstHalfHomeCorners.Value, stats.FirstHalfAwayCorners.Value)
+            : (home, away);
+        var minute = window == CornerWindow.FirstHalf ? random.Next(25, 31) : random.Next(75, 81);
+        var share = window == CornerWindow.FirstHalf ? minute / 47.5 : minute / 95.5;
+        var atPick = (int)Math.Floor((finalHome + finalAway) * share);
+        // Dự phóng có sai số (0.4–1.6 lần số góc thực còn lại) để kết quả thắng/thua giống thực tế.
+        var expected = atPick + Math.Max(0.6, finalHome + finalAway - atPick) * (0.4 + random.NextDouble() * 1.2);
+        var side = random.NextDouble() < 0.55 ? PickSide.Over : PickSide.Under;
+        var edge = 0.6 + random.NextDouble() * 0.6;
+        var line = Math.Max(atPick + 0.5m, Math.Round((decimal)(side == PickSide.Over ? expected - edge : expected + edge) * 2) / 2);
+        var odds = Math.Round(1.80m + (decimal)random.NextDouble() * 0.2m, 2);
+        var result = Settlement.Settle(side, line, odds, finalHome, finalAway);
+        db.LiveCornerPicks.Add(new LiveCornerPick
+        {
+            FixtureId = fixture.Id,
+            Window = window,
+            Minute = minute,
+            Side = side,
+            Line = line,
+            Odds = odds,
+            CornersAtPick = atPick,
+            ExpectedTotal = Math.Round((decimal)expected, 2),
+            Edge = Math.Round((decimal)expected - line, 2),
+            WinProbability = Math.Round(0.58m + (decimal)random.NextDouble() * 0.2m, 4),
+            Confidence = Math.Round(6.5m + (decimal)random.NextDouble() * 2.5m, 1),
+            CreatedAtUtc = fixture.KickoffUtc.AddMinutes(minute <= 45 ? minute : minute + 15),
+            FinalCorners = finalHome + finalAway,
+            Outcome = result.Outcome,
+            Profit = result.Profit,
+            SettledAtUtc = fixture.KickoffUtc.AddHours(2),
+        });
+    }
+
     /// <summary>Thống kê giả lập: góc, sút, xG, thẻ và phút ghi bàn.</summary>
-    private static void AddStats(AppDbContext db, Random random, Fixture fixture, double strengthDiff, double lambdaHome, double lambdaAway, DateTime now)
+    private static FixtureStats AddStats(AppDbContext db, Random random, Fixture fixture, double strengthDiff, double lambdaHome, double lambdaAway, DateTime now)
     {
         var share = fixture.IsFinished ? 1.0 : (fixture.Elapsed ?? 45) / 90.0;
         var homeCorners = Poisson(random, Math.Max(1.5, 5.3 + 2.4 * strengthDiff) * share);
@@ -276,7 +381,7 @@ public sealed class DemoDataSeeder(IDbContextFactory<AppDbContext> dbFactory, Su
             .OrderBy(g => g.Minute)
             .ToList();
 
-        db.FixtureStats.Add(new FixtureStats
+        var stats = new FixtureStats
         {
             FixtureId = fixture.Id,
             HomeCorners = homeCorners,
@@ -296,9 +401,13 @@ public sealed class DemoDataSeeder(IDbContextFactory<AppDbContext> dbFactory, Su
             HalftimeHome = goals.Count(g => g.Side == 'H' && g.Minute <= 45),
             HalftimeAway = goals.Count(g => g.Side == 'A' && g.Minute <= 45),
             GoalTimeline = goals.Count == 0 ? null : string.Join(",", goals.Select(g => $"{g.Minute}{g.Side}")),
+            HomeBlocked = Poisson(random, (2 + 1.5 * lambdaHome) * share),
+            AwayBlocked = Poisson(random, (2 + 1.5 * lambdaAway) * share),
             IsFinal = fixture.IsFinished,
             UpdatedAtUtc = now,
-        });
+        };
+        db.FixtureStats.Add(stats);
+        return stats;
     }
 
     private static OddsSnapshot Snapshot(int fixtureId, Market market, decimal line, decimal priceA, DateTime at) => new()

@@ -27,6 +27,7 @@ public static class SyncJobs
     public const string Venues = "venues";
     public const string Weather = "weather";
     public const string SideInfo = "side-info";
+    public const string LiveCorners = "live-corners";
 
     /// <summary>Tác vụ phụ: tạm dừng khi quota trong ngày sắp hết.</summary>
     public static bool IsLowPriority(string job) => job is Stats or Coaches or Injuries or Advice or HeadToHead or Venues;
@@ -52,6 +53,7 @@ public static class SyncJobs
         Venues => "Sân vận động",
         Weather => "Thời tiết",
         SideInfo => "AI điền thông tin bên lề",
+        LiveCorners => "Góc Live",
         _ => job,
     };
 }
@@ -66,6 +68,7 @@ public sealed class SyncCoordinator(
     SuggestionService suggestions,
     AnalysisService analysis,
     SideInfoService sideInfo,
+    LiveCornerService liveCorners,
     TimeProvider clock,
     ILogger<SyncCoordinator> logger)
 {
@@ -94,7 +97,7 @@ public sealed class SyncCoordinator(
             try
             {
                 message = await work(sync, ct);
-                if (job is not (SyncJobs.Suggestions or SyncJobs.Analysis or SyncJobs.SideInfo))
+                if (job is not (SyncJobs.Suggestions or SyncJobs.Analysis or SyncJobs.SideInfo or SyncJobs.LiveCorners))
                 {
                     var suggestionMessage = await suggestions.RefreshAsync(ct);
                     message = message is null || suggestionMessage is null ? message : $"{message} {suggestionMessage}";
@@ -155,6 +158,12 @@ public sealed class SyncCoordinator(
         SyncJobs.Venues => RunAsync(job, (s, c) => s.SyncVenuesAsync(c), ct),
         SyncJobs.Weather => RunAsync(job, (s, c) => s.SyncWeatherAsync(c), ct),
         SyncJobs.SideInfo => RunAsync(job, (_, c) => sideInfo.RunAutoAsync(c), ct),
+        SyncJobs.LiveCorners => RunAsync(job, async (s, c) =>
+        {
+            var odds = s.IsConfigured ? await s.SyncLiveCornerOddsAsync(c) : 0;
+            var message = await liveCorners.ProcessAsync(c);
+            return odds == 0 ? message : $"Kèo góc live: {odds} thay đổi. {message}".Trim();
+        }, ct),
         _ => throw new ArgumentOutOfRangeException(nameof(job)),
     };
 }
@@ -244,6 +253,7 @@ public sealed class SyncBackgroundService(
 
         yield return (SyncJobs.Weather, o.WeatherIntervalMinutes);
         yield return (SyncJobs.SideInfo, o.SideInfoIntervalMinutes);
+        yield return (SyncJobs.LiveCorners, o.LiveCornersIntervalMinutes);
 
         yield return (SyncJobs.Suggestions, o.SuggestionsIntervalMinutes);
         yield return (SyncJobs.Analysis, o.AnalysisIntervalMinutes);

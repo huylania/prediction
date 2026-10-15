@@ -425,6 +425,9 @@ namespace Prediction.Web.Data.Migrations
                     b.Property<int>("FixtureId")
                         .HasColumnType("int");
 
+                    b.Property<int?>("AwayBlocked")
+                        .HasColumnType("int");
+
                     b.Property<int?>("AwayCorners")
                         .HasColumnType("int");
 
@@ -437,6 +440,9 @@ namespace Prediction.Web.Data.Migrations
                     b.Property<int?>("AwayShots")
                         .HasColumnType("int");
 
+                    b.Property<int?>("AwayShotsInBox")
+                        .HasColumnType("int");
+
                     b.Property<int?>("AwayShotsOnTarget")
                         .HasColumnType("int");
 
@@ -445,6 +451,12 @@ namespace Prediction.Web.Data.Migrations
                         .HasColumnType("decimal(6,2)");
 
                     b.Property<int?>("AwayYellow")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("FirstHalfAwayCorners")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("FirstHalfHomeCorners")
                         .HasColumnType("int");
 
                     b.Property<string>("GoalTimeline")
@@ -457,6 +469,9 @@ namespace Prediction.Web.Data.Migrations
                     b.Property<int?>("HalftimeHome")
                         .HasColumnType("int");
 
+                    b.Property<int?>("HomeBlocked")
+                        .HasColumnType("int");
+
                     b.Property<int?>("HomeCorners")
                         .HasColumnType("int");
 
@@ -467,6 +482,9 @@ namespace Prediction.Web.Data.Migrations
                         .HasColumnType("int");
 
                     b.Property<int?>("HomeShots")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("HomeShotsInBox")
                         .HasColumnType("int");
 
                     b.Property<int?>("HomeShotsOnTarget")
@@ -1118,6 +1136,181 @@ namespace Prediction.Web.Data.Migrations
                             Notes = "Cặp giằng co trung lộ: thiên hướng Xỉu góc.",
                             Tags = 32
                         });
+                });
+
+            modelBuilder.Entity("Prediction.Core.Entities.LiveCornerOdds", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("FetchedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("FixtureId")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("Line")
+                        .HasPrecision(6, 2)
+                        .HasColumnType("decimal(6,2)");
+
+                    b.Property<int?>("Minute")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("OverOdds")
+                        .HasPrecision(8, 3)
+                        .HasColumnType("decimal(8,3)");
+
+                    b.Property<decimal>("UnderOdds")
+                        .HasPrecision(8, 3)
+                        .HasColumnType("decimal(8,3)");
+
+                    b.Property<int>("Window")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FixtureId", "Window", "FetchedAtUtc");
+
+                    b.ToTable("LiveCornerOdds");
+                });
+
+            modelBuilder.Entity("Prediction.Core.Entities.LiveCornerPick", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<decimal>("Confidence")
+                        .HasPrecision(4, 1)
+                        .HasColumnType("decimal(4,1)");
+
+                    b.Property<int>("CornersAtPick")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<decimal>("Edge")
+                        .HasPrecision(6, 2)
+                        .HasColumnType("decimal(6,2)");
+
+                    b.Property<decimal>("ExpectedTotal")
+                        .HasPrecision(6, 2)
+                        .HasColumnType("decimal(6,2)");
+
+                    b.Property<int?>("FinalCorners")
+                        .HasColumnType("int");
+
+                    b.Property<int>("FixtureId")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("Line")
+                        .HasPrecision(6, 2)
+                        .HasColumnType("decimal(6,2)");
+
+                    b.Property<int>("Minute")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("Odds")
+                        .HasPrecision(8, 3)
+                        .HasColumnType("decimal(8,3)");
+
+                    b.Property<int>("Outcome")
+                        .HasColumnType("int");
+
+                    b.Property<decimal?>("Profit")
+                        .HasPrecision(10, 4)
+                        .HasColumnType("decimal(10,4)");
+
+                    b.Property<DateTime?>("SettledAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("Side")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("WinProbability")
+                        .HasPrecision(5, 4)
+                        .HasColumnType("decimal(5,4)");
+
+                    b.Property<int>("Window")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FixtureId", "Window")
+                        .IsUnique();
+
+                    b.ToTable("LiveCornerPicks");
+                });
+
+            modelBuilder.Entity("Prediction.Core.Entities.LiveStatSnapshot", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<int?>("AwayBlocked")
+                        .HasColumnType("int");
+
+                    b.Property<int>("AwayCorners")
+                        .HasColumnType("int");
+
+                    b.Property<int>("AwayGoals")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("AwayOnTarget")
+                        .HasColumnType("int");
+
+                    b.Property<int>("AwayRed")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("AwayShots")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CapturedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("FixtureId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("HomeBlocked")
+                        .HasColumnType("int");
+
+                    b.Property<int>("HomeCorners")
+                        .HasColumnType("int");
+
+                    b.Property<int>("HomeGoals")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("HomeOnTarget")
+                        .HasColumnType("int");
+
+                    b.Property<int>("HomeRed")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("HomeShots")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Minute")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FixtureId", "Minute");
+
+                    b.ToTable("LiveStatSnapshots");
                 });
 
             modelBuilder.Entity("Prediction.Core.Entities.MatchSideInfo", b =>
@@ -2228,6 +2421,39 @@ namespace Prediction.Web.Data.Migrations
                     b.HasOne("Prediction.Core.Entities.Fixture", "Fixture")
                         .WithOne()
                         .HasForeignKey("Prediction.Core.Entities.FixtureWeather", "FixtureId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Fixture");
+                });
+
+            modelBuilder.Entity("Prediction.Core.Entities.LiveCornerOdds", b =>
+                {
+                    b.HasOne("Prediction.Core.Entities.Fixture", "Fixture")
+                        .WithMany()
+                        .HasForeignKey("FixtureId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Fixture");
+                });
+
+            modelBuilder.Entity("Prediction.Core.Entities.LiveCornerPick", b =>
+                {
+                    b.HasOne("Prediction.Core.Entities.Fixture", "Fixture")
+                        .WithMany()
+                        .HasForeignKey("FixtureId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Fixture");
+                });
+
+            modelBuilder.Entity("Prediction.Core.Entities.LiveStatSnapshot", b =>
+                {
+                    b.HasOne("Prediction.Core.Entities.Fixture", "Fixture")
+                        .WithMany()
+                        .HasForeignKey("FixtureId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 

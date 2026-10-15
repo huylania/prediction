@@ -24,6 +24,7 @@
 
   <ItemGroup>
     <None Update="Ai\bong-da-skill.md" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Ai\phan-tich-goc-skill.md" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

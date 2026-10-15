@@ -285,6 +285,38 @@ public sealed class BetValue
     public JsonElement Odd { get; set; }
 }
 
+// --- /odds/live ---
+
+public sealed class LiveOddsItem
+{
+    public LiveOddsFixture Fixture { get; set; } = new();
+    public LeagueRef League { get; set; } = new();
+    public DateTimeOffset? Update { get; set; }
+    public List<LiveBet> Odds { get; set; } = [];
+}
+
+public sealed class LiveOddsFixture
+{
+    public int Id { get; set; }
+    public StatusInfo Status { get; set; } = new();
+}
+
+public sealed class LiveBet
+{
+    public int Id { get; set; }
+    public string? Name { get; set; }
+    public List<LiveBetValue> Values { get; set; } = [];
+}
+
+public sealed class LiveBetValue
+{
+    public string? Value { get; set; }
+    public string? Odd { get; set; }
+    public string? Handicap { get; set; }
+    public bool? Main { get; set; }
+    public bool Suspended { get; set; }
+}
+
 // --- /predictions ---
 
 public sealed class PredictionItem

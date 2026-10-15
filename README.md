@@ -11,6 +11,7 @@ Website biến **kinh nghiệm bet của bạn thành quy tắc**, ví dụ *"MU
 - **Cảnh báo In-play** cho trận đang đá theo 5 quy tắc của file kỹ năng, dựa trên thống kê trực tiếp (sút, góc, thẻ, phút ghi bàn).
 - **Báo cáo AI** (tùy chọn): Claude đọc toàn bộ số liệu phân tích, tự tra cứu web và viết báo cáo đúng cấu trúc mục 9 của file kỹ năng.
 - **Mốc kèo & cảnh báo ≥ 0.5**: kèo mở → khi có đội hình → 5 phút trước trận; cảnh báo khi kèo chấp / tài xỉu dịch từ 0.5 trở lên, lệch ≥ 0.5 so với lần gặp gần nhất, hoặc biên độ kèo 5 lần gặp gần nhất > 0.5.
+- **Góc Live** (mục riêng, file kỹ năng `src/Prediction.Web/Ai/phan-tich-goc-skill.md`): tài xỉu phạt góc trực tiếp ở hai cửa sổ vàng H1 phút 25–30 và H2 phút 75–80, tự lấy kèo góc live, chốt và chấm khuyến nghị, báo bằng âm thanh; đọc được ảnh chụp AiScore.
 - **Lịch sử & bên lề**: 5 lần đối đầu + 5 trận gần nhất mỗi đội kèm kèo chấp/tài xỉu và kết quả kèo; đội hình ra sân; sân (mặt cỏ, độ cao), thời tiết giờ bóng lăn; thông tin bên lề (thù hận, động lực, tin lề) do AI tra cứu.
 
 Hỗ trợ **kèo chấp châu Á** và **tài xỉu** (kể cả các mức 1/4 và 3/4); phần phân tích chuyên sâu đọc thêm **tài xỉu góc, chấp góc và tài xỉu thẻ** của Bet365.
@@ -173,7 +174,27 @@ Tab **Lịch sử & bên lề** ở trang chi tiết trận (và thẻ cảnh b�
 - **Sân & thời tiết**: mặt sân và sức chứa từ API-Football; tọa độ, độ cao và dự báo giờ bóng lăn từ [Open-Meteo](https://open-meteo.com/) (miễn phí, không cần key; tắt bằng `OpenMeteo:Enabled = false` nếu máy không ra được mạng). Sân cao từ 2.000 m được cộng thêm lợi thế sân nhà trong kèo chấp dự phóng.
 - **Thông tin bên lề (AI)**: Claude (mặc định `claude-sonnet-5-5`, rẻ hơn Opus) tra web và điền lịch sử thù hận, động lực, tin bên lề, đặc điểm sân, thời tiết và kèo các trận cũ còn thiếu. Tự chạy cho các trận nhóm A/B trong 24 giờ tới (tối đa `SideInfoDailyBudgetUsd` = $3/ngày), hoặc bấm tay ở từng trận. Ước tính ~$0.05–0.15/trận. Cấu hình trong mục `Anthropic` (`SideInfoModel`, `SideInfoAuto`, `SideInfoDailyBudgetUsd`...).
 
-## Giới hạn cần biết
+## Góc Live (phạt góc trực tiếp)
+
+Menu **Góc Live** (`/goc-live`) là mục **riêng**, chạy theo file kỹ năng thứ hai `Ai/phan-tich-goc-skill.md`. Mục này không dùng chung dữ liệu hay công thức với phần Phân tích chuyên sâu và cảnh báo In-play.
+
+- **Hai cửa sổ vàng**:
+  - **H1 phút 25–30**, kèo góc hiệp 1: `Exp = C + (C/T) × α_sút × α_nhịp × (47.5 − T)`.
+  - **H2 phút 75–80**, kèo góc cả trận: `Exp = C + (C/T) × K_tỉ số × K_động lực × K_cường độ × K_thẻ đỏ × (95.5 − T)`.
+  - Ngưỡng ra Tài/Xỉu: H1 cần Δedge ±0.60. H2 cần Δedge ±0.55, kèm β ≥ 1.20 khi tỉ số chưa an bài (Tài) hoặc β ≤ 0.80 khi đã an bài (Xỉu).
+  - Xác suất thắng/hoàn/thua tính theo phân phối nhị thức âm của số góc còn lại. Nếu EV theo odds live âm thì đứng ngoài. Kết quả có thêm điểm tin cậy /10 và mốc vào lệnh tối ưu.
+- **Dữ liệu tự động**: tác vụ trực tiếp (2 phút/lần) lưu thêm ảnh chụp số liệu theo phút (góc, sút, sút bị chặn, thẻ đỏ, tỉ số) và số góc hiệp 1. Tác vụ **Góc Live** (`Sync:LiveCornersIntervalMinutes`, mặc định 2 phút) chỉ gọi `odds/live` khi có trận theo dõi ở phút 20–32 hoặc 70–82. Mỗi lần gọi chỉ tốn 1 request và lấy về mọi trận. Kèo đọc được: *Asian Corners* / *Total Corners* (cả trận) và *Corners 1st Half* (hiệp 1).
+- **Không có "tấn công nguy hiểm"**: API-Football không có số này. Website thay bằng (sút + góc)/phút và nhịp 10–15 phút gần nhất. Muốn có số chính xác thì dùng ảnh AiScore.
+- **Trang Góc Live**:
+  - Thẻ từng trận đang trong cửa sổ, kèm bóc tách hệ số. Trang tự làm mới mỗi phút.
+  - Khi có khuyến nghị Tài/Xỉu **mới**, trang phát tiếng "ting" và hiện thông báo trình duyệt (bấm "Bật thông báo trình duyệt" lần đầu). Phải để trang mở, tab nền vẫn được.
+  - Danh sách trận sắp vào cửa sổ.
+  - Form **tính tay** để sửa số liệu, động lực, cửa trên hoặc "hòa mà hai bên hài lòng".
+  - **Thành tích** của các khuyến nghị đã chốt: mỗi trận tối đa 1 khuyến nghị cho mỗi cửa sổ. H1 chấm theo góc hiệp 1, H2 theo góc cả trận.
+- **AI (cần key Claude, model `CornerModel`, mặc định `claude-sonnet-5-5`)**:
+  - **Đọc ảnh AiScore**: tải 1–2 ảnh chụp màn hình, Claude điền form (gồm cả tấn công nguy hiểm, mốc mở/live, odds). Bạn kiểm lại rồi bấm Tính. Khoảng $0.01–0.03/lần.
+  - **Claude nhận định**: bấm khi cần ở từng thẻ hoặc ở form. Claude trả lời theo mục 5 của file kỹ năng góc, dựa trên số liệu và kết quả công thức của website. Khoảng $0.02–0.05/lượt, không lưu lại.
+
 
 - BXH tự tính theo điểm → hiệu số → bàn thắng. Không tính trừ điểm hành chính hay tiêu chí đối đầu riêng của từng giải.
 - Champions League chỉ có thứ hạng ở **league phase** (từ mùa 2024/25). Ở vòng knock-out và vòng bảng kiểu cũ, các điều kiện về thứ hạng không áp dụng.
@@ -194,10 +215,12 @@ src/Prediction.Core/        Logic thuần (không phụ thuộc CSDL/HTTP)
   Engine/MatchAdvisor.cs    Tư vấn tổng hợp
   Engine/BacktestRunner.cs  Kiểm chứng
   Engine/Analysis/          Phân tích chuyên sâu: MatchAnalyzer, phân phối xác suất, mẫu phong độ, InPlayEngine
+  Engine/LiveCorners/       Góc Live: LiveCornerAnalyzer (H1 α, H2 β, xác suất, EV, mốc tối ưu)
 src/Prediction.Web/         Blazor Web App (Interactive Server), EF Core SQL Server
   ApiFootball/              Client, DTO, bộ đọc kèo, ánh xạ dữ liệu
   Services/                 Đồng bộ nền, gợi ý, tư vấn, kiểm chứng, phân tích chuyên sâu, báo cáo AI, dữ liệu demo, tài khoản
   Ai/bong-da-skill.md       File kỹ năng (system prompt của báo cáo AI)
+  Ai/phan-tich-goc-skill.md File kỹ năng góc live (chỉ dùng cho mục Góc Live)
   Components/Pages/         Các trang
   Data/                     DbContext, seed, migrations
 tests/Prediction.Tests/     xUnit

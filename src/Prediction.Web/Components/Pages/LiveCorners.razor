@@ -1,0 +1,595 @@
+@page "/goc-live"
+@rendermode InteractiveServer
+@implements IAsyncDisposable
+@using System.Globalization
+@using Prediction.Core.Engine.LiveCorners
+@using Prediction.Web.ApiFootball
+@inject LiveCornerService Corners
+@inject CornerAiService CornerAi
+@inject SyncCoordinator Sync
+@inject ApiFootballClient Api
+@inject TimeDisplay Time
+@inject IJSRuntime JS
+
+<PageTitle>Góc Live</PageTitle>
+
+<h1 class="h3 mb-1">Góc Live</h1>
+<p class="text-muted small mb-2">
+    Tài xỉu phạt góc trực tiếp theo file kỹ năng <strong>phan-tich-goc</strong> (mục riêng, không liên quan phần Phân tích chuyên sâu):
+    hai cửa sổ vàng <strong>H1 phút 25–30</strong> (kèo góc hiệp 1, hệ số α_sút × α_nhịp) và <strong>H2 phút 75–80</strong>
+    (kèo góc cả trận, β = K_tỉ số × K_động lực × K_cường độ × K_thẻ đỏ). Khuyến nghị Tài/Xỉu trong cửa sổ được chốt và chấm tự động.
+</p>
+
+<div class="d-flex flex-wrap gap-2 align-items-center mb-2">
+    <button class="btn btn-sm btn-outline-primary" disabled="@(_refreshing || Sync.CurrentJob is not null)" @onclick="RefreshNowAsync">
+        @(_refreshing ? "Đang cập nhật…" : "Cập nhật ngay")
+    </button>
+    <label class="small d-flex align-items-center gap-1">
+        <input type="checkbox" @bind="_sound" /> Âm thanh
+    </label>
+    @if (_permission == "default")
+    {
+        <button class="btn btn-sm btn-outline-secondary" @onclick="RequestPermissionAsync">Bật thông báo trình duyệt</button>
+    }
+    else if (_permission == "granted")
+    {
+        <span class="badge bg-success-subtle text-success-emphasis">Thông báo trình duyệt: bật</span>
+    }
+    else if (_permission == "denied")
+    {
+        <span class="badge bg-secondary">Thông báo trình duyệt bị chặn (mở lại trong cài đặt trình duyệt)</span>
+    }
+    <span class="hint">Tự làm mới mỗi phút@(_loadedAt is { } t ? $" · lần cuối {Time.ToLocal(t):HH:mm:ss}" : "") · cần để trang mở (tab nền được).</span>
+</div>
+@if (_message is not null)
+{
+    <div class="alert alert-info py-2 small">@_message</div>
+}
+
+@if (_loading)
+{
+    <p class="text-muted">Đang tải các trận đang đá…</p>
+}
+else
+{
+    <div class="gl-section-title">Đang trong cửa sổ vàng <span class="text-muted fw-normal small">(H1 25–30' · H2 75–80')</span></div>
+    @if (InWindow.Count == 0)
+    {
+        <div class="empty-state">
+            Chưa có trận nào trong cửa sổ vàng.
+            @if (!Api.IsConfigured)
+            {
+                <span>Website chưa có key API-Football nên không tự lấy số liệu live — dùng phần <a href="goc-live#tinh-tay">tính tay / ảnh AiScore</a> bên dưới.</span>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="gl-grid">
+            @foreach (var m in InWindow)
+            {
+                <div class="gl-card @CornerResultView.CallCss(m.Result.Call)" @key="Key(m)">
+                    <div class="head">
+                        <span class="min">@m.Input.Minute'</span>
+                        <span class="win">@(m.Input.Window == CornerWindow.FirstHalf ? "H1 · kèo góc hiệp 1" : "H2 · kèo góc cả trận")</span>
+                        <span class="text-truncate">@m.League</span>
+                        @if (m.StatsAtUtc is { } at)
+                        {
+                            <span class="ms-auto text-nowrap">số liệu @Time.ToLocal(at).ToString("HH:mm")</span>
+                        }
+                    </div>
+                    <div class="teams"><a href="tran-dau/@m.Fixture.Id" class="text-reset">@m.Home <span class="text-muted">@m.Input.HomeGoals-@m.Input.AwayGoals</span> @m.Away</a></div>
+                    <CornerResultView I="m.Input" R="m.Result" />
+                    @if (m.Pick is { } pick)
+                    {
+                        <div class="small mt-1"><span class="badge bg-dark">Đã chốt</span> @pick.Minute' · @(pick.Side == PickSide.Over ? "Tài" : "Xỉu") @LineText.Number(pick.Line) @@@LineText.Odds(pick.Odds) <OutcomeBadge Outcome="pick.Outcome" /></div>
+                    }
+                    <div class="d-flex gap-2 mt-2">
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="() => EditFrom(m)">Sửa / bổ sung số liệu</button>
+                    </div>
+                    <CornerCommentary Match="@MatchLabel(m)" Input="m.Input" Result="m.Result" />
+                </div>
+            }
+        </div>
+    }
+
+    <div class="gl-section-title">Sắp vào cửa sổ & các trận đang đá khác</div>
+    @if (Others.Count == 0)
+    {
+        <div class="text-muted small">Không có trận nào khác (website chỉ theo dõi hiệp 1 từ phút 15 và hiệp 2 từ phút 60 ở các giải đang theo dõi).</div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-sm small bg-white border align-middle">
+                <thead><tr><th>Phút</th><th>Trận</th><th class="text-center">Tỉ số</th><th class="text-center">Góc</th><th class="text-center">Sút / chặn</th><th class="text-center">Mốc live</th><th class="text-end">Exp</th><th>Hiện tại</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var m in Others)
+                    {
+                        <tr @key="Key(m)">
+                            <td class="text-nowrap">
+                                <span class="badge bg-danger">@m.Input.Minute'</span>
+                                @if (m.Approaching)
+                                {
+                                    <span class="badge bg-warning text-dark">sắp vào @(m.Input.Window == CornerWindow.FirstHalf ? "25'" : "75'")</span>
+                                }
+                            </td>
+                            <td><a href="tran-dau/@m.Fixture.Id">@m.Home – @m.Away</a> <span class="text-muted">@m.League</span></td>
+                            <td class="text-center">@m.Input.HomeGoals-@m.Input.AwayGoals@(m.Input.HomeRed + m.Input.AwayRed > 0 ? " 🟥" : "")</td>
+                            <td class="text-center">@m.Input.Corners <span class="text-muted">(@m.Input.HomeCorners-@m.Input.AwayCorners)</span></td>
+                            <td class="text-center">@(m.Input.Shots?.ToString() ?? "—") / @(m.Input.BlockedShots?.ToString() ?? "—")</td>
+                            <td class="text-center">@(m.Input.Line is { } l ? LineText.Number(l) : "—") <span class="text-muted">@(m.Input.Window == CornerWindow.FirstHalf ? "H1" : "FT")</span></td>
+                            <td class="text-end">@m.Result.ExpectedTotal.ToString("0.0", Inv)</td>
+                            <td><span class="gl-call @CornerResultView.CallCss(m.Result.Call) small">@m.Result.Headline</span></td>
+                            <td><button class="btn btn-sm btn-link p-0" @onclick="() => EditFrom(m)">Tính tay</button></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    <div class="gl-section-title" id="tinh-tay">Tính tay / từ ảnh AiScore</div>
+    <div class="an-section">
+        <p class="hint mb-2">
+            Dùng cho trận không có trong giải theo dõi, hoặc khi muốn thêm số <strong>tấn công nguy hiểm</strong> (API-Football không có — AiScore có).
+            Tải 1–2 ảnh chụp màn hình AiScore để Claude đọc 6 nhóm chỉ số, kiểm lại rồi bấm <strong>Tính</strong>.
+        </p>
+        <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
+            @if (CornerAi.IsConfigured)
+            {
+                <InputFile OnChange="OnFilesAsync" accept="image/png,image/jpeg,image/webp,image/gif" multiple class="form-control form-control-sm" style="max-width: 320px" />
+                <button class="btn btn-sm btn-success" disabled="@(_images.Count == 0 || _reading)" @onclick="ReadImagesAsync">
+                    @(_reading ? "Claude đang đọc ảnh…" : $"Claude đọc ảnh ({_images.Count})")
+                </button>
+                <span class="hint">Model @CornerAi.Model, khoảng $0.01–0.03/lần.</span>
+            }
+            else
+            {
+                <span class="hint">Đọc ảnh AiScore cần API key Claude: <code>dotnet user-secrets set "Anthropic:ApiKey" "sk-ant-..."</code> trong thư mục <code>src/Prediction.Web</code>. Vẫn nhập tay được.</span>
+            }
+        </div>
+        @if (_formError is not null)
+        {
+            <div class="alert alert-danger py-2 small">@_formError</div>
+        }
+        @if (_readNote is not null)
+        {
+            <div class="alert alert-success py-2 small">@_readNote</div>
+        }
+
+        <div class="row g-2 small gl-form">
+            <div class="col-6 col-md-3"><label>Đội nhà</label><input class="form-control form-control-sm" @bind="_form.Home" /></div>
+            <div class="col-6 col-md-3"><label>Đội khách</label><input class="form-control form-control-sm" @bind="_form.Away" /></div>
+            <div class="col-6 col-md-3">
+                <label>Cửa sổ</label>
+                <select class="form-select form-select-sm" @bind="_form.Window">
+                    <option value="@CornerWindow.FirstHalf">H1 (25–30', kèo góc hiệp 1)</option>
+                    <option value="@CornerWindow.SecondHalf">H2 (75–80', kèo góc cả trận)</option>
+                </select>
+            </div>
+            <div class="col-6 col-md-3"><label>Phút (T)</label><input type="number" class="form-control form-control-sm" @bind="_form.Minute" /></div>
+
+            <div class="col-6 col-md-2"><label>Góc đội nhà</label><input type="number" class="form-control form-control-sm" @bind="_form.HomeCorners" /></div>
+            <div class="col-6 col-md-2"><label>Góc đội khách</label><input type="number" class="form-control form-control-sm" @bind="_form.AwayCorners" /></div>
+            <div class="col-4 col-md-2"><label>Tổng sút</label><input type="number" class="form-control form-control-sm" @bind="_form.Shots" /></div>
+            <div class="col-4 col-md-2"><label>Trúng đích</label><input type="number" class="form-control form-control-sm" @bind="_form.ShotsOnTarget" /></div>
+            <div class="col-4 col-md-2"><label>Bị chặn</label><input type="number" class="form-control form-control-sm" @bind="_form.BlockedShots" /></div>
+            <div class="col-6 col-md-2"><label>Tấn công nguy hiểm</label><input type="number" class="form-control form-control-sm" @bind="_form.DangerousAttacks" placeholder="tổng 2 đội" /></div>
+
+            <div class="col-3 col-md-1"><label>Bàn nhà</label><input type="number" class="form-control form-control-sm" @bind="_form.HomeGoals" /></div>
+            <div class="col-3 col-md-1"><label>Bàn khách</label><input type="number" class="form-control form-control-sm" @bind="_form.AwayGoals" /></div>
+            <div class="col-3 col-md-1"><label>Đỏ nhà</label><input type="number" class="form-control form-control-sm" @bind="_form.HomeRed" /></div>
+            <div class="col-3 col-md-1"><label>Đỏ khách</label><input type="number" class="form-control form-control-sm" @bind="_form.AwayRed" /></div>
+            <div class="col-4 col-md-2"><label>Mốc góc mở trận</label><input type="number" step="0.25" class="form-control form-control-sm" @bind="_form.OpenLine" /></div>
+            <div class="col-4 col-md-2"><label>Mốc góc live</label><input type="number" step="0.25" class="form-control form-control-sm" @bind="_form.Line" /></div>
+            <div class="col-4 col-md-2"><label>Odds Tài / Xỉu</label>
+                <div class="d-flex gap-1">
+                    <input type="number" step="0.01" class="form-control form-control-sm" @bind="_form.OverOdds" />
+                    <input type="number" step="0.01" class="form-control form-control-sm" @bind="_form.UnderOdds" />
+                </div>
+            </div>
+            <div class="col-4 col-md-2"><label>Bù giờ dự kiến</label><input type="number" step="0.5" class="form-control form-control-sm" @bind="_form.StoppageMinutes" placeholder="@(_form.Window == CornerWindow.FirstHalf ? "2.5" : "5.5")" /></div>
+
+            <div class="col-6 col-md-3">
+                <label>Động lực (K_động lực)</label>
+                <select class="form-select form-select-sm" @bind="_form.Motivation">
+                    <option value="@Motivation.Normal">Bình thường (1.00)</option>
+                    <option value="@Motivation.High">Cao: trụ hạng / vô địch / knock-out (1.20)</option>
+                    <option value="@Motivation.Low">Thấp: trận thủ tục (0.85)</option>
+                </select>
+            </div>
+            <div class="col-6 col-md-3">
+                <label>Cửa trên trước trận</label>
+                <select class="form-select form-select-sm" @bind="FavouriteText">
+                    <option value="">Không rõ</option>
+                    <option value="home">Đội nhà</option>
+                    <option value="away">Đội khách</option>
+                </select>
+            </div>
+            <div class="col-12 col-md-3 d-flex align-items-end">
+                <label class="d-flex align-items-center gap-1"><input type="checkbox" @bind="_form.DrawSuitsBoth" /> Hòa mà hai bên đều hài lòng</label>
+            </div>
+            <div class="col-12 col-md-3 d-flex align-items-end gap-2">
+                <button class="btn btn-sm btn-primary" @onclick="Compute">Tính</button>
+                <button class="btn btn-sm btn-outline-secondary" @onclick="ResetForm">Xóa</button>
+            </div>
+        </div>
+        @if (!string.IsNullOrWhiteSpace(_form.Notes))
+        {
+            <div class="hint mt-2">Ghi chú từ ảnh: @_form.Notes</div>
+        }
+
+        @if (_formResult is { } fr && _formInput is { } fi)
+        {
+            <div class="gl-card @CornerResultView.CallCss(fr.Call) mt-3" style="max-width: 720px">
+                <div class="head">
+                    <span class="min">@fi.Minute'</span>
+                    <span class="win">@(fi.Window == CornerWindow.FirstHalf ? "H1" : "H2")@(fr.InGoldenWindow ? " · cửa sổ vàng" : "")</span>
+                    <span>Tính tay</span>
+                </div>
+                <div class="teams">@FormLabel <span class="text-muted">@fi.HomeGoals-@fi.AwayGoals</span></div>
+                @if (!fr.InGoldenWindow)
+                {
+                    <div class="hint">Phút @fi.Minute nằm ngoài cửa sổ vàng (@(fi.Window == CornerWindow.FirstHalf ? "25–30'" : "75–80'")): công thức vẫn tính nhưng độ tin cậy thấp hơn.</div>
+                }
+                <CornerResultView I="fi" R="fr" />
+                <CornerCommentary @key="_formVersion" Match="@FormLabel" Input="fi" Result="fr" Notes="@_form.Notes" />
+            </div>
+        }
+    </div>
+
+    <div class="gl-section-title">Thành tích khuyến nghị đã chốt</div>
+    <p class="hint">Mỗi trận chốt tối đa một khuyến nghị cho mỗi cửa sổ (lần đầu ra Tài/Xỉu trong cửa sổ vàng, theo odds live lúc đó). H1 chấm theo góc hiệp 1, H2 theo góc cả trận. Lãi/lỗ tính trên 1 đơn vị.</p>
+    <div class="table-responsive">
+        <table class="table table-sm bg-white border">
+            <thead><tr><th>Cửa sổ</th><th class="text-end">Số kèo</th><th class="text-end">T / TN / H / BN / B</th><th class="text-end">Tỉ lệ thắng</th><th class="text-end">Lãi/lỗ</th><th class="text-end">ROI</th><th class="text-end">Chờ kết quả</th></tr></thead>
+            <tbody>
+                @foreach (var s in _stats)
+                {
+                    <tr class="@(s.Window is null ? "fw-semibold table-light" : "")">
+                        <td>@(s.Window switch { CornerWindow.FirstHalf => "H1 (góc hiệp 1)", CornerWindow.SecondHalf => "H2 (góc cả trận)", _ => "Tất cả" })</td>
+                        <td class="text-end">@s.Count</td>
+                        <td class="text-end">@s.Win / @s.HalfWin / @s.Push / @s.HalfLoss / @s.Loss</td>
+                        <td class="text-end">@Fmt.Pct(s.WinRate)</td>
+                        <td class="text-end @Fmt.Sign(s.Profit)">@Fmt.Profit(s.Profit)</td>
+                        <td class="text-end @Fmt.Sign(s.Profit)">@Fmt.Roi(s.Count == 0 ? null : s.Profit / s.Count)</td>
+                        <td class="text-end">@s.Pending</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    @if (_picks.Count > 0)
+    {
+        <div class="table-responsive">
+            <table class="table table-sm small bg-white border">
+                <thead><tr><th>Chốt lúc</th><th>Trận</th><th>Khuyến nghị</th><th class="text-end">Exp / Δedge</th><th class="text-end">Xác suất · tin cậy</th><th class="text-end">Góc cuối</th><th>Kết quả</th><th class="text-end">Lãi/lỗ</th></tr></thead>
+                <tbody>
+                    @foreach (var p in _picks)
+                    {
+                        <tr>
+                            <td class="text-nowrap">@Time.Short(p.CreatedAtUtc)</td>
+                            <td><a href="tran-dau/@p.FixtureId">@Team(p.Fixture!.HomeTeamId) – @Team(p.Fixture.AwayTeamId)</a> <span class="text-muted">@p.Fixture.HomeGoals-@p.Fixture.AwayGoals</span></td>
+                            <td class="text-nowrap">@(p.Window == CornerWindow.FirstHalf ? "H1" : "H2") @p.Minute' · <strong>@(p.Side == PickSide.Over ? "Tài" : "Xỉu") @LineText.Number(p.Line)</strong> @@@LineText.Odds(p.Odds) <span class="text-muted">(lúc chốt @p.CornersAtPick góc)</span></td>
+                            <td class="text-end">@LineText.Number(p.ExpectedTotal) / @p.Edge.ToString("+0.00;-0.00;0.00", Inv)</td>
+                            <td class="text-end">@Fmt.Pct(p.WinProbability) · @LineText.Number(p.Confidence)/10</td>
+                            <td class="text-end">@(p.FinalCorners?.ToString() ?? "—")</td>
+                            <td><OutcomeBadge Outcome="p.Outcome" /></td>
+                            <td class="text-end @Fmt.Sign(p.Profit ?? 0)">@(p.Profit is { } pr ? Fmt.Profit(pr) : "")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+}
+
+@code {
+    private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
+
+    private bool _loading = true;
+    private bool _refreshing;
+    private List<LiveCornerMatch> _live = [];
+    private List<LiveCornerPick> _picks = [];
+    private List<WindowStat> _stats = [];
+    private Dictionary<int, string> _teams = [];
+    private DateTime? _loadedAt;
+    private string? _message;
+    private bool _sound = true;
+    private string? _permission;
+    private PeriodicTimer? _timer;
+    private CancellationTokenSource? _cts;
+    private readonly HashSet<string> _announced = [];
+    private bool _primed;
+
+    private LiveCornerForm _form = new();
+    private LiveCornerInput? _formInput;
+    private LiveCornerResult? _formResult;
+    private int _formVersion;
+    private string? _formError;
+    private string? _readNote;
+    private bool _reading;
+    private List<CornerImage> _images = [];
+
+    private List<LiveCornerMatch> InWindow => _live.Where(m => m.InWindow).ToList();
+
+    private List<LiveCornerMatch> Others => _live.Where(m => !m.InWindow).OrderByDescending(m => m.Approaching).ThenByDescending(m => m.Input.Minute).ToList();
+
+    private string FormLabel => string.IsNullOrWhiteSpace(_form.Home) && string.IsNullOrWhiteSpace(_form.Away) ? "Trận nhập tay" : $"{_form.Home ?? "?"} – {_form.Away ?? "?"}";
+
+    private string FavouriteText
+    {
+        get => _form.Favourite switch { PickSide.Home => "home", PickSide.Away => "away", _ => "" };
+        set => _form.Favourite = value switch { "home" => PickSide.Home, "away" => PickSide.Away, _ => null };
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync(false);
+        _loading = false;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Chỉ chạy khi đã kết nối tương tác (không chạy lúc prerender).
+            _cts = new CancellationTokenSource();
+            _timer = new PeriodicTimer(TimeSpan.FromSeconds(60));
+            _ = TickAsync(_cts.Token);
+            try
+            {
+                _permission = await JS.InvokeAsync<string>("gocLive.permission");
+                StateHasChanged();
+            }
+            catch (JSException)
+            {
+            }
+        }
+    }
+
+    private async Task TickAsync(CancellationToken ct)
+    {
+        try
+        {
+            while (await _timer!.WaitForNextTickAsync(ct))
+            {
+                await InvokeAsync(async () =>
+                {
+                    await LoadAsync(true);
+                    StateHasChanged();
+                });
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    private async Task LoadAsync(bool announce)
+    {
+        try
+        {
+            _live = await Corners.LiveAsync();
+            _picks = await Corners.PicksAsync(30);
+            _stats = await StatsAsync();
+            var ids = _picks.SelectMany(p => new[] { p.Fixture!.HomeTeamId, p.Fixture.AwayTeamId });
+            _teams = await Corners.TeamNamesAsync(ids);
+            _loadedAt = Corners.UtcNow;
+        }
+        catch (Exception ex)
+        {
+            _message = $"Lỗi khi tải số liệu: {ex.Message}";
+            return;
+        }
+
+        // Báo tín hiệu Tài/Xỉu mới trong cửa sổ vàng (lần tải đầu chỉ ghi nhận, không kêu).
+        var fresh = new List<LiveCornerMatch>();
+        foreach (var m in InWindow.Where(m => m.Result.Side is not null))
+        {
+            if (_announced.Add($"{Key(m)}:{m.Result.Side}:{m.Result.Line}") && _primed && announce)
+            {
+                fresh.Add(m);
+            }
+        }
+
+        _primed = true;
+        if (fresh.Count > 0)
+        {
+            try
+            {
+                if (_sound)
+                {
+                    await JS.InvokeVoidAsync("gocLive.beep");
+                }
+
+                foreach (var m in fresh)
+                {
+                    await JS.InvokeVoidAsync("gocLive.notify", $"Góc Live: {m.Result.Headline}",
+                        $"{m.Home} – {m.Away} · phút {m.Input.Minute} · {m.Input.Corners} góc · Exp {m.Result.ExpectedTotal.ToString("0.0", Inv)}");
+                }
+            }
+            catch (JSException)
+            {
+            }
+        }
+    }
+
+    private async Task<List<WindowStat>> StatsAsync()
+    {
+        var all = await Corners.PicksAsync(5000);
+        var list = new List<WindowStat> { WindowStat.Of(null, all) };
+        list.AddRange(new[] { CornerWindow.FirstHalf, CornerWindow.SecondHalf }.Select(w => WindowStat.Of(w, all.Where(p => p.Window == w))));
+        return list;
+    }
+
+    private async Task RefreshNowAsync()
+    {
+        _refreshing = true;
+        _message = null;
+        try
+        {
+            var messages = new List<string>();
+            if (Api.IsConfigured)
+            {
+                var live = await Sync.RunNamedAsync(SyncJobs.Live, default);
+                if (live?.Message is { } lm)
+                {
+                    messages.Add(lm);
+                }
+            }
+
+            var corners = await Sync.RunNamedAsync(SyncJobs.LiveCorners, default);
+            if (corners?.Message is { } cm)
+            {
+                messages.Add(cm);
+            }
+
+            _message = messages.Count == 0 ? "Đã cập nhật, không có thay đổi." : string.Join(" ", messages);
+            await LoadAsync(true);
+        }
+        finally
+        {
+            _refreshing = false;
+        }
+    }
+
+    private async Task RequestPermissionAsync()
+    {
+        try
+        {
+            _permission = await JS.InvokeAsync<string>("gocLive.requestPermission");
+            if (_permission == "granted")
+            {
+                await JS.InvokeVoidAsync("gocLive.beep");
+            }
+        }
+        catch (JSException)
+        {
+        }
+    }
+
+    private void EditFrom(LiveCornerMatch m)
+    {
+        _form = LiveCornerForm.From(m);
+        _readNote = null;
+        _formError = null;
+        Compute();
+        _ = JS.InvokeVoidAsync("gocLive.scrollTo", "tinh-tay").AsTask();
+    }
+
+    private void Compute()
+    {
+        _formError = null;
+        if (_form.Minute <= 0)
+        {
+            _formError = "Nhập phút đang đá.";
+            return;
+        }
+
+        _formInput = _form.ToInput();
+        _formResult = LiveCornerAnalyzer.Analyze(_formInput);
+        _formVersion++;
+    }
+
+    private void ResetForm()
+    {
+        _form = new LiveCornerForm();
+        _formInput = null;
+        _formResult = null;
+        _readNote = null;
+        _formError = null;
+        _images = [];
+    }
+
+    private async Task OnFilesAsync(InputFileChangeEventArgs e)
+    {
+        _formError = null;
+        _images = [];
+        foreach (var file in e.GetMultipleFiles(3))
+        {
+            if (file.Size > CornerAiService.MaxImageBytes)
+            {
+                _formError = $"Ảnh {file.Name} lớn hơn 5 MB.";
+                continue;
+            }
+
+            using var stream = file.OpenReadStream(CornerAiService.MaxImageBytes);
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            _images.Add(new CornerImage(ms.ToArray(), file.ContentType));
+        }
+    }
+
+    private async Task ReadImagesAsync()
+    {
+        _reading = true;
+        _formError = null;
+        _readNote = null;
+        try
+        {
+            var (form, cost) = await CornerAi.ReadScreenshotsAsync(_images, default);
+            _form = form;
+            _readNote = $"Claude đã đọc {_images.Count} ảnh (~${cost.CostUsd.ToString("0.000", Inv)}). Kiểm lại các ô bên dưới, chỉnh động lực / cửa trên nếu cần rồi bấm Tính.";
+            Compute();
+        }
+        catch (Exception ex)
+        {
+            _formError = $"Không đọc được ảnh: {ex.Message}";
+        }
+        finally
+        {
+            _reading = false;
+        }
+    }
+
+    private static string Key(LiveCornerMatch m) => $"{m.Fixture.Id}-{(int)m.Input.Window}";
+
+    private static string MatchLabel(LiveCornerMatch m) => $"{m.Home} – {m.Away} ({m.League})";
+
+    private string Team(int id) => _teams.GetValueOrDefault(id) ?? $"#{id}";
+
+    public async ValueTask DisposeAsync()
+    {
+        _cts?.Cancel();
+        _timer?.Dispose();
+        _cts?.Dispose();
+        await Task.CompletedTask;
+    }
+
+    private sealed class WindowStat
+    {
+        public CornerWindow? Window { get; init; }
+        public int Count { get; init; }
+        public int Win { get; init; }
+        public int HalfWin { get; init; }
+        public int Push { get; init; }
+        public int HalfLoss { get; init; }
+        public int Loss { get; init; }
+        public int Pending { get; init; }
+        public decimal Profit { get; init; }
+        public decimal? WinRate { get; init; }
+
+        public static WindowStat Of(CornerWindow? window, IEnumerable<LiveCornerPick> picks)
+        {
+            var list = picks.ToList();
+            var done = list.Where(p => p.Outcome is not (BetOutcome.Pending or BetOutcome.Void)).ToList();
+            decimal win = done.Count(p => p.Outcome == BetOutcome.Win) + done.Count(p => p.Outcome == BetOutcome.HalfWin) * 0.5m;
+            decimal loss = done.Count(p => p.Outcome == BetOutcome.Loss) + done.Count(p => p.Outcome == BetOutcome.HalfLoss) * 0.5m;
+            return new WindowStat
+            {
+                Window = window,
+                Count = done.Count,
+                Win = done.Count(p => p.Outcome == BetOutcome.Win),
+                HalfWin = done.Count(p => p.Outcome == BetOutcome.HalfWin),
+                Push = done.Count(p => p.Outcome == BetOutcome.Push),
+                HalfLoss = done.Count(p => p.Outcome == BetOutcome.HalfLoss),
+                Loss = done.Count(p => p.Outcome == BetOutcome.Loss),
+                Pending = list.Count(p => p.Outcome == BetOutcome.Pending),
+                Profit = done.Sum(p => p.Profit ?? 0),
+                WinRate = win + loss == 0 ? null : win / (win + loss),
+            };
+        }
+    }
+}

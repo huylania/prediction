@@ -21,6 +21,15 @@ public class FixtureStats
     public int? HomeRed { get; set; }
     public int? AwayRed { get; set; }
 
+    public int? HomeBlocked { get; set; }
+    public int? AwayBlocked { get; set; }
+    public int? HomeShotsInBox { get; set; }
+    public int? AwayShotsInBox { get; set; }
+
+    /// <summary>Số góc hết hiệp 1 (chụp lúc nghỉ giữa hiệp).</summary>
+    public int? FirstHalfHomeCorners { get; set; }
+    public int? FirstHalfAwayCorners { get; set; }
+
     public int? HalftimeHome { get; set; }
     public int? HalftimeAway { get; set; }
 

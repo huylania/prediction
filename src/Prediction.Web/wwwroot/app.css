@@ -256,3 +256,25 @@ h1:focus {
 .res { font-weight: 800; font-size: .72rem; border-radius: 4px; padding: 0 .3rem; color: #fff; }
 .res-w { background: #16a34a; } .res-l { background: #dc2626; } .res-p { background: #94a3b8; }
 .lineup-xi { font-size: .8rem; color: #334155; }
+
+/* ---------- Góc Live ---------- */
+.gl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 1rem; }
+.gl-card { background: #fff; border: 1px solid #e3e6ea; border-left: 5px solid #94a3b8; border-radius: 12px; padding: .8rem .95rem; }
+.gl-card.over { border-left-color: #16a34a; }
+.gl-card.under { border-left-color: #2563eb; }
+.gl-card.watch { border-left-color: #f59e0b; }
+.gl-card .head { display: flex; align-items: center; gap: .5rem; font-size: .8rem; color: #64748b; }
+.gl-card .head .min { background: #dc2626; color: #fff; font-weight: 800; border-radius: 6px; padding: .05rem .45rem; }
+.gl-card .head .win { background: #fef3c7; color: #92400e; font-weight: 800; border-radius: 6px; padding: .05rem .45rem; }
+.gl-card .teams { font-weight: 800; color: #0f172a; margin: .3rem 0; }
+.gl-call { font-size: 1.05rem; font-weight: 800; margin: .35rem 0; }
+.gl-call.over { color: #15803d; } .gl-call.under { color: #1d4ed8; } .gl-call.watch { color: #b45309; } .gl-call.nobet { color: #475569; }
+.gl-nums { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .4rem; margin: .4rem 0; }
+.gl-nums div { background: #f8fafc; border-radius: 8px; padding: .3rem .4rem; text-align: center; }
+.gl-nums .v { font-weight: 800; font-size: 1rem; color: #0f172a; font-variant-numeric: tabular-nums; }
+.gl-nums .l { font-size: .68rem; color: #64748b; }
+.gl-factors { font-size: .76rem; color: #475569; margin: .3rem 0 0; padding-left: 1rem; }
+.gl-section-title { font-size: 1.05rem; font-weight: 800; margin: 1.2rem 0 .6rem; }
+.gl-form label { display: block; font-size: .72rem; color: #64748b; margin-bottom: .1rem; }
+.gl-card .teams a:hover { text-decoration: underline; }
+.table .gl-call { font-size: .8rem; margin: 0; }

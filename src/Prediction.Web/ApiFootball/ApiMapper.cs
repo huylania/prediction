@@ -168,6 +168,10 @@ public static class ApiMapper
         target.AwayPossession = Percent(Text(away, "Ball Possession"));
         target.HomeXg = Dec(home, "expected_goals");
         target.AwayXg = Dec(away, "expected_goals");
+        target.HomeBlocked = Int(home, "Blocked Shots") ?? 0;
+        target.AwayBlocked = Int(away, "Blocked Shots") ?? 0;
+        target.HomeShotsInBox = Int(home, "Shots insidebox") ?? 0;
+        target.AwayShotsInBox = Int(away, "Shots insidebox") ?? 0;
         return true;
     }
 

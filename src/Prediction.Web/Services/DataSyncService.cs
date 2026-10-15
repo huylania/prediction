@@ -46,6 +46,9 @@ public sealed class SyncOptions
     public int VenuesIntervalMinutes { get; set; } = 360;
     public int WeatherIntervalMinutes { get; set; } = 180;
 
+    /// <summary>Góc Live: kèo góc live + chốt/chấm khuyến nghị (chỉ gọi API khi có trận gần cửa sổ vàng).</summary>
+    public int LiveCornersIntervalMinutes { get; set; } = 2;
+
     /// <summary>AI tự điền thông tin bên lề cho trận nhóm A/B (chỉ khi có Anthropic:ApiKey).</summary>
     public int SideInfoIntervalMinutes { get; set; } = 30;
 
@@ -63,6 +66,8 @@ public sealed class DataSyncService(
     ILogger<DataSyncService> logger)
 {
     public int RequestCount => api.RequestCount;
+
+    public bool IsConfigured => api.IsConfigured;
 
     private DateTime Now => clock.GetUtcNow().UtcDateTime;
 
@@ -242,7 +247,20 @@ public sealed class DataSyncService(
                 finished += fixture.IsFinished ? 1 : 0;
                 if (fixture.IsLive || fixture.IsFinished)
                 {
-                    ApplyStats(stats, fixture, item, now);
+                    var row = ApplyStats(stats, fixture, item, now);
+                    if (row.HomeCorners.HasValue)
+                    {
+                        if (fixture.Status == "HT" && row.FirstHalfHomeCorners is null)
+                        {
+                            row.FirstHalfHomeCorners = row.HomeCorners;
+                            row.FirstHalfAwayCorners = row.AwayCorners;
+                        }
+
+                        if (fixture.IsLive)
+                        {
+                            db.LiveStatSnapshots.Add(Snapshot(fixture, row, now));
+                        }
+                    }
                 }
             }
         }
@@ -735,6 +753,71 @@ public sealed class DataSyncService(
 
         await db.SaveChangesAsync(ct);
         return updated == 0 ? null : $"Thời tiết: {updated} trận.";
+    }
+
+    private static LiveStatSnapshot Snapshot(Fixture f, FixtureStats s, DateTime now) => new()
+    {
+        FixtureId = f.Id,
+        Minute = f.Status == "HT" ? 45 : f.Elapsed ?? 0,
+        Status = f.Status,
+        CapturedAtUtc = now,
+        HomeGoals = f.HomeGoals ?? 0,
+        AwayGoals = f.AwayGoals ?? 0,
+        HomeCorners = s.HomeCorners ?? 0,
+        AwayCorners = s.AwayCorners ?? 0,
+        HomeShots = s.HomeShots,
+        AwayShots = s.AwayShots,
+        HomeOnTarget = s.HomeShotsOnTarget,
+        AwayOnTarget = s.AwayShotsOnTarget,
+        HomeBlocked = s.HomeBlocked,
+        AwayBlocked = s.AwayBlocked,
+        HomeRed = s.HomeRed ?? 0,
+        AwayRed = s.AwayRed ?? 0,
+    };
+
+    /// <summary>
+    /// Kèo góc live (1 request cho mọi trận đang đá) — chỉ gọi khi có trận theo dõi ở gần cửa sổ vàng
+    /// (hiệp 1 phút 20–32, hiệp 2 phút 70–82). Ghi khi mốc/odds đổi.
+    /// </summary>
+    public async Task<int> SyncLiveCornerOddsAsync(CancellationToken ct)
+    {
+        var now = Now;
+        var live = await db.Fixtures.AsNoTracking()
+            .Where(f => f.League!.IsTracked && !f.League.IsDemo && f.KickoffUtc <= now && f.KickoffUtc >= now.AddHours(-3)
+                && (f.Status == "1H" && f.Elapsed >= 20 && f.Elapsed <= 32 || f.Status == "2H" && f.Elapsed >= 70 && f.Elapsed <= 82))
+            .Select(f => f.Id)
+            .ToListAsync(ct);
+        if (live.Count == 0)
+        {
+            return 0;
+        }
+
+        var wanted = live.ToHashSet();
+        var latest = (await db.LiveCornerOdds.AsNoTracking()
+                .Where(o => wanted.Contains(o.FixtureId))
+                .GroupBy(o => new { o.FixtureId, o.Window })
+                .Select(g => g.OrderByDescending(o => o.FetchedAtUtc).ThenByDescending(o => o.Id).First())
+                .ToListAsync(ct))
+            .ToDictionary(o => (o.FixtureId, o.Window));
+        var stored = 0;
+        foreach (var item in (await api.GetLiveOddsAsync(ct)).Where(i => wanted.Contains(i.Fixture.Id)))
+        {
+            foreach (var q in LiveOddsParser.Parse(item))
+            {
+                if (latest.TryGetValue((q.FixtureId, q.Window), out var last) && last.Line == q.Line && last.OverOdds == q.OverOdds && last.UnderOdds == q.UnderOdds)
+                {
+                    continue;
+                }
+
+                var row = new LiveCornerOdds { FixtureId = q.FixtureId, Window = q.Window, Line = q.Line, OverOdds = q.OverOdds, UnderOdds = q.UnderOdds, Minute = q.Minute, FetchedAtUtc = now };
+                db.LiveCornerOdds.Add(row);
+                latest[(q.FixtureId, q.Window)] = row;
+                stored++;
+            }
+        }
+
+        await db.SaveChangesAsync(ct);
+        return stored;
     }
 
     /// <summary>Còn quá ít request trong ngày: dừng các tác vụ phụ để dành cho kèo và trực tiếp.</summary>

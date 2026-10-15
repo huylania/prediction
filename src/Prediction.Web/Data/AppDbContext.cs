@@ -29,6 +29,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<H2HCheck> H2HChecks => Set<H2HCheck>();
     public DbSet<ClosingLine> ClosingLines => Set<ClosingLine>();
     public DbSet<MatchSideInfo> MatchSideInfos => Set<MatchSideInfo>();
+    public DbSet<LiveStatSnapshot> LiveStatSnapshots => Set<LiveStatSnapshot>();
+    public DbSet<LiveCornerOdds> LiveCornerOdds => Set<LiveCornerOdds>();
+    public DbSet<LiveCornerPick> LiveCornerPicks => Set<LiveCornerPick>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -273,6 +276,35 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(x => x.Model).HasMaxLength(100);
             e.Property(x => x.CostUsd).HasPrecision(10, 4);
             e.HasIndex(x => x.CreatedAtUtc);
+        });
+
+        b.Entity<LiveStatSnapshot>(e =>
+        {
+            e.Property(x => x.Status).HasMaxLength(10);
+            e.HasOne(x => x.Fixture).WithMany().HasForeignKey(x => x.FixtureId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => new { x.FixtureId, x.Minute });
+        });
+
+        b.Entity<LiveCornerOdds>(e =>
+        {
+            e.Property(x => x.Line).HasPrecision(6, 2);
+            e.Property(x => x.OverOdds).HasPrecision(8, 3);
+            e.Property(x => x.UnderOdds).HasPrecision(8, 3);
+            e.HasOne(x => x.Fixture).WithMany().HasForeignKey(x => x.FixtureId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => new { x.FixtureId, x.Window, x.FetchedAtUtc });
+        });
+
+        b.Entity<LiveCornerPick>(e =>
+        {
+            e.Property(x => x.Line).HasPrecision(6, 2);
+            e.Property(x => x.Odds).HasPrecision(8, 3);
+            e.Property(x => x.ExpectedTotal).HasPrecision(6, 2);
+            e.Property(x => x.Edge).HasPrecision(6, 2);
+            e.Property(x => x.WinProbability).HasPrecision(5, 4);
+            e.Property(x => x.Confidence).HasPrecision(4, 1);
+            e.Property(x => x.Profit).HasPrecision(10, 4);
+            e.HasOne(x => x.Fixture).WithMany().HasForeignKey(x => x.FixtureId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => new { x.FixtureId, x.Window }).IsUnique();
         });
 
         SeedData.Apply(b);

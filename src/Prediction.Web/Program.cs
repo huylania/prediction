@@ -46,6 +46,8 @@ builder.Services.AddSingleton<AnalysisService>();
 builder.Services.AddSingleton<AiReportService>();
 builder.Services.AddSingleton<MatchContextService>();
 builder.Services.AddSingleton<SideInfoService>();
+builder.Services.AddSingleton<LiveCornerService>();
+builder.Services.AddSingleton<CornerAiService>();
 builder.Services.AddScoped<DataSyncService>();
 builder.Services.AddHostedService<SyncBackgroundService>();
 

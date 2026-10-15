@@ -1,0 +1,434 @@
+using System.Globalization;
+using System.Text;
+using System.Text.Json;
+using Anthropic;
+using Anthropic.Models.Beta.Messages;
+using Microsoft.Extensions.Options;
+using Prediction.Core.Engine.Analysis;
+using Prediction.Core.Engine.LiveCorners;
+using Prediction.Core.Entities;
+
+namespace Prediction.Web.Services;
+
+/// <summary>Form "tính tay / từ ảnh AiScore" của mục Góc Live (sửa được trước khi tính).</summary>
+public sealed class LiveCornerForm
+{
+    public string? Home { get; set; }
+    public string? Away { get; set; }
+    public CornerWindow Window { get; set; } = CornerWindow.FirstHalf;
+    public int Minute { get; set; } = 27;
+    public int HomeCorners { get; set; }
+    public int AwayCorners { get; set; }
+    public int? Shots { get; set; }
+    public int? ShotsOnTarget { get; set; }
+    public int? BlockedShots { get; set; }
+    public int? DangerousAttacks { get; set; }
+    public int? HomePossession { get; set; }
+    public int HomeGoals { get; set; }
+    public int AwayGoals { get; set; }
+    public int HomeRed { get; set; }
+    public int AwayRed { get; set; }
+    public decimal? Line { get; set; }
+    public decimal? OverOdds { get; set; }
+    public decimal? UnderOdds { get; set; }
+    public decimal? OpenLine { get; set; }
+    public double? StoppageMinutes { get; set; }
+    public Motivation Motivation { get; set; }
+    public bool DrawSuitsBoth { get; set; }
+    public PickSide? Favourite { get; set; }
+
+    /// <summary>Ghi chú Claude đọc được từ ảnh (xu hướng tấn công, thẻ vàng hậu vệ...).</summary>
+    public string? Notes { get; set; }
+
+    public LiveCornerInput ToInput() => new()
+    {
+        Window = Window,
+        Minute = Math.Clamp(Minute, 1, 130),
+        HomeCorners = Math.Max(0, HomeCorners),
+        AwayCorners = Math.Max(0, AwayCorners),
+        Shots = Shots,
+        ShotsOnTarget = ShotsOnTarget,
+        BlockedShots = BlockedShots,
+        DangerousAttacks = DangerousAttacks,
+        HomeGoals = Math.Max(0, HomeGoals),
+        AwayGoals = Math.Max(0, AwayGoals),
+        HomeRed = Math.Max(0, HomeRed),
+        AwayRed = Math.Max(0, AwayRed),
+        Line = Line,
+        OverOdds = OverOdds,
+        UnderOdds = UnderOdds,
+        OpenLine = OpenLine,
+        StoppageMinutes = StoppageMinutes,
+        Motivation = Motivation,
+        DrawSuitsBoth = DrawSuitsBoth,
+        Favourite = Favourite,
+    };
+
+    /// <summary>Điền form từ một trận website đang theo dõi (để sửa tay hoặc bổ sung tấn công nguy hiểm).</summary>
+    public static LiveCornerForm From(LiveCornerMatch m) => new()
+    {
+        Home = m.Home,
+        Away = m.Away,
+        Window = m.Input.Window,
+        Minute = m.Input.Minute,
+        HomeCorners = m.Input.HomeCorners,
+        AwayCorners = m.Input.AwayCorners,
+        Shots = m.Input.Shots,
+        ShotsOnTarget = m.Input.ShotsOnTarget,
+        BlockedShots = m.Input.BlockedShots,
+        DangerousAttacks = m.Input.DangerousAttacks,
+        HomeGoals = m.Input.HomeGoals,
+        AwayGoals = m.Input.AwayGoals,
+        HomeRed = m.Input.HomeRed,
+        AwayRed = m.Input.AwayRed,
+        Line = m.Input.Line,
+        OverOdds = m.Input.OverOdds,
+        UnderOdds = m.Input.UnderOdds,
+        OpenLine = m.Input.OpenLine,
+        Motivation = m.Input.Motivation,
+        DrawSuitsBoth = m.Input.DrawSuitsBoth,
+        Favourite = m.Input.Favourite,
+    };
+}
+
+/// <summary>Ảnh tải lên (AiScore) để Claude đọc.</summary>
+public sealed record CornerImage(byte[] Data, string ContentType);
+
+/// <summary>Kết quả một lượt gọi Claude của mục Góc Live.</summary>
+public sealed record CornerAiCost(string Model, long InputTokens, long OutputTokens, decimal CostUsd);
+
+/// <summary>
+/// AI của mục Góc Live — dùng RIÊNG file kỹ năng "phan-tich-goc" (không dùng chung với báo cáo phân tích chuyên sâu):
+/// đọc ảnh chụp AiScore thành số liệu cho form, và "Claude nhận định" từ số liệu + kết quả công thức của website.
+/// </summary>
+public sealed class CornerAiService(IOptions<AiReportOptions> options, IWebHostEnvironment env, ILogger<CornerAiService> logger)
+{
+    private const string VisionInstructions = """
+        Bạn đọc ảnh chụp màn hình trận đang đá trên AiScore (hoặc ứng dụng tỉ số tương tự) cho mục "Góc Live" của website soi kèo cá nhân.
+        Trích đúng 6 nhóm chỉ số ở mục 2 của kỹ năng: phút, số góc mỗi đội, mốc kèo góc (mở trận và live, kèm odds Tài/Xỉu nếu thấy),
+        cú sút (tổng, trúng đích, bị chặn), tấn công nguy hiểm, thẻ đỏ, tỉ số, kiểm soát bóng. Chỉ ghi số NHÌN THẤY trên ảnh, không đoán;
+        không thấy thì để null. Nếu có nhiều ảnh thì gộp lại (ảnh sau mới hơn).
+
+        Kèo góc: nếu ảnh là kèo góc hiệp 1 thì "window" = "H1", kèo góc cả trận thì "H2"; nếu không rõ thì suy từ phút
+        (phút ≤ 45 hoặc đang hiệp 1 → "H1", ngược lại "H2"). Mốc góc là tổng hai đội (vd 9.5, 10, 10.25).
+
+        Trả lời DUY NHẤT một khối ```json:
+        {
+          "home": "tên đội nhà" | null, "away": "tên đội khách" | null,
+          "window": "H1" | "H2", "minute": số phút,
+          "home_corners": số, "away_corners": số,
+          "home_shots": số | null, "away_shots": số | null,
+          "home_on_target": số | null, "away_on_target": số | null,
+          "home_blocked": số | null, "away_blocked": số | null,
+          "home_dangerous_attacks": số | null, "away_dangerous_attacks": số | null,
+          "home_possession": số % | null,
+          "home_goals": số, "away_goals": số, "home_red": số, "away_red": số,
+          "line_open": mốc | null, "line_live": mốc | null, "over_odds": odds thập phân | null, "under_odds": odds thập phân | null,
+          "notes": "điểm đáng chú ý khác trên ảnh (xu hướng tấn công biên/trung lộ, thẻ vàng hậu vệ, giải đấu...) hoặc null"
+        }
+        Odds kiểu Hồng Kông / Malaysia (vd 0.95, -0.90) thì đổi sang thập phân (0.95 → 1.95; -0.90 → 1 + 1/0.90).
+        """;
+
+    private const string CommentaryInstructions = """
+        Bạn đang chạy trong mục "Góc Live" của website soi kèo cá nhân (Blazor + API-Football). Tin nhắn gồm số liệu live của MỘT trận
+        tại phút T (tự động từ API-Football hoặc đọc từ ảnh AiScore và người dùng đã kiểm lại) và kết quả công thức của website
+        theo đúng mô hình mục 3/4 của kỹ năng (hệ số α hoặc K, Exp, Δedge, xác suất nhị thức âm, EV theo odds live).
+        API-Football không có "tấn công nguy hiểm": khi thiếu, website dùng (sút + góc)/phút và nhịp 10–15 phút gần nhất làm chỉ số thay thế.
+
+        Trả lời bằng tiếng Việt, Markdown, đúng CẤU TRÚC PHẢN HỒI CHUẨN MỰC ở mục 5, ngắn gọn. Giữ nguyên các con số của website;
+        nếu bạn đánh giá khác hệ số nào (vd động lực, thế trận) thì nói rõ lý do và con số bạn đề xuất. Không bịa số liệu thiếu.
+        """;
+
+    private string? _skill;
+
+    public bool IsConfigured => !string.IsNullOrWhiteSpace(options.Value.ApiKey);
+
+    public string Model => options.Value.CornerModel;
+
+    public const long MaxImageBytes = 5 * 1024 * 1024;
+
+    /// <summary>Claude đọc 1–2 ảnh AiScore → form đã điền (người dùng kiểm/sửa trước khi tính).</summary>
+    public async Task<(LiveCornerForm Form, CornerAiCost Cost)> ReadScreenshotsAsync(IReadOnlyList<CornerImage> images, CancellationToken ct)
+    {
+        if (!IsConfigured)
+        {
+            throw new InvalidOperationException("Chưa cấu hình Anthropic:ApiKey.");
+        }
+
+        if (images.Count == 0)
+        {
+            throw new InvalidOperationException("Chưa chọn ảnh.");
+        }
+
+        var o = options.Value;
+        var content = new List<BetaContentBlockParam>();
+        foreach (var image in images.Take(3))
+        {
+            content.Add(new BetaImageBlockParam
+            {
+                Source = new BetaBase64ImageSource { Data = Convert.ToBase64String(image.Data), MediaType = MediaTypeOf(image.ContentType) },
+            });
+        }
+
+        content.Add(new BetaTextBlockParam { Text = "Đọc các ảnh trên và trả về JSON theo đúng cấu trúc." });
+
+        var response = await Client(o).Beta.Messages.Create(new MessageCreateParams
+        {
+            Model = o.CornerModel,
+            MaxTokens = 4000,
+            Betas = ["server-side-fallback-2026-07-01"],
+            Fallbacks = new Default(),
+            OutputConfig = new BetaOutputConfig { Effort = Effort.Low },
+            System = new List<BetaTextBlockParam>
+            {
+                new() { Text = await SkillAsync(ct) },
+                new() { Text = VisionInstructions, CacheControl = new BetaCacheControlEphemeral { Ttl = Ttl.Ttl1h } },
+            },
+            Messages = [new() { Role = Role.User, Content = content }],
+        }, ct);
+
+        var text = string.Join("\n", response.Content.Select(b => b.TryPickText(out var t) ? t.Text : null).Where(t => t is not null));
+        if (response.StopReason?.Raw() == "refusal")
+        {
+            throw new InvalidOperationException("Claude đã từ chối đọc ảnh này.");
+        }
+
+        var json = SideInfoService.Parse(text) ?? throw new InvalidOperationException("Claude không trả về JSON hợp lệ — thử ảnh rõ hơn.");
+        var cost = Cost(response.Model.Raw(), response.Usage.InputTokens + (response.Usage.CacheCreationInputTokens ?? 0) + (response.Usage.CacheReadInputTokens ?? 0),
+            response.Usage.OutputTokens);
+        logger.LogInformation("Góc Live: đọc {Count} ảnh AiScore, {Input} token vào, {Output} ra, ~${Cost}", images.Count, cost.InputTokens, cost.OutputTokens, cost.CostUsd);
+        return (ParseForm(json), cost);
+    }
+
+    /// <summary>Chuyển JSON Claude đọc từ ảnh thành form.</summary>
+    public static LiveCornerForm ParseForm(JsonElement e)
+    {
+        var minute = Int(e, "minute") ?? 0;
+        var window = Str(e, "window")?.ToUpperInvariant() switch
+        {
+            "H1" or "1H" => CornerWindow.FirstHalf,
+            "H2" or "2H" or "FT" => CornerWindow.SecondHalf,
+            _ => minute is > 0 and <= 45 ? CornerWindow.FirstHalf : CornerWindow.SecondHalf,
+        };
+
+        int? Sum(string home, string away) => Int(e, home).HasValue || Int(e, away).HasValue ? (Int(e, home) ?? 0) + (Int(e, away) ?? 0) : null;
+
+        return new LiveCornerForm
+        {
+            Home = Str(e, "home"),
+            Away = Str(e, "away"),
+            Window = window,
+            Minute = minute,
+            HomeCorners = Int(e, "home_corners") ?? 0,
+            AwayCorners = Int(e, "away_corners") ?? 0,
+            Shots = Sum("home_shots", "away_shots"),
+            ShotsOnTarget = Sum("home_on_target", "away_on_target"),
+            BlockedShots = Sum("home_blocked", "away_blocked"),
+            DangerousAttacks = Sum("home_dangerous_attacks", "away_dangerous_attacks"),
+            HomePossession = Int(e, "home_possession"),
+            HomeGoals = Int(e, "home_goals") ?? 0,
+            AwayGoals = Int(e, "away_goals") ?? 0,
+            HomeRed = Int(e, "home_red") ?? 0,
+            AwayRed = Int(e, "away_red") ?? 0,
+            OpenLine = Line(e, "line_open"),
+            Line = Line(e, "line_live"),
+            OverOdds = Odds(e, "over_odds"),
+            UnderOdds = Odds(e, "under_odds"),
+            Notes = Str(e, "notes"),
+        };
+    }
+
+    /// <summary>"Claude nhận định": gửi số liệu + kết quả công thức, nhận phần trả lời theo mục 5 dạng streaming.</summary>
+    public async Task<(string Markdown, CornerAiCost Cost)> CommentaryAsync(
+        string match, LiveCornerInput input, LiveCornerResult result, string? notes, Func<AiReportUpdate, Task> onUpdate, CancellationToken ct)
+    {
+        if (!IsConfigured)
+        {
+            throw new InvalidOperationException("Chưa cấu hình Anthropic:ApiKey.");
+        }
+
+        var o = options.Value;
+        var parameters = new MessageCreateParams
+        {
+            Model = o.CornerModel,
+            MaxTokens = o.CornerMaxTokens,
+            Betas = ["server-side-fallback-2026-07-01"],
+            Fallbacks = new Default(),
+            OutputConfig = new BetaOutputConfig { Effort = ParseEffort(o.CornerEffort) },
+            System = new List<BetaTextBlockParam>
+            {
+                new() { Text = await SkillAsync(ct) },
+                new() { Text = CommentaryInstructions, CacheControl = new BetaCacheControlEphemeral { Ttl = Ttl.Ttl1h } },
+            },
+            Messages = [new() { Role = Role.User, Content = UserMessage(match, input, result, notes) }],
+        };
+
+        var text = new StringBuilder();
+        string? stopReason = null;
+        long inputTokens = 0, output = 0;
+        var model = o.CornerModel;
+        await foreach (var ev in Client(o).Beta.Messages.CreateStreaming(parameters, ct))
+        {
+            if (ev.TryPickStart(out var start))
+            {
+                model = start.Message.Model.Raw();
+                inputTokens = start.Message.Usage.InputTokens + (start.Message.Usage.CacheReadInputTokens ?? 0) + (start.Message.Usage.CacheCreationInputTokens ?? 0);
+            }
+            else if (ev.TryPickContentBlockDelta(out var delta) && delta.Delta.TryPickText(out var chunk))
+            {
+                text.Append(chunk.Text);
+                await onUpdate(new AiReportUpdate(chunk.Text, null));
+            }
+            else if (ev.TryPickDelta(out var messageDelta))
+            {
+                stopReason = messageDelta.Delta.StopReason?.Raw();
+                output = messageDelta.Usage.OutputTokens;
+            }
+        }
+
+        var markdown = text.ToString().Trim();
+        if (stopReason == "refusal")
+        {
+            markdown += "\n\n> Claude đã từ chối hoàn thành yêu cầu này. Hãy thử lại sau.";
+        }
+        else if (stopReason == "max_tokens")
+        {
+            markdown += "\n\n> Nhận định bị cắt do chạm giới hạn độ dài (Anthropic:CornerMaxTokens).";
+        }
+
+        var cost = Cost(model, inputTokens, output);
+        logger.LogInformation("Góc Live: Claude nhận định {Match}, {Input} token vào, {Output} ra, ~${Cost}", match, inputTokens, output, cost.CostUsd);
+        return (markdown, cost);
+    }
+
+    private static readonly JsonSerializerOptions Json = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
+        DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+        WriteIndented = true,
+    };
+
+    /// <summary>Tin nhắn gửi Claude: số liệu live + bóc tách của website (JSON).</summary>
+    public static string UserMessage(string match, LiveCornerInput i, LiveCornerResult r, string? notes)
+    {
+        var data = new
+        {
+            tran = match,
+            cua_so = i.Window == CornerWindow.FirstHalf ? "H1 (phút 25–30, kèo góc hiệp 1)" : "H2 (phút 75–80, kèo góc cả trận)",
+            so_lieu_live = new
+            {
+                phut = i.Minute,
+                ti_so = $"{i.HomeGoals}-{i.AwayGoals}",
+                goc = new { doi_nha = i.HomeCorners, doi_khach = i.AwayCorners, tong = i.Corners },
+                sut = i.Shots,
+                trung_dich = i.ShotsOnTarget,
+                bi_chan = i.BlockedShots,
+                tan_cong_nguy_hiem = i.DangerousAttacks,
+                the_do = new { doi_nha = i.HomeRed, doi_khach = i.AwayRed },
+                nhip_gan_nhat = i.RecentMinutes is { } rm ? new { so_phut = rm, sut = i.RecentShots, goc = i.RecentCorners, bi_chan = i.RecentBlocked } : null,
+                keo_goc = new { mo_tran = i.OpenLine, live = i.Line, odds_tai = i.OverOdds, odds_xiu = i.UnderOdds },
+                dong_luc = i.Motivation switch { Motivation.High => "cao (cần điểm sống còn / knock-out)", Motivation.Low => "thấp (trận thủ tục)", _ => "bình thường" },
+                hoa_hai_ben_hai_long = i.DrawSuitsBoth ? true : (bool?)null,
+                cua_tren_truoc_tran = i.Favourite switch { PickSide.Home => "đội nhà", PickSide.Away => "đội khách", _ => null },
+                ghi_chu = notes,
+            },
+            ket_qua_website = new
+            {
+                R_goc_moi_phut = Math.Round(r.Rate, 4),
+                he_so = r.Factors.Select(f => new { ten = f.Name, gia_tri = f.Value, ly_do = f.Reason }),
+                tich_he_so = Math.Round(r.Multiplier, 3),
+                delta_T = r.RemainingMinutes,
+                goc_con_lai_du_kien = Math.Round(r.ExpectedRemaining, 2),
+                exp_tong_goc = Math.Round(r.ExpectedTotal, 2),
+                moc_live = r.Line,
+                delta_edge = r.Edge is { } edge ? Math.Round(edge, 2) : (double?)null,
+                da_an_bai = r.Window == CornerWindow.SecondHalf ? r.Settled : (bool?)null,
+                khuyen_nghi = r.Headline,
+                xac_suat = r.Probability is { } p ? new
+                {
+                    cua = r.ProbabilitySide == PickSide.Over ? "Tài" : "Xỉu",
+                    thang = Math.Round(p.WinAny, 3),
+                    hoan = Math.Round(p.Push, 3),
+                    thua = Math.Round(p.LossAny, 3),
+                } : null,
+                ev = r.ExpectedValue is { } ev ? Math.Round(ev, 3) : (double?)null,
+                diem_tin_cay = r.Confidence,
+                thoi_diem = r.Timing,
+                ghi_chu = r.Notes,
+            },
+        };
+
+        return "Số liệu live và kết quả công thức của website (JSON):\n```json\n" + JsonSerializer.Serialize(data, Json) + "\n```\n"
+            + "Hãy nhận định theo đúng cấu trúc mục 5 của kỹ năng.";
+    }
+
+    private static AnthropicClient Client(AiReportOptions o) => string.IsNullOrWhiteSpace(o.BaseUrl)
+        ? new AnthropicClient { ApiKey = o.ApiKey, Timeout = TimeSpan.FromMinutes(o.TimeoutMinutes) }
+        : new AnthropicClient { ApiKey = o.ApiKey, Timeout = TimeSpan.FromMinutes(o.TimeoutMinutes), BaseUrl = o.BaseUrl };
+
+    private static CornerAiCost Cost(string model, long input, long output)
+    {
+        var (inPrice, outPrice) = SideInfoService.Prices(model);
+        return new CornerAiCost(model, input, output, Math.Round((input * inPrice + output * outPrice) / 1_000_000m, 4));
+    }
+
+    private static MediaType MediaTypeOf(string contentType) => contentType.ToLowerInvariant() switch
+    {
+        "image/png" => MediaType.ImagePng,
+        "image/gif" => MediaType.ImageGif,
+        "image/webp" => MediaType.ImageWebP,
+        _ => MediaType.ImageJpeg,
+    };
+
+    private static Effort ParseEffort(string value) => value.Trim().ToLowerInvariant() switch
+    {
+        "low" => Effort.Low,
+        "high" => Effort.High,
+        "max" => Effort.Max,
+        _ => Effort.Medium,
+    };
+
+    private async Task<string> SkillAsync(CancellationToken ct)
+    {
+        if (_skill is null)
+        {
+            var path = Path.Combine(AppContext.BaseDirectory, "Ai", "phan-tich-goc-skill.md");
+            if (!File.Exists(path))
+            {
+                path = Path.Combine(env.ContentRootPath, "Ai", "phan-tich-goc-skill.md");
+            }
+
+            _skill = await File.ReadAllTextAsync(path, ct);
+        }
+
+        return _skill;
+    }
+
+    private static string? Str(JsonElement e, string name) =>
+        e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(v.GetString())
+            ? v.GetString()!.Trim() is var s && s.Length > 300 ? s[..300] : v.GetString()!.Trim()
+            : null;
+
+    private static decimal? Number(JsonElement e, string name)
+    {
+        if (!e.TryGetProperty(name, out var v))
+        {
+            return null;
+        }
+
+        return v.ValueKind switch
+        {
+            JsonValueKind.Number when v.TryGetDecimal(out var d) => d,
+            JsonValueKind.String when decimal.TryParse(v.GetString()?.Trim().TrimEnd('%', '\''), NumberStyles.Number, CultureInfo.InvariantCulture, out var d) => d,
+            _ => null,
+        };
+    }
+
+    private static int? Int(JsonElement e, string name) => Number(e, name) is { } d && d >= 0 && d <= 500 ? (int)Math.Round(d) : null;
+
+    private static decimal? Line(JsonElement e, string name) =>
+        Number(e, name) is { } x && x > 0 && x <= 40 && x * 4 == decimal.Truncate(x * 4) ? x : null;
+
+    private static decimal? Odds(JsonElement e, string name) => Number(e, name) is { } x && x > 1 && x < 50 ? Math.Round(x, 3) : null;
+}
