@@ -36,6 +36,9 @@ public class AnalysisPick
     /// <summary>Số hiệu cờ đỏ, vd "2,5".</summary>
     public string? Flags { get; set; }
 
+    /// <summary>Số trận làm mẫu (đội ít dữ liệu hơn). Dưới 5 trận: "ít dữ liệu", tối đa nhóm B.</summary>
+    public int? Sample { get; set; }
+
     public DateTime CreatedAtUtc { get; set; }
 
     public DateTime UpdatedAtUtc { get; set; }

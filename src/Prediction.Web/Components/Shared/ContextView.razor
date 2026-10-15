@@ -2,6 +2,8 @@
 @inject SyncCoordinator Sync
 @inject ApiFootballClient Api
 @inject TimeDisplay Time
+@inject TimeProvider Clock
+@inject Microsoft.Extensions.Options.IOptions<SyncOptions> SyncOpts
 @using Prediction.Web.ApiFootball
 @{
     var v = V;
@@ -11,16 +13,24 @@
 <SideInfoPanel FixtureId="f.Id" Info="v.SideInfo" OnChanged="OnChanged" />
 
 <div class="an-section">
-    <h2>Đối đầu @v.HeadToHead.Count lần gần nhất</h2>
-    @if (v.HeadToHead.Count == 0)
+    <h2>@(v.HeadToHead.Count == 0 ? "Đối đầu" : $"Đối đầu {v.HeadToHead.Count} lần gần nhất")</h2>
+    @if (v.HeadToHead.Count == 0 && v.HeadToHeadCheckedAtUtc is { } checkedAt)
     {
-        <div class="small text-muted mb-2">Chưa có dữ liệu đối đầu@(v.HeadToHeadCheckedAtUtc is { } c ? $" (đã hỏi API lúc {Time.Short(c)})" : "").</div>
+        <div class="small mb-2">
+            <strong>Hai đội chưa gặp nhau</strong> <span class="text-muted">(API không có trận đối đầu nào — hỏi lúc @Time.Short(checkedAt)).
+            Website tự hỏi lại sau @SyncOpts.Value.H2HRecheckDays ngày (từ @Time.ToLocal(RecheckAt(checkedAt)).ToString("dd/MM")).</span>
+        </div>
+    }
+    else if (v.HeadToHead.Count == 0)
+    {
+        <div class="small text-muted mb-2">Chưa có dữ liệu đối đầu.</div>
     }
     else
     {
         <HistoryTable Rows="v.HeadToHead" TeamId="f.HomeTeamId" TeamName="@v.Home" ShowLeague="true" EditId="_editId" OnEdit="StartEdit" />
     }
-    @if (Api.IsConfigured)
+    @* Đã hỏi mà API trả 0 trận: ẩn nút tới khi lần hỏi cũ hơn chu kỳ tự hỏi lại (bấm lại gần như chắc vẫn ra 0). *@
+    @if (Api.IsConfigured && !(v.HeadToHead.Count == 0 && v.HeadToHeadCheckedAtUtc is { } c && RecheckAt(c) > Clock.GetUtcNow().UtcDateTime))
     {
         <button class="btn btn-sm btn-outline-secondary mt-1" disabled="@_busy" @onclick="FetchHeadToHeadAsync">Tải lại đối đầu từ API (1 request)</button>
     }
@@ -161,6 +171,8 @@
         _editId = null;
         await OnChanged.InvokeAsync();
     }
+
+    private DateTime RecheckAt(DateTime checkedAtUtc) => checkedAtUtc.AddDays(SyncOpts.Value.H2HRecheckDays);
 
     private async Task FetchHeadToHeadAsync()
     {

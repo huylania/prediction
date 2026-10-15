@@ -109,9 +109,22 @@
         <div class="mc-analysis">
             @if (Match.Analysis is { } best)
             {
-                <a href="tran-dau/@f.Id?tab=phan-tich" title="Phân tích chuyên sâu"><AnalysisBadge Group="best.Group" Score="(double)best.Score" HasFlags="best.Flags is not null" /></a>
-                <span>Phân tích: <span class="pick">@best.Label</span> @@@LineText.Odds(best.Odds)</span>
-                <span class="text-muted">· thắng @Fmt.Pct(best.WinProbability) · EV @Fmt.Profit(best.ExpectedValue)</span>
+                var flags = RedFlagText.Parse(best.Flags);
+                <a href="tran-dau/@f.Id?tab=phan-tich" title="Phân tích chuyên sâu"><AnalysisBadge Group="best.Group" Score="(double)best.Score" Flags="flags" /></a>
+                @if (best.Sample is int sample && sample < MatchAnalyzer.MinSample)
+                {
+                    <span class="low-data" title="Một đội có dưới @MatchAnalyzer.MinSample trận trong dữ liệu: số liệu kém tin cậy, tối đa nhóm B">ít dữ liệu (@sample trận)</span>
+                }
+                @if (best.Group == AnalysisGroup.C)
+                {
+                    <span>Phân tích: <span class="pick">Đứng ngoài</span> — @(flags.Count > 0 ? RedFlagText.Describe(flags) : "điểm dưới 6")</span>
+                    <span class="mc-rejected">Kèo bị loại: @best.Label @@@LineText.Odds(best.Odds) (thắng @Fmt.Pct(best.WinProbability) theo mô hình)</span>
+                }
+                else
+                {
+                    <span>Phân tích: <span class="pick">@best.Label</span> @@@LineText.Odds(best.Odds)</span>
+                    <span class="text-muted">· thắng @Fmt.Pct(best.WinProbability) · EV @Fmt.Profit(best.ExpectedValue)</span>
+                }
             }
             @if (ExtraMarkets is { } extra)
             {

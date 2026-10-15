@@ -129,6 +129,31 @@ public static class AnalysisGroupText
     };
 }
 
+/// <summary>Tên ngắn của 5 cờ đỏ (file kỹ năng) để hiện trên thẻ trận.</summary>
+public static class RedFlagText
+{
+    public static string Short(int number) => number switch
+    {
+        1 => "Bẫy danh tiếng sân khách",
+        2 => "Kèo lạ / xung đột tín hiệu",
+        3 => "Trận bế tắc",
+        4 => "Động lực ảo / xoay tua",
+        5 => "Chờ ổn định (HLV mới / tân binh)",
+        _ => $"Cờ {number}",
+    };
+
+    /// <summary>"cờ đỏ 2: Kèo lạ / xung đột tín hiệu" (nhiều cờ: "cờ đỏ 2, 5: …; …").</summary>
+    public static string Describe(IEnumerable<int> numbers)
+    {
+        var list = numbers.Distinct().Order().ToList();
+        return list.Count == 0 ? "" : $"cờ đỏ {string.Join(", ", list)}: {string.Join("; ", list.Select(Short))}";
+    }
+
+    /// <summary>Đọc chuỗi số hiệu cờ đã lưu, vd "2,5".</summary>
+    public static List<int> Parse(string? flags) =>
+        string.IsNullOrWhiteSpace(flags) ? [] : flags.Split(',').Select(x => int.TryParse(x.Trim(), out var n) ? n : 0).Where(n => n > 0).ToList();
+}
+
 /// <summary>Tình trạng HLV mới / tân binh trụ cột của một đội tại thời điểm trận đấu.</summary>
 public sealed record RegimeStatus(TeamChangeKind Kind, string PersonName, DateTime StartDate, int MatchesUnder)
 {
@@ -329,6 +354,12 @@ public sealed class AnalysisPickResult
     public List<int> Flags { get; } = [];
 
     public string Label { get; init; } = "";
+
+    /// <summary>Số trận làm mẫu (đội ít dữ liệu hơn; kèo góc tính theo số trận có thống kê góc).</summary>
+    public int Sample { get; set; }
+
+    /// <summary>Mẫu dưới <see cref="MatchAnalyzer.MinSample"/> trận: tối đa nhóm B.</summary>
+    public bool LowSample => Sample < MatchAnalyzer.MinSample;
 }
 
 /// <summary>Kết quả phân tích trước trận theo cấu trúc mục 9 của file kỹ năng.</summary>

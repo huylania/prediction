@@ -159,10 +159,13 @@ Cách website tính (các ngưỡng lấy nguyên từ file kỹ năng):
 - **Phạt góc** (không xét dòng tiền): kỳ vọng tương tự bàn thắng, trộn số liệu chung với số liệu theo sân; Tài/Xỉu góc khi |Δ| ≥ 1.2 kèm phong cách; chấp góc khi chênh góc kiếm ≥ 2.0/trận và mức chấp nhà cái thấp hơn. Thẻ chỉ để tham khảo (tối đa nhóm B).
 - **Xác suất**: Poisson cho bàn, nhị thức âm cho góc/thẻ; tính thắng / thắng nửa / hoàn / thua nửa / thua cho đúng mức kèo thật và EV theo odds.
 - **Điểm** = 5 + phần xác suất + phần EV + đạt ngưỡng (+0.75) + DNA cùng/ngược hướng (±0.5–1.0) + đã qua giai đoạn ổn định (+0.5) + API cùng hướng (+0.25) + quy tắc của bạn cùng hướng (+0.5) + kèo dịch về cửa đó (+0.25) − mẫu ít trận.
+- **Ít dữ liệu**: một đội có dưới 5 trận trong CSDL → trừ 1 điểm, điểm tối đa 7.9 và **tối đa nhóm B**. Thẻ trận gắn nhãn "ít dữ liệu (n trận)".
+  - Hay gặp khi giải trong nước của đội chưa được theo dõi, nên website chỉ có vài trận cúp châu Á của đội đó.
+- **Cờ đỏ**: kèo dính cờ nào cũng vào nhóm C. Thẻ trận ghi "Đứng ngoài — cờ đỏ n: tên cờ"; kèo bị loại hiện mờ bên dưới, chỉ để tham khảo.
 
 Trang **DNA & nhân sự** cho sửa nhãn DNA của giải/đội (đã nhập sẵn theo file kỹ năng) và nhập tay HLV mới / tân binh trụ cột. HLV mới được lấy tự động từ API nhưng dữ liệu API có thể thiếu, nên hãy kiểm tra lại.
 
-**Cảnh báo In-play** hiện trên thẻ trận đang đá: bàn siêu sớm (≤ 15'), hạ nhịp săn Tài ở trận DNA Tài có mốc ≥ 3.25, kiểm chứng HLV/tân binh mới ở phút 20–25, bế tắc hiệp 1 (0-0, sút trúng đích ≤ 1), bàn muộn ở giải đuối sức cuối trận. Website không lấy kèo live (tiết kiệm request), nên cảnh báo ghi mốc kèo để bạn tự đối chiếu.
+**Cảnh báo In-play** hiện trên thẻ trận đang đá: bàn siêu sớm (≤ 15'), hạ nhịp săn Tài ở trận DNA Tài có mốc ≥ 3.25, kiểm chứng HLV/tân binh mới ở phút 20–25, bế tắc hiệp 1 (0-0, sút trúng đích ≤ 1), bàn muộn ở giải đuối sức cuối trận. Kèo chấp/tài xỉu live hiện ngay trên thẻ trận để đối chiếu (xem mục "Kèo live").
 
 ### Báo cáo AI (Claude)
 

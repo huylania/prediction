@@ -22,8 +22,12 @@
     else
     {
         <div class="pick">
-            <span>@best.Label <span class="text-muted fw-normal">@@@LineText.Odds(best.Odds)</span></span>
-            <AnalysisBadge Group="best.Group" Score="best.Score" HasFlags="best.Flags.Count > 0" />
+            <span>@(best.Group == AnalysisGroup.C ? "Đứng ngoài · bị loại: " : "")@best.Label <span class="text-muted fw-normal">@@@LineText.Odds(best.Odds)</span></span>
+            <AnalysisBadge Group="best.Group" Score="best.Score" Flags="best.Flags" />
+            @if (best.LowSample)
+            {
+                <span class="low-data" title="Một đội có dưới @MatchAnalyzer.MinSample trận trong dữ liệu: số liệu kém tin cậy, tối đa nhóm B">ít dữ liệu (@best.Sample trận)</span>
+            }
         </div>
         <div class="meta">Thắng @Pct(best.Probability.WinAny) · thua @Pct(best.Probability.LossAny) · EV @Signed(best.ExpectedValue)</div>
         <OddsAlertChips Alerts="R.OddsAlerts" />

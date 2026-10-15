@@ -266,6 +266,7 @@ public sealed class AnalysisService(IDbContextFactory<AppDbContext> dbFactory, T
                 row.ExpectedValue = Math.Round((decimal)pick.ExpectedValue, 4);
                 row.Label = pick.Label.Length > 200 ? pick.Label[..200] : pick.Label;
                 row.Flags = pick.Flags.Count == 0 ? null : string.Join(",", pick.Flags.Distinct());
+                row.Sample = pick.Sample;
                 row.UpdatedAtUtc = now;
                 row.Outcome = BetOutcome.Pending;
                 upserted++;

@@ -4,9 +4,9 @@
     {
         <span>@s.ToString("0.0")</span>
     }
-    @if (HasFlags)
+    @if (Flags is { Count: > 0 } flags)
     {
-        <span class="grp-flag" title="Dính cờ đỏ">cờ đỏ</span>
+        <span class="grp-flag" title="@RedFlagText.Describe(flags)">cờ đỏ @string.Join(",", flags.Distinct().Order())</span>
     }
 </span>
 
@@ -15,5 +15,6 @@
 
     [Parameter] public double? Score { get; set; }
 
-    [Parameter] public bool HasFlags { get; set; }
+    /// <summary>Số hiệu cờ đỏ đang dính (nếu có).</summary>
+    [Parameter] public IReadOnlyCollection<int>? Flags { get; set; }
 }

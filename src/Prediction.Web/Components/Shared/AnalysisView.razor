@@ -29,7 +29,7 @@
                     @foreach (var p in a.Picks)
                     {
                         <tr class="reco-row">
-                            <td><AnalysisBadge Group="p.Group" Score="p.Score" HasFlags="p.Flags.Count > 0" /></td>
+                            <td><AnalysisBadge Group="p.Group" Score="p.Score" Flags="p.Flags" /></td>
                             <td class="fw-semibold text-nowrap">@p.Label<div class="small text-muted fw-normal">@MarketName(p.Market)</div></td>
                             <td>@LineText.Odds(p.Odds)</td>
                             <td><ProbSplit P="p.Probability" /></td>

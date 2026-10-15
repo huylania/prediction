@@ -878,10 +878,12 @@ public static class MatchAnalyzer
         var sample = pick.Market is Market.CornersOverUnder or Market.CornersHandicap
             ? Math.Min(c.HomeForm.CornerMatches, c.AwayForm.CornerMatches)
             : Math.Min(c.HomeForm.Matches, c.AwayForm.Matches);
-        if (sample < MinSample)
+        pick.Sample = sample;
+        var lowSample = sample < MinSample;
+        if (lowSample)
         {
             score -= 1.0;
-            pick.Reasons.Add($"Mẫu dữ liệu ít ({sample} trận): giảm độ tin cậy (−1)");
+            pick.Reasons.Add($"Mẫu dữ liệu ít ({sample} trận): giảm độ tin cậy (−1), tối đa nhóm B");
         }
         else if (sample < 8)
         {
@@ -914,9 +916,9 @@ public static class MatchAnalyzer
         {
             score = Math.Min(score, 7.5);
         }
-        else if (!pick.MeetsRule)
+        else if (!pick.MeetsRule || lowSample)
         {
-            // Chưa đạt ngưỡng khuyến nghị của file kỹ năng: không vượt ngưỡng nhóm A dù giá đẹp.
+            // Chưa đạt ngưỡng khuyến nghị của file kỹ năng, hoặc mẫu quá ít: không vượt ngưỡng nhóm A dù giá đẹp.
             score = Math.Min(score, 7.9);
         }
 
@@ -931,7 +933,7 @@ public static class MatchAnalyzer
             pick.Group = AnalysisGroup.C;
             pick.Reasons.Add($"Dính cờ đỏ {string.Join(", ", pick.Flags.Distinct())}: loại trước trận");
         }
-        else if (score >= 8 && pick.MeetsRule && dna >= 0 && !capB)
+        else if (score >= 8 && pick.MeetsRule && dna >= 0 && !capB && !lowSample)
         {
             pick.Group = AnalysisGroup.A;
         }

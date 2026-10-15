@@ -57,7 +57,7 @@ else
                 Phân tích chuyên sâu
                 @if (_m.Analysis is { } best)
                 {
-                    <AnalysisBadge Group="best.Group" Score="(double)best.Score" HasFlags="best.Flags is not null" />
+                    <AnalysisBadge Group="best.Group" Score="(double)best.Score" Flags="RedFlagText.Parse(best.Flags)" />
                 }
             </a>
         </li>

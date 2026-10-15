@@ -148,6 +148,9 @@ namespace Prediction.Web.Data.Migrations
                         .HasPrecision(10, 4)
                         .HasColumnType("decimal(10,4)");
 
+                    b.Property<int?>("Sample")
+                        .HasColumnType("int");
+
                     b.Property<decimal>("Score")
                         .HasPrecision(4, 1)
                         .HasColumnType("decimal(4,1)");

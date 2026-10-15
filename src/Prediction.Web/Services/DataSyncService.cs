@@ -43,6 +43,9 @@ public sealed class SyncOptions
     public int PreKickoffMinutes { get; set; } = 5;
 
     public int H2HIntervalMinutes { get; set; } = 360;
+
+    /// <summary>Mỗi cặp đấu chỉ hỏi lại đối đầu sau số ngày này (kể cả khi API trả 0 trận).</summary>
+    public int H2HRecheckDays { get; set; } = 7;
     public int VenuesIntervalMinutes { get; set; } = 360;
     public int WeatherIntervalMinutes { get; set; } = 180;
 
@@ -600,7 +603,7 @@ public sealed class DataSyncService(
             .ToList();
         var keys = pairs.Select(p => p.Key).ToList();
         var fresh = await db.H2HChecks.AsNoTracking()
-            .Where(c => keys.Contains(c.PairKey) && c.CheckedAtUtc > now.AddDays(-7))
+            .Where(c => keys.Contains(c.PairKey) && c.CheckedAtUtc > now.AddDays(-options.Value.H2HRecheckDays))
             .Select(c => c.PairKey)
             .ToListAsync(ct);
         var todo = pairs.Where(p => !fresh.Contains(p.Key)).Take(100).ToList();

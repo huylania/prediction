@@ -396,6 +396,36 @@ public class MatchAnalyzerTests
         Assert.Contains(a.Picks.Single(p => p.Market == Market.OverUnder).Reasons, r => r.Contains("Mẫu dữ liệu ít"));
     }
 
+    [Fact]
+    public void Small_sample_is_capped_at_group_b()
+    {
+        // Cùng kịch bản đồng thuận mạnh như bài test nhóm A, nhưng mỗi đội chỉ có 2 trận trong dữ liệu.
+        var a = MatchAnalyzer.Analyze(Input(home: History(2, 3, 1), away: History(2, 2, 2), ou: 2.75m, ouOver: 1.95m, ouUnder: 1.85m,
+            league: DnaTag.OverGoals, homeTags: DnaTag.OverGoals));
+
+        Assert.All(a.Picks, p => Assert.NotEqual(AnalysisGroup.A, p.Group));
+        Assert.All(a.Picks, p => Assert.True(p.Score <= 7.9, $"{p.Label} {p.Score}"));
+        var over = a.Picks.Single(p => p.Market == Market.OverUnder);
+        Assert.Equal(2, over.Sample);
+        Assert.True(over.LowSample);
+        Assert.Contains(over.Reasons, r => r.Contains("tối đa nhóm B"));
+
+        // Đủ 10 trận thì vẫn lên A (bài test ở trên) và không bị gắn ít dữ liệu.
+        var full = MatchAnalyzer.Analyze(Input(home: History(10, 3, 1), away: History(10, 2, 2), ou: 2.75m, ouOver: 1.95m, ouUnder: 1.85m,
+            league: DnaTag.OverGoals, homeTags: DnaTag.OverGoals));
+        Assert.False(full.Picks.Single(p => p.Market == Market.OverUnder).LowSample);
+    }
+
+    [Fact]
+    public void Red_flag_names_for_cards()
+    {
+        Assert.Equal("Kèo lạ / xung đột tín hiệu", RedFlagText.Short(2));
+        Assert.All(Enumerable.Range(1, 5), n => Assert.DoesNotContain("Cờ", RedFlagText.Short(n)));
+        Assert.Equal([2, 5], RedFlagText.Parse("2,5"));
+        Assert.Empty(RedFlagText.Parse(null));
+        Assert.Equal("cờ đỏ 2, 5: Kèo lạ / xung đột tín hiệu; Chờ ổn định (HLV mới / tân binh)", RedFlagText.Describe([5, 2, 2]));
+    }
+
     // ------------------------------------------------------------ Phạt góc
 
     [Fact]
