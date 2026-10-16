@@ -49,6 +49,7 @@ builder.Services.AddSingleton<MatchContextService>();
 builder.Services.AddSingleton<SideInfoService>();
 builder.Services.AddSingleton<LiveCornerService>();
 builder.Services.AddSingleton<CornerAiService>();
+builder.Services.AddSingleton<DnaCheckService>();
 builder.Services.AddScoped<DataSyncService>();
 builder.Services.AddHostedService<SyncBackgroundService>();
 

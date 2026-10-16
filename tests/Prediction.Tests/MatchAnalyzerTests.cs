@@ -70,9 +70,11 @@ public class MatchAnalyzerTests
         decimal? cornersHandicap = null,
         string? round = "Regular Season - 8",
         IReadOnlyList<TeamChange>? homeChanges = null,
-        IReadOnlyList<FixtureInjury>? injuries = null) => new()
+        IReadOnlyList<FixtureInjury>? injuries = null,
+        string? leagueType = null) => new()
         {
             Fixture = Fixture(round),
+            LeagueType = leagueType,
             HomeName = "Nhà",
             AwayName = "Khách",
             LeagueName = "Bundesliga",
@@ -208,8 +210,10 @@ public class MatchAnalyzerTests
     {
         var a = MatchAnalyzer.Analyze(Input(ah: -1m, league: DnaTag.HomeFortress, homeTags: DnaTag.HomeFortress, awayTags: DnaTag.AwayFragile));
 
-        Assert.Equal(0.60 + 0.25 + 0.25, a.Handicap.HomeAdvantage, 6);
-        Assert.Equal(3, a.Handicap.HomeAdvantageNotes.Count);
+        // 0.60 + 0.25 + 0.25 nhưng tổng lợi thế sân theo DNA bị chặn ở 0.75 (khung của file kỹ năng).
+        Assert.Equal(MatchAnalyzer.MaxDnaHomeAdvantage, a.Handicap.HomeAdvantage, 6);
+        Assert.Equal(4, a.Handicap.HomeAdvantageNotes.Count);
+        Assert.Contains(a.Handicap.HomeAdvantageNotes, n => n.Contains("tối đa +0.75"));
     }
 
     [Fact]
@@ -600,6 +604,80 @@ public class MatchAnalyzerTests
     }
 
     [Fact]
+    public void Model_is_blended_with_market_and_capped_when_it_disagrees_on_thin_sample()
+    {
+        // 5 trận đầu mùa, hai đội nổ nhiều bàn → mô hình cho Tài 2.5 rất cao; nhà cái 1.85/1.95 chỉ ~51%.
+        var a = MatchAnalyzer.Analyze(Input(home: History(5, 3, 2), away: History(5, 3, 2), ou: 2.5m, ouOver: 1.85m, ouUnder: 1.95m));
+        var over = a.Picks.Single(p => p.Market == Market.OverUnder);
+        Assert.Equal(PickSide.Over, over.Side);
+        Assert.True(over.ModelProbability!.Share > 0.75);
+
+        var q = 1 / 1.85 / (1 / 1.85 + 1 / 1.95);
+        Assert.Equal(q, over.MarketShare!.Value, 6);
+        Assert.Equal(q + MatchAnalyzer.ModelWeight(5) * (over.ModelProbability.Share!.Value - q), over.Probability.Share!.Value, 6);
+        Assert.Equal(over.ModelProbability.Push, over.Probability.Push, 9);
+        Assert.Equal(1.0, over.Probability.Win + over.Probability.HalfWin + over.Probability.Push + over.Probability.HalfLoss + over.Probability.Loss, 9);
+        Assert.NotEqual(AnalysisGroup.A, over.Group);
+        Assert.Contains(over.Reasons, r => r.StartsWith("Giá nhà cái (đã bỏ lời)"));
+        Assert.Contains(over.Reasons, r => r.Contains("lệch giá nhà cái"));
+        Assert.Equal(0.45, MatchAnalyzer.ModelWeight(5), 9);
+        Assert.Equal(MatchAnalyzer.ModelWeightMax, MatchAnalyzer.ModelWeight(30), 9);
+    }
+
+    [Fact]
+    public void Unmoved_line_anomaly_only_blocks_the_favoured_side()
+    {
+        // Mô hình: nhà chấp 1/4; nhà cái: nhà chấp 1.25 nhưng kèo không dịch → chỉ nghi cửa Nhà, cửa Khách +1.25 và tài xỉu vẫn xét.
+        var a = MatchAnalyzer.Analyze(Input(home: History(10, 1, 1), away: History(10, 1, 1), ah: -1.25m, ou: 2.5m));
+        var flag = a.Flags.Single(f => f.Number == 2);
+        Assert.True(flag.Covers(Market.AsianHandicap, PickSide.Home));
+        Assert.False(flag.Covers(Market.AsianHandicap, PickSide.Away));
+        Assert.False(flag.Covers(Market.OverUnder, PickSide.Over));
+
+        var ah = a.Picks.Single(p => p.Market == Market.AsianHandicap);
+        Assert.Equal(PickSide.Away, ah.Side);
+        Assert.Empty(ah.Flags);
+        Assert.NotEqual(AnalysisGroup.A, ah.Group);
+        Assert.Contains(ah.Reasons, r => r.Contains("tối đa nhóm B"));
+
+        // Kèo đã nhảy 0.5 từ lúc mở mà không có lý do: vẫn loại cả kèo chấp lẫn tài xỉu như cũ, điểm hiển thị ≤ 5.9.
+        var moved = MatchAnalyzer.Analyze(Input(home: History(10, 1, 1), away: History(10, 1, 1), ah: -1.25m, ahOpen: -0.75m, ou: 2.5m));
+        Assert.Contains(moved.Flags, f => f.Number == 2 && f.Covers(Market.OverUnder, PickSide.Over));
+        Assert.All(moved.Picks.Where(p => p.Flags.Count > 0), p => Assert.True(p.Score <= 5.9));
+    }
+
+    [Fact]
+    public void Thin_sample_and_cup_matches_are_not_called_odd_lines()
+    {
+        var thin = MatchAnalyzer.Analyze(Input(home: History(3, 1, 1), away: History(3, 1, 1), ah: -1.25m));
+        Assert.DoesNotContain(thin.Flags, f => f.Number == 2);
+        Assert.Contains("chỉ dựa trên 3 trận", thin.Handicap.Summary);
+
+        var cup = MatchAnalyzer.Analyze(Input(home: History(10, 1, 1), away: History(10, 1, 1), ah: -1.25m, leagueType: "Cup"));
+        Assert.DoesNotContain(cup.Flags, f => f.Number == 2);
+        Assert.Contains("Trận cúp", cup.Handicap.Summary);
+        Assert.Contains(cup.Picks.Single(p => p.Market == Market.AsianHandicap).Reasons, r => r.StartsWith("Trận cúp"));
+    }
+
+    [Fact]
+    public void Long_gap_rest_days_are_unknown_and_missing_league_stats_are_marked()
+    {
+        Assert.Null(MatchAnalyzer.Analyze(Input(home: History(10, 1, 1, startDaysBefore: 30))).HomeRestDays);
+        Assert.Equal(7, MatchAnalyzer.Analyze(Input()).HomeRestDays!.Value, 6);
+
+        var input = Input(corners: 9.5m);
+        var a = MatchAnalyzer.Analyze(new AnalysisInput
+        {
+            Fixture = input.Fixture, HomeName = input.HomeName, AwayName = input.AwayName, TableSize = input.TableSize,
+            HomeHistory = input.HomeHistory, AwayHistory = input.AwayHistory, League = LeagueBaseline.Empty,
+            HomeChanges = [], Injuries = [], Corners = input.Corners,
+        });
+        Assert.Null(a.CornersRow.LeagueAverage);
+        Assert.Contains("chưa có số liệu của giải", a.CornersRow.LeagueDnaText);
+        Assert.Null(a.CardsRow.LeagueAverage);
+    }
+
+    [Fact]
     public void Red_flag_names_for_cards()
     {
         Assert.Equal("Kèo lạ / xung đột tín hiệu", RedFlagText.Short(2));
@@ -626,7 +704,9 @@ public class MatchAnalyzerTests
 
         var cornerPick = a.Picks.Single(p => p.Market == Market.CornersOverUnder);
         Assert.Equal(PickSide.Over, cornerPick.Side);
-        Assert.True(cornerPick.Probability.Win > 0.6);
+        Assert.True(cornerPick.ModelProbability!.Win > 0.6);
+        // Đã trộn với giá nhà cái 1.90/1.90 (50%): thấp hơn mô hình nhưng vẫn trên 50%.
+        Assert.InRange(cornerPick.Probability.Share!.Value, 0.5, cornerPick.ModelProbability.Share!.Value);
         Assert.Equal(PickSide.Home, a.Picks.Single(p => p.Market == Market.CornersHandicap).Side);
     }
 

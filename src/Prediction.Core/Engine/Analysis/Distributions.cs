@@ -20,6 +20,46 @@ public sealed record PickProbability(double Win, double HalfWin, double Push, do
         var o = (double)odds;
         return Win * (o - 1) + HalfWin * (o - 1) / 2 - HalfLoss / 2 - Loss;
     }
+
+    /// <summary>
+    /// Tỉ lệ "ăn" quy đổi (= 1 / odds hòa vốn): phần thắng / (phần thắng + phần thua), nửa tính nửa, hoàn tiền bỏ ra.
+    /// So trực tiếp được với xác suất nhà cái đã bỏ lời. null nếu không có cả thắng lẫn thua.
+    /// </summary>
+    public double? Share
+    {
+        get
+        {
+            var win = Win + HalfWin / 2;
+            var loss = Loss + HalfLoss / 2;
+            return win + loss <= 1e-9 ? null : win / (win + loss);
+        }
+    }
+
+    /// <summary>
+    /// Phân phối mới có tỉ lệ ăn quy đổi = <paramref name="share"/>: nhân phần thắng và phần thua với hai hệ số,
+    /// giữ nguyên xác suất hoàn tiền và tỉ lệ thắng nửa / thua nửa trong từng phía.
+    /// </summary>
+    public PickProbability WithShare(double share)
+    {
+        share = Math.Clamp(share, 0.01, 0.99);
+        var a = Win + HalfWin / 2;
+        var c = Loss + HalfLoss / 2;
+        if (a <= 1e-9 || c <= 1e-9)
+        {
+            return this;
+        }
+
+        var winMass = Win + HalfWin;
+        var lossMass = Loss + HalfLoss;
+        var ratio = a * (1 - share) / (share * c); // beta = alpha * ratio
+        var alpha = (winMass + lossMass) / (winMass + ratio * lossMass);
+        var beta = alpha * ratio;
+        return new PickProbability(Win * alpha, HalfWin * alpha, Push, HalfLoss * beta, Loss * beta);
+    }
+
+    /// <summary>Xác suất nhà cái cho một cửa sau khi bỏ phần lời (từ odds hai cửa).</summary>
+    public static double? NoVig(decimal odds, decimal otherOdds) =>
+        odds > 1 && otherOdds > 1 ? (double)(1 / odds / (1 / odds + 1 / otherOdds)) : null;
 }
 
 /// <summary>Phân phối rời rạc của số đếm (bàn, góc, thẻ) và cách chấm kèo trên phân phối đó.</summary>

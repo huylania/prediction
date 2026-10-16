@@ -2,6 +2,9 @@
 @rendermode InteractiveServer
 @inject IDbContextFactory<AppDbContext> DbFactory
 @inject TimeProvider Clock
+@inject DnaCheckService Checks
+@inject IJSRuntime JS
+@inject TimeDisplay Time
 
 <PageTitle>DNA & nhân sự</PageTitle>
 
@@ -16,6 +19,46 @@
     <div class="alert @(_ok ? "alert-success" : "alert-danger") alert-dismissible py-2">
         @_message
         <button type="button" class="btn-close" @onclick="() => _message = null"></button>
+    </div>
+}
+
+@if (_check is { } rep)
+{
+    var teamBad = rep.Teams.Values.Count(r => r.Contradicted != DnaTag.None);
+    var leagueBad = rep.Leagues.Values.Count(r => r.Contradicted != DnaTag.None);
+    <div class="an-section dna-verify">
+        <h2>Kiểm chứng DNA với số liệu thật</h2>
+        <div class="small mb-2">
+            So mỗi tích với <strong>@rep.MatchCount trận đã đá</strong> từ @Time.ToLocal(rep.FromUtc).ToString("dd/MM/yyyy") (dữ liệu API-Football website đã tải, không gọi API thêm).
+            Đội: <span class="dna-chk ok">✓ @rep.Teams.Values.Sum(r => r.Count(DnaCheckStatus.Match))</span>
+            <span class="dna-chk bad">✗ @rep.Teams.Values.Sum(r => r.Count(DnaCheckStatus.Contradict))</span> tích ngược ở @teamBad đội ·
+            Giải: <span class="dna-chk ok">✓ @rep.Leagues.Values.Sum(r => r.Count(DnaCheckStatus.Match))</span>
+            <span class="dna-chk bad">✗ @rep.Leagues.Values.Sum(r => r.Count(DnaCheckStatus.Contradict))</span> tích ngược ở @leagueBad giải.
+        </div>
+        <div class="d-flex flex-wrap gap-2 align-items-center">
+            @if (teamBad + leagueBad > 0)
+            {
+                @if (_confirmRemove)
+                {
+                    <span class="small text-danger">Gỡ tích ngược của @teamBad đội và @leagueBad giải? Tích khác và ghi chú giữ nguyên.</span>
+                    <button class="btn btn-sm btn-danger" @onclick="RemoveContradictedAsync">Gỡ ngay</button>
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="() => _confirmRemove = false">Thôi</button>
+                }
+                else
+                {
+                    <button class="btn btn-sm btn-outline-danger" @onclick="() => _confirmRemove = true">Gỡ các tích ngược số liệu (@teamBad đội, @leagueBad giải)</button>
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="DownloadSqlAsync">Tải script SQL gỡ tích ngược</button>
+                }
+            }
+            <button class="btn btn-sm btn-link" @onclick="RecheckAsync">Tính lại</button>
+        </div>
+        <div class="hint mt-1">
+            ✓ khớp · ✗ ngược số liệu · ~ lưng chừng · ? chưa đủ trận (đội cần ≥ 10 trận, giải ≥ 40) · — cần dữ liệu kèo, không kiểm được.
+            Ngưỡng (đội): Nổ Tài ≥ 55% trận Tài 2.5 (ngược &lt; 45%), Mạnh nhà thắng sân nhà ≥ 55% (ngược &lt; 40%), Yếu khách thua sân khách ≥ 50% (ngược &lt; 30%),
+            Cày góc / Xả góc ≥ 5.5 góc kiếm / chịu (ngược &lt; 4.5), BTTS ≥ 55% (ngược &lt; 40%), Phủ đầu H1 ≥ 72% trận có bàn H1 (ngược &lt; 60%),
+            Bùng nổ H2 ≥ 1.6 bàn H2 (ngược &lt; 1.2), Rát thẻ ≥ 2.4 thẻ/trận (ngược &lt; 1.8), Thực dụng Tài 2.5 ≤ 45% (ngược &gt; 60%).
+            Ô tích ngược tô đỏ trong bảng.
+        </div>
     </div>
 }
 
@@ -129,10 +172,14 @@ else if (_tab == 1)
                                     <div class="dna-analysis">@l.Profile.Analysis</div>
                                 }
                             }
+                            @if (_check?.Leagues.GetValueOrDefault(l.LeagueId) is { } lc)
+                            {
+                                @CheckLine(lc, $"L{l.LeagueId}", false)
+                            }
                         </td>
                         @foreach (var t in DnaTagText.LeagueTags)
                         {
-                            <td class="text-center"><input type="checkbox" class="form-check-input" checked="@l.Tags.HasFlag(t)" @onchange="e => l.Tags = Toggle(l.Tags, t, (bool)e.Value!)" /></td>
+                            <td class="text-center @(BadTag(_check?.Leagues.GetValueOrDefault(l.LeagueId), t) ? "dna-bad" : "")"><input type="checkbox" class="form-check-input" checked="@l.Tags.HasFlag(t)" @onchange="e => l.Tags = Toggle(l.Tags, t, (bool)e.Value!)" /></td>
                         }
                         <td><input class="form-control form-control-sm" @bind="l.Notes" /></td>
                         <td><button class="btn btn-sm btn-outline-primary" @onclick="() => SaveLeagueAsync(l)">Lưu</button></td>
@@ -161,6 +208,10 @@ else
                         <option value="@o.LeagueId">@o.Name (@o.Count)</option>
                     }
                     <option value="@NoProfile">Chưa có hồ sơ 1 năm (@_teams.Count(t => t.SourceLeagueName is null))</option>
+                    @if (_check is { } cr)
+                    {
+                        <option value="@Contradicted">Có tích ngược số liệu (@cr.Teams.Values.Count(r => r.Contradicted != DnaTag.None))</option>
+                    }
                 </select>
                 <div class="hint">Đội thuộc mọi giải có trong file DNA (quốc nội + cúp châu lục) và giải đã đá trong 1 năm qua trên website.</div>
             </div>
@@ -210,10 +261,14 @@ else
                                     </ul>
                                 }
                             }
+                            @if (_check?.Teams.GetValueOrDefault(d.TeamId) is { } tc)
+                            {
+                                @CheckLine(tc, $"T{d.TeamId}", true)
+                            }
                         </td>
                         @foreach (var t in DnaTagText.TeamTags)
                         {
-                            <td class="text-center"><input type="checkbox" class="form-check-input" checked="@d.Tags.HasFlag(t)" @onchange="e => d.Tags = Toggle(d.Tags, t, (bool)e.Value!)" /></td>
+                            <td class="text-center @(BadTag(_check?.Teams.GetValueOrDefault(d.TeamId), t) ? "dna-bad" : "")"><input type="checkbox" class="form-check-input" checked="@d.Tags.HasFlag(t)" @onchange="e => d.Tags = Toggle(d.Tags, t, (bool)e.Value!)" /></td>
                         }
                         <td><input class="form-control form-control-sm" @bind="d.Notes" /></td>
                         <td class="text-nowrap">
@@ -251,6 +306,72 @@ else
     private readonly HashSet<int> _expanded = [];
     private readonly HashSet<int> _expandedLeagues = [];
     private const string NoProfile = "__none__";
+    private const string Contradicted = "__bad__";
+    private DnaCheckReport? _check;
+    private bool _confirmRemove;
+    private readonly HashSet<string> _openChecks = [];
+
+    private static bool BadTag(DnaCheckResult? r, DnaTag tag) => r is not null && r.Contradicted.HasFlag(tag);
+
+    private RenderFragment CheckLine(DnaCheckResult r, string key, bool team) => __builder =>
+    {
+        var s = r.Stats;
+        <div class="dna-check-line">
+            @if (r.Checks.Count > 0)
+            {
+                <span class="dna-chk ok" title="Tích khớp số liệu">✓ @r.Count(DnaCheckStatus.Match)</span>
+                @if (r.Count(DnaCheckStatus.Contradict) > 0) { <span class="dna-chk bad" title="Tích ngược số liệu">✗ @r.Count(DnaCheckStatus.Contradict)</span> }
+                @if (r.Count(DnaCheckStatus.Borderline) > 0) { <span class="dna-chk mid" title="Lưng chừng">~ @r.Count(DnaCheckStatus.Borderline)</span> }
+                @if (r.Count(DnaCheckStatus.NoData) > 0) { <span class="dna-chk na" title="Chưa đủ trận để kiểm">? @r.Count(DnaCheckStatus.NoData)</span> }
+                @if (r.Count(DnaCheckStatus.Untestable) > 0) { <span class="dna-chk na" title="Cần dữ liệu kèo">— @r.Count(DnaCheckStatus.Untestable)</span> }
+            }
+            <span class="text-muted">API 1 năm: @s.Matches trận@(s.Matches == 0 ? "" : $" · Tài 2.5 {Pct(s.Over25)} · {(team ? $"BTTS {Pct(s.Btts)} · thắng nhà {Pct(s.HomeWin)} · thua khách {Pct(s.AwayLoss)} · góc {Avg(s.CornersFor)}/{Avg(s.CornersAgainst)}" : $"hòa {Pct(s.Draw)} · chủ nhà thắng {Pct(s.HomeWin)} · {Avg(s.CornersTotal)} góc · {Avg(s.CardsTotal)} thẻ")} · bàn H1 {Pct(s.FirstHalfGoal)}")</span>
+            @if (r.Checks.Count > 0)
+            {
+                <button class="btn btn-link btn-sm p-0 small ms-1" @onclick="() => { if (!_openChecks.Add(key)) _openChecks.Remove(key); }">@(_openChecks.Contains(key) ? "Ẩn" : "Chi tiết")</button>
+            }
+        </div>
+        @if (_openChecks.Contains(key))
+        {
+            <ul class="dna-analysis">
+                @foreach (var c in r.Checks.OrderByDescending(c => c.Status == DnaCheckStatus.Contradict))
+                {
+                    <li class="@(c.Status == DnaCheckStatus.Contradict ? "text-danger" : "")">@c.Text</li>
+                }
+            </ul>
+        }
+    };
+
+    private static string Pct(DnaMetric m) => m.Value is { } v ? $"{v:0}%" : "—";
+
+    private static string Avg(DnaMetric m) => m.Value is { } v ? v.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) : "—";
+
+    private async Task RecheckAsync()
+    {
+        _check = await Checks.ReportAsync(refresh: true);
+        Show(true, "Đã tính lại kiểm chứng DNA.");
+    }
+
+    private async Task RemoveContradictedAsync()
+    {
+        _confirmRemove = false;
+        if (_check is null)
+        {
+            return;
+        }
+
+        var (teams, leagues) = await Checks.RemoveContradictedAsync(_check);
+        await LoadAsync();
+        Show(true, $"Đã gỡ tích ngược số liệu ở {teams} đội và {leagues} giải.");
+    }
+
+    private async Task DownloadSqlAsync()
+    {
+        if (_check is not null)
+        {
+            await JS.InvokeVoidAsync("downloadText", $"dna_go_tich_nguoc_{Time.ToLocal(_check.ComputedAtUtc):yyyyMMdd}.sql", DnaCheckService.SqlScript(_check));
+        }
+    }
     private const int PageSize = 150;
 
     /// <summary>Đội → các giải (từ file DNA và từ lịch thi đấu 1 năm qua).</summary>
@@ -263,8 +384,8 @@ else
     private List<TeamDna> VisibleTeams => _teams
         .Where(d => string.IsNullOrWhiteSpace(_filter) || d.TeamName.Contains(_filter.Trim(), StringComparison.OrdinalIgnoreCase))
         .Where(d => _leagueFilter == ""
-            || (_leagueFilter == NoProfile
-                ? d.SourceLeagueName is null
+            || (_leagueFilter == NoProfile ? d.SourceLeagueName is null
+                : _leagueFilter == Contradicted ? _check?.Teams.GetValueOrDefault(d.TeamId)?.Contradicted is { } bad && bad != DnaTag.None
                 : int.TryParse(_leagueFilter, out var id) && _teamLeagues.TryGetValue(d.TeamId, out var set) && set.Contains(id)))
         .ToList();
 
@@ -321,6 +442,7 @@ else
             .OrderByDescending(l => l.Tracked).ThenBy(l => l.LeagueName)
             .ToList();
         _teams = await db.TeamDnas.AsNoTracking().OrderBy(d => d.TeamName).ToListAsync();
+        _check = await Checks.ReportAsync();
 
         // Bộ lọc giải: mọi giải của đội trong file DNA + giải đội đã đá trên website trong 1 năm qua (đội thêm tay, đội lên/xuống hạng).
         var fileLeagues = await db.TeamDnaLeagues.AsNoTracking().ToListAsync();

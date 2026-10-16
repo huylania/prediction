@@ -52,7 +52,7 @@ public static class ApiMapper
         target.Elapsed = FixtureStatus.IsLive(target.Status) ? item.Fixture.Status.Elapsed : null;
         if (item.Fixture.Venue is { Id: { } venueId } venue)
         {
-            target.VenueId = venueId;
+            target.VenueId = venueId > 0 ? venueId : null; // API trả id 0 khi chưa biết sân → coi như không có
             target.VenueName = Truncate(venue.Name, 200);
         }
 

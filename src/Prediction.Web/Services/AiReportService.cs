@@ -29,7 +29,7 @@ public sealed class AiReportOptions
     /// <summary>Cho phép Claude tra cứu web (tân binh, HLV, đội hình, chấn thương mới nhất).</summary>
     public bool WebSearch { get; set; } = true;
 
-    public int WebSearchMaxUses { get; set; } = 5;
+    public int WebSearchMaxUses { get; set; } = 12;
 
     /// <summary>Để trống = API Anthropic chính thức (chỉ đổi khi đi qua proxy hoặc kiểm thử).</summary>
     public string? BaseUrl { get; set; }
@@ -42,7 +42,7 @@ public sealed class AiReportOptions
 
     public string SideInfoEffort { get; set; } = "medium";
 
-    public int SideInfoWebSearchMaxUses { get; set; } = 4;
+    public int SideInfoWebSearchMaxUses { get; set; } = 8;
 
     /// <summary>Tự điền thông tin bên lề cho các trận nhóm A/B trong 24 giờ tới.</summary>
     public bool SideInfoAuto { get; set; } = true;
@@ -93,6 +93,13 @@ public sealed class AiReportService(
         Trả lời bằng tiếng Việt, định dạng Markdown (tiêu đề ##, bảng, gạch đầu dòng), đúng CẤU TRÚC KẾT QUẢ ĐẦU RA ở mục 9,
         đi thẳng vào kết luận, không nhắc lại toàn bộ JSON. Khi dùng thông tin tra cứu web, ghi rõ nguồn.
         Nếu thiếu dữ liệu (vd chưa có kèo góc, chưa có đội hình), nói rõ là thiếu thay vì đoán.
+
+        Xác suất trong khuyến nghị của website đã TRỘN với giá nhà cái (đã bỏ lời), tin mô hình 30–60% tùy số trận mẫu;
+        "ly_do" ghi cả số của mô hình thuần lẫn số đã trộn.
+        Nếu JSON có "dang_da" thì trận ĐANG ĐÁ (hoặc đã xong): kèo trước trận đã đóng. Khi đó dùng thống kê live
+        (sút, góc, xG, thẻ, kiểm soát bóng) và kèo live trong "dang_da" để viết kịch bản In-play cụ thể; phần trước trận chỉ tóm tắt ngắn.
+
+        Tra cứu web: gộp truy vấn (vd "Đội A vs Đội B đội hình chấn thương") để tiết kiệm lượt, ưu tiên đội hình/chấn thương/HLV.
         """;
 
     private string? _skill;
@@ -133,6 +140,7 @@ public sealed class AiReportService(
         }
 
         var result = await analyses.ForFixtureAsync(fixtureId, ct) ?? throw new InvalidOperationException("Không tìm thấy trận.");
+        var live = await LiveDataAsync(result.Fixture, ct);
         var context = await contexts.ForFixtureAsync(fixtureId, ct);
         var o = options.Value;
         var client = string.IsNullOrWhiteSpace(o.BaseUrl)
@@ -158,12 +166,13 @@ public sealed class AiReportService(
                 new() { Text = AppInstructions, CacheControl = new BetaCacheControlEphemeral { Ttl = Ttl.Ttl1h } },
             },
             Tools = tools,
-            Messages = [new() { Role = Role.User, Content = UserMessage(result, context) }],
+            Messages = [new() { Role = Role.User, Content = UserMessage(result, context, live) }],
         };
 
         var text = new StringBuilder();
         string? stopReason = null;
         long input = 0, output = 0, cacheRead = 0, cacheWrite = 0, searches = 0;
+        var searchErrors = new List<string>();
         var model = o.Model;
         var watch = System.Diagnostics.Stopwatch.StartNew();
         var subject = $"{result.Home} – {result.Away}";
@@ -207,6 +216,13 @@ public sealed class AiReportService(
                     {
                         await onUpdate(new AiReportUpdate(null, "Đang tra cứu web…"));
                     }
+                    else if (blockStart.ContentBlock.TryPickBetaWebSearchToolResult(out var searchResult) && searchResult.Content.TryPickError(out var searchError))
+                    {
+                        // Ghi lại lỗi tra cứu (vd max_uses_exceeded) để biết vì sao báo cáo thiếu tin đội hình/chấn thương.
+                        var code = searchError.ErrorCode.Raw();
+                        searchErrors.Add(code);
+                        await onUpdate(new AiReportUpdate(null, $"Tra cứu web lỗi: {code}"));
+                    }
                     else if (blockStart.ContentBlock.TryPickBetaText(out _) && text.Length > 0 && text[^1] != '\n')
                     {
                         // Khối văn bản mới (sau một lượt tra cứu): xuống dòng để không dính chữ.
@@ -244,6 +260,11 @@ public sealed class AiReportService(
         }
 
         var markdown = text.ToString().Trim();
+        if (SearchErrorText(searchErrors) is { } searchNote)
+        {
+            markdown += $"\n\n> {searchNote}. Báo cáo có thể thiếu tin đội hình / chấn thương; tăng Anthropic:WebSearchMaxUses nếu lỗi là max_uses_exceeded.";
+        }
+
         if (stopReason == "refusal")
         {
             markdown += "\n\n> Claude đã từ chối hoàn thành yêu cầu này (stop_reason = refusal). Hãy thử lại sau.";
@@ -265,12 +286,22 @@ public sealed class AiReportService(
             await db.SaveChangesAsync(CancellationToken.None);
         }
 
-        await usage.LogAsync(Log(stopReason is not ("refusal" or "max_tokens"), stopReason is "refusal" or "max_tokens" or "pause_turn" ? $"stop_reason = {stopReason}" : null));
+        var logError = string.Join("; ", new[]
+        {
+            stopReason is "refusal" or "max_tokens" or "pause_turn" ? $"stop_reason = {stopReason}" : null,
+            SearchErrorText(searchErrors),
+        }.Where(e => e is not null));
+        await usage.LogAsync(Log(stopReason is not ("refusal" or "max_tokens"), logError == "" ? null : logError));
 
         logger.LogInformation("Báo cáo AI trận {Fixture}: {Input}+{CacheRead} cache đọc +{CacheWrite} cache ghi vào, {Output} ra, {Searches} lượt web, ~${Cost}",
             fixtureId, input, cacheRead, cacheWrite, output, searches, report.CostUsd);
         return report;
     }
+
+    /// <summary>"Tra cứu web lỗi: max_uses_exceeded ×3" (null nếu không có lỗi).</summary>
+    public static string? SearchErrorText(IReadOnlyCollection<string> errors) => errors.Count == 0
+        ? null
+        : "Tra cứu web lỗi: " + string.Join(", ", errors.GroupBy(e => e).Select(g => g.Count() > 1 ? $"{g.Key} ×{g.Count()}" : g.Key));
 
     /// <summary>Lưu bản dở dang; lỗi ghi CSDL chỉ ghi log để không che lỗi gốc.</summary>
     private async Task SavePartialAsync(AiReport report)
@@ -320,12 +351,64 @@ public sealed class AiReportService(
         Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
     };
 
-    private string UserMessage(MatchAnalysisResult r, MatchContextView? context)
+    /// <summary>Số liệu live gửi kèm khi bấm báo cáo lúc trận đang đá / đã xong: tỉ số, phút, thống kê, kèo live mới nhất.</summary>
+    private async Task<object?> LiveDataAsync(Fixture f, CancellationToken ct)
     {
-        var data = new { PhanTich = BuildData(r), BoiCanh = context is null ? null : BuildContext(context) };
+        if (!f.IsLive && !f.IsFinished)
+        {
+            return null;
+        }
+
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        var st = await db.FixtureStats.AsNoTracking().FirstOrDefaultAsync(s => s.FixtureId == f.Id, ct);
+        var odds = (await db.LiveOddsSnapshots.AsNoTracking().Where(o => o.FixtureId == f.Id).ToListAsync(ct))
+            .GroupBy(o => (o.Market, o.FirstHalf))
+            .Select(g => g.OrderByDescending(o => o.FetchedAtUtc).First())
+            .Select(o => new
+            {
+                Keo = o.Market == Prediction.Core.Entities.Market.AsianHandicap ? "chap" : "tai_xiu",
+                HiepMot = o.FirstHalf ? true : (bool?)null,
+                Phut = o.Minute,
+                TiSoLucBao = $"{o.HomeGoals}-{o.AwayGoals}",
+                MucApi = o.Line,
+                MucTuTiSoHienTai = o.Market == Prediction.Core.Entities.Market.AsianHandicap ? o.FromScoreLine : (decimal?)null,
+                OddsA = o.PriceA,
+                OddsB = o.PriceB,
+            })
+            .ToList();
+        return new
+        {
+            TrangThai = f.Status,
+            Phut = f.Elapsed,
+            TiSo = $"{f.HomeGoals}-{f.AwayGoals}",
+            ThongKe = st is null ? null : new
+            {
+                Sut = $"{st.HomeShots}-{st.AwayShots}",
+                TrungDich = $"{st.HomeShotsOnTarget}-{st.AwayShotsOnTarget}",
+                Goc = $"{st.HomeCorners}-{st.AwayCorners}",
+                GocHiep1 = st.FirstHalfHomeCorners is null ? null : $"{st.FirstHalfHomeCorners}-{st.FirstHalfAwayCorners}",
+                Xg = st.HomeXg is null ? null : $"{st.HomeXg}-{st.AwayXg}",
+                KiemSoatBong = st.HomePossession is null ? null : $"{st.HomePossession}%-{st.AwayPossession}%",
+                TheVang = $"{st.HomeYellow}-{st.AwayYellow}",
+                TheDo = $"{st.HomeRed ?? 0}-{st.AwayRed ?? 0}",
+                BanThang = st.GoalTimeline,
+                CapNhatUtc = st.UpdatedAtUtc.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture),
+            },
+            KeoLive = odds.Count == 0 ? null : odds,
+            GhiChu = "Kèo chấp live của API tính theo tỉ số cả trận; muc_tu_ti_so_hien_tai là mức quy về từ tỉ số lúc báo (kiểu châu Á).",
+        };
+    }
+
+    private string UserMessage(MatchAnalysisResult r, MatchContextView? context, object? live)
+    {
+        var data = new { PhanTich = BuildData(r), BoiCanh = context is null ? null : BuildContext(context), DangDa = live };
+        var liveNote = live is null ? "" : r.Fixture.IsFinished
+            ? "\nLƯU Ý: trận đã kết thúc — hãy đối chiếu khuyến nghị với kết quả và rút kinh nghiệm cho mô hình, không cần kịch bản In-play.\n"
+            : $"\nLƯU Ý: trận ĐANG ĐÁ ({r.Fixture.Status}, phút {r.Fixture.Elapsed}, tỉ số {r.Fixture.HomeGoals}-{r.Fixture.AwayGoals}). Kèo trước trận đã đóng: tóm tắt ngắn phần trước trận rồi tập trung vào kịch bản In-play theo số liệu \"dang_da\".\n";
         return $"""
             Hãy phân tích trận {r.Home} – {r.Away} ({r.League?.Name}, {time.Full(r.Fixture.KickoffUtc)} giờ Việt Nam) theo đúng quy trình
             và CẤU TRÚC KẾT QUẢ ĐẦU RA (mục 9) trong hướng dẫn.
+            {liveNote}
 
             Yêu cầu:
             1. Dùng số liệu JSON bên dưới làm nguồn định lượng chính.

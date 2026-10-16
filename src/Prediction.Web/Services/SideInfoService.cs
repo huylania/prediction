@@ -195,7 +195,12 @@ public sealed class SideInfoService(
             InputTokens = (int)tokens.InputTokens, OutputTokens = (int)tokens.OutputTokens,
             CacheReadTokens = (int)(tokens.CacheReadInputTokens ?? 0), CacheWriteTokens = (int)(tokens.CacheCreationInputTokens ?? 0),
             WebSearches = (int)searches, CostUsd = cost, DurationMs = (int)watch.ElapsedMilliseconds,
-            Ok = parsed is not null, Error = parsed is null ? $"AI không trả về JSON hợp lệ (stop_reason = {stop})" : null,
+            Ok = parsed is not null,
+            Error = parsed is null
+                ? $"AI không trả về JSON hợp lệ (stop_reason = {stop})"
+                : AiReportService.SearchErrorText(response.Content
+                    .Select(b => b.TryPickWebSearchToolResult(out var r) && r.Content.TryPickError(out var e) ? e.ErrorCode.Raw() : null)
+                    .OfType<string>().ToList()),
         };
         await usage.LogAsync(log);
         if (parsed is null)

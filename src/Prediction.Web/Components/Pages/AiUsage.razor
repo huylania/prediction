@@ -189,7 +189,7 @@ else
             var o = AiOptions.Value;
             return
             [
-                new(AiFeature.Report, "Bấm \"Viết báo cáo AI\" / \"Phân tích lại\" ở tab Phân tích chuyên sâu của trận", $"{o.Model} + tra web ≤ {o.WebSearchMaxUses}", "$0.2–0.6"),
+                new(AiFeature.Report, "Bấm \"Viết báo cáo AI\" / \"Phân tích lại\" ở tab Phân tích chuyên sâu của trận", $"{o.Model} + tra web ≤ {o.WebSearchMaxUses}", "$0.4–1.0"),
                 new(AiFeature.SideInfoAuto, $"Tự động 30 phút/lần cho trận nhóm A/B trong 24 giờ tới ({(_auto ? $"đang bật, tối đa ${Money(_budget)}/ngày" : "đang tắt")})", $"{o.SideInfoModel} + tra web ≤ {o.SideInfoWebSearchMaxUses}", "$0.05–0.20"),
                 new(AiFeature.SideInfoManual, "Bấm \"AI điền thông tin bên lề\" / \"Điền lại\" ở tab Lịch sử & bên lề", $"{o.SideInfoModel} + tra web ≤ {o.SideInfoWebSearchMaxUses}", "$0.05–0.20"),
                 new(AiFeature.CornerVision, "Bấm \"Claude đọc ảnh\" ở trang Góc Live", o.CornerModel, "$0.01–0.03"),

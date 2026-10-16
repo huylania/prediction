@@ -163,6 +163,16 @@ Cách website tính (các ngưỡng lấy nguyên từ file kỹ năng):
 - **Ít dữ liệu**: một đội có dưới 5 trận trong CSDL → trừ 1 điểm, điểm tối đa 7.9 và **tối đa nhóm B**. Thẻ trận gắn nhãn "ít dữ liệu (n trận)".
   - Hay gặp khi giải trong nước của đội chưa được theo dõi, nên website chỉ có vài trận cúp châu Á của đội đó.
 - **Cờ đỏ**: kèo dính cờ nào cũng vào nhóm C. Thẻ trận ghi "Đứng ngoài — cờ đỏ n: tên cờ"; kèo bị loại hiện mờ bên dưới, chỉ để tham khảo.
+- **Trộn giá nhà cái**: xác suất của mô hình được trộn với xác suất nhà cái (đã bỏ phần lời, tính từ odds hai cửa). Tin mô hình 30% + 3%/trận mẫu, tối đa 60% (đủ 10 trận). EV, điểm và nhóm tính trên xác suất đã trộn; lý do ghi cả hai số.
+  - Mô hình lệch giá nhà cái từ 20 điểm % trở lên mà mẫu dưới 10 trận → tối đa nhóm B ("dễ là mô hình sai").
+  - EV âm sau khi trộn → không vào (≤ 5.9 điểm).
+- **Cờ đỏ 2 (kèo lạ)**:
+  - Kèo chỉ lệch dự phóng mà **không dịch** từ lúc mở → chỉ chặn cửa nhà cái đang nâng; cửa còn lại và tài xỉu vẫn xét nhưng kèo chấp tối đa nhóm B.
+  - Kèo đã nhảy ≥ 0.5 mà không có lý do → loại cả kèo chấp lẫn tài xỉu như trước.
+  - Không bật cờ khi một đội có dưới 5 trận mẫu, hoặc ở trận cúp (phong độ đến từ các giải khác đẳng cấp) mà kèo không dịch.
+  - Tổng lợi thế sân nhà theo DNA (giải thánh địa + đội mạnh nhà + đối thủ yếu khách) tối đa +0.75; sân cao ≥ 2.000 m cộng thêm.
+  - Kèo bị loại hiện điểm ≤ 5.9 (ghi "điểm trước cờ đỏ") để không còn cảnh "9.9 điểm mà nhóm C".
+- Không cộng điểm "dự đoán API cùng hướng" khi API chọn đội được chấp từ 1 trái trở lên thắng. Số ngày nghỉ quá 21 ngày coi như không rõ (thường do thiếu trận giải quốc nội). Giải chưa có số liệu góc/thẻ ghi rõ "chưa có số liệu" thay vì hiện số mặc định.
 
 Trang **DNA & nhân sự** cho sửa nhãn DNA của giải/đội (đã nhập sẵn theo file kỹ năng) và nhập tay HLV mới / tân binh trụ cột. HLV mới được lấy tự động từ API nhưng dữ liệu API có thể thiếu, nên hãy kiểm tra lại.
 
@@ -188,6 +198,12 @@ Trang **DNA & nhân sự** cho sửa nhãn DNA của giải/đội (đã nhập 
   - Bắt nạt đội yếu: đội đó chấp từ 1 trái và xếp trên → ±0.5.
   - Đá rát thẻ: Tài thẻ ±0.5.
   - Đánh phủ đầu / Bùng nổ H2: thêm gợi ý In-play.
+
+**Kiểm chứng DNA** (đầu trang DNA): so từng tích với các trận đã đá trong 1 năm qua mà website đã lấy từ API-Football (không gọi API thêm).
+- ✓ khớp, ✗ ngược số liệu (ô tô đỏ), ~ lưng chừng, ? chưa đủ trận (đội ≥ 10, giải ≥ 40), — cần dữ liệu kèo (Cửa dưới hay ăn, Tín kèo trên / Bắt nạt đội yếu).
+- Ngưỡng ghi ngay trên trang (vd đội "Nổ Tài": khớp khi ≥ 55% trận Tài 2.5, ngược khi < 45%).
+- Lọc "Có tích ngược số liệu" ở tab Đội bóng; "Chi tiết" ghi số liệu từng tích.
+- Nút **Gỡ các tích ngược số liệu** (bấm 2 lần để xác nhận) hoặc **Tải script SQL** để chạy tay; chỉ bỏ đúng tích bị bác, giữ tích khác và ghi chú.
 
 **DNA giải đấu 46 giải (số liệu 1 năm)** — `scripts/dna/`:
 - **11 đặc điểm giải** (tab Giải đấu ở trang DNA): Tài bàn, Xỉu bàn, Thánh địa sân nhà, Tài góc, Xỉu góc, Bàn muộn, Cửa dưới hay ăn (đồng đều), Phân hóa lớn / tín kèo trên, Vua hòa / thắng sát nút, Nổ sớm H1, Mưa thẻ.
@@ -236,6 +252,10 @@ Chi phí là ước tính theo bảng giá (Opus $4/$20, Sonnet $2/$10 mỗi tri
 - **Tác vụ tự động** chỉ có "thông tin bên lề" là tự gọi Claude. Bật/tắt và đổi giới hạn/ngày (theo giờ Việt Nam) ngay trên trang Chi phí AI, ghi đè `Anthropic:SideInfoAuto` / `SideInfoDailyBudgetUsd`.
 - Giới hạn ngày giờ tính theo log, gồm cả lần lỗi.
 - Trận gọi lỗi (Claude không trả JSON, dừng giữa chừng…) chờ 12 giờ mới thử lại. Trước đây trận lỗi bị gọi lại mỗi 30 phút mà không tính vào giới hạn.
+
+**Báo cáo AI khi trận đang đá / đã xong:** website gửi kèm số liệu live (tỉ số, phút, sút, góc, xG, thẻ, kiểm soát bóng, kèo live mới nhất) và nhắc Claude tập trung vào kịch bản In-play (trận đã xong thì đối chiếu kết quả). Trang hiện cảnh báo trước khi bấm.
+- Tra cứu web: báo cáo tối đa 12 lượt (`WebSearchMaxUses`), bên lề 8 lượt (`SideInfoWebSearchMaxUses`). Công cụ tra web bản mới có thể chạy nhiều truy vấn trong một lần nên giới hạn 5 cũ hay bị dùng hết ngay lần đầu.
+- Lỗi tra cứu (vd `max_uses_exceeded`) được ghi ở cuối báo cáo và cột Lỗi của trang Chi phí AI.
 
 **Nội dung Claude viết đều được lưu trong CSDL** (để xem lại, không phải trả tiền lần nữa):
 

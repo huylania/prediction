@@ -662,7 +662,7 @@ public sealed class DataSyncService(
     {
         var now = Now;
         var venueIds = await db.Fixtures.AsNoTracking()
-            .Where(f => f.VenueId != null && f.KickoffUtc > now.AddHours(-3) && f.KickoffUtc <= now.AddDays(3) && f.League!.IsTracked)
+            .Where(f => f.VenueId > 0 && f.KickoffUtc > now.AddHours(-3) && f.KickoffUtc <= now.AddDays(3) && f.League!.IsTracked)
             .Select(f => f.VenueId!.Value)
             .Distinct()
             .ToListAsync(ct);

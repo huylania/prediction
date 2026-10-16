@@ -35,6 +35,21 @@ public static class MatchAnalyzer
     /// <summary>Tỉ trọng xG trong số bàn kỳ vọng khi đội có ≥ <see cref="MinSample"/> trận có xG (phần còn lại là bàn thắng thật).</summary>
     public const double XgWeight = 0.5;
 
+    /// <summary>
+    /// Trộn xác suất mô hình với giá nhà cái (đã bỏ lời): tin mô hình 30% + 3%/trận mẫu, tối đa 60% (đủ 10 trận).
+    /// Mẫu ít thì kéo mạnh về giá thị trường — tránh "thắng 75%" từ 5 trận đầu mùa.
+    /// </summary>
+    public const double ModelWeightMin = 0.30;
+    public const double ModelWeightPerMatch = 0.03;
+    public const double ModelWeightMax = 0.60;
+
+    /// <summary>Mô hình lệch giá nhà cái từ chừng này trở lên mà mẫu dưới <see cref="ReliableSample"/> trận: tối đa nhóm B.</summary>
+    public const double MarketDivergenceCap = 0.20;
+    public const int ReliableSample = 10;
+
+    /// <summary>Tổng lợi thế sân nhà theo DNA (giải + đội) tối đa, theo khung +0.50 → +0.75 của file kỹ năng.</summary>
+    public const double MaxDnaHomeAdvantage = 0.75;
+
     public const double CornerDispersion = 1.4;
     public const double CardDispersion = 1.6;
 
@@ -210,6 +225,13 @@ public static class MatchAnalyzer
             notes.Add($"{input.AwayName} yếu sân khách +{Num(TeamVenueAdjustment)}");
         }
 
+        if (ha > MaxDnaHomeAdvantage)
+        {
+            // Giải thánh địa + đội mạnh nhà + đối thủ yếu khách là các mặt của cùng một lợi thế: không cộng dồn quá khung.
+            ha = MaxDnaHomeAdvantage;
+            notes.Add($"tổng lợi thế sân theo DNA tối đa +{Num(MaxDnaHomeAdvantage)}");
+        }
+
         if (input.VenueElevationM >= HighAltitudeM)
         {
             ha += TeamVenueAdjustment;
@@ -223,7 +245,26 @@ public static class MatchAnalyzer
 
         var delta = hMarket - hExp;
         var move = hMarket - hOpen;
-        var anomaly = delta is { } d && Math.Abs(d) >= AnomalyDelta || move is { } m && Math.Abs(m) >= AnomalyMove;
+        var deltaAnomaly = delta is { } d && Math.Abs(d) >= AnomalyDelta;
+        var moveAnomaly = move is { } m && Math.Abs(m) >= AnomalyMove;
+
+        // Lệch dự phóng mà nhà cái không dịch kèo: chỉ coi là "kèo lạ" khi dự phóng đáng tin.
+        string? unreliable = null;
+        if (deltaAnomaly && !moveAnomaly)
+        {
+            var minMatches = Math.Min(c.HomeForm.Matches, c.AwayForm.Matches);
+            if (minMatches < MinSample)
+            {
+                unreliable = $"Dự phóng chỉ dựa trên {minMatches} trận: lệch {Signed(delta!.Value)} với nhà cái nhiều khả năng do mô hình thiếu dữ liệu, không phải kèo lạ";
+            }
+            else if (string.Equals(input.LeagueType, "Cup", StringComparison.OrdinalIgnoreCase))
+            {
+                unreliable = $"Trận cúp: phong độ hai đội đến từ các giải khác đẳng cấp nên dự phóng kém tin cậy; nhà cái không dịch kèo (lệch {Signed(delta!.Value)}) → không coi là kèo lạ";
+            }
+        }
+
+        c.HandicapUnreliable = unreliable;
+        var anomaly = deltaAnomaly && unreliable is null || moveAnomaly;
 
         var scenario = HandicapScenario.None;
         if (hMarket is { } line && input.HomeStanding?.Rank is { } rh && input.AwayStanding?.Rank is { } ra && Math.Min(input.HomeStanding.Played, input.AwayStanding!.Played) >= 3)
@@ -279,9 +320,11 @@ public static class MatchAnalyzer
         }
         else
         {
-            summary = delta is { } dd && Math.Abs(dd) <= 0.25m
-                ? "Kèo nhà cái sát với dự phóng (|Δ_H| ≤ 0.25): đánh giá theo chuyên môn, DNA và chiến thuật."
-                : $"Kèo nhà cái lệch {Signed(delta!.Value)} so với dự phóng: có giá trị nhẹ cho {(delta > 0 ? input.HomeName : input.AwayName)}.";
+            summary = unreliable is not null
+                ? $"{unreliable}. Kèo chấp chỉ tham khảo (tối đa nhóm B)."
+                : delta is { } dd && Math.Abs(dd) <= 0.25m
+                    ? "Kèo nhà cái sát với dự phóng (|Δ_H| ≤ 0.25): đánh giá theo chuyên môn, DNA và chiến thuật."
+                    : $"Kèo nhà cái lệch {Signed(delta!.Value)} so với dự phóng: có giá trị nhẹ cho {(delta > 0 ? input.HomeName : input.AwayName)}.";
         }
 
         return new HandicapModel
@@ -423,8 +466,9 @@ public static class MatchAnalyzer
         return new LayerRow
         {
             Name = "Phạt góc",
-            LeagueAverage = leagueAvg,
-            LeagueDnaText = Hint(DnaText(c.LeagueTags, DnaTag.OverCorners, DnaTag.UnderCorners), c.Input.League.CornersFromProfile ? ProfileText : null),
+            LeagueAverage = input.League.CornersKnown ? leagueAvg : null,
+            LeagueDnaText = Hint(DnaText(c.LeagueTags, DnaTag.OverCorners, DnaTag.UnderCorners), c.Input.League.CornersFromProfile ? ProfileText : null,
+                c.Input.League.CornersKnown ? null : NoLeagueStatsText),
             HomeText = c.HomeForm.CornersFor is { } hw
                 ? $"Kiếm {Num(hw)} / Bị {Num(c.HomeForm.CornersAgainst ?? 0)} (sân nhà: {Num(c.HomeForm.VenueCornersFor)}/{Num(c.HomeForm.VenueCornersAgainst)}, Tài 9.5: {Pct(c.HomeForm.Over95CornersRate ?? 0)})"
                 : "—",
@@ -520,11 +564,12 @@ public static class MatchAnalyzer
         return new LayerRow
         {
             Name = "Thẻ phạt",
-            LeagueAverage = leagueAvg,
+            LeagueAverage = input.League.CardsKnown ? leagueAvg : null,
             LeagueDnaText = Hint(
                 c.LeagueTags.HasFlag(DnaTag.HeavyCards) ? DnaTagText.Label(DnaTag.HeavyCards, false)
                     : c.LeagueTags.HasFlag(DnaTag.UnderGoals) ? "Giải thực dụng: thiên hướng Tài thẻ" : null,
-                input.League.CardsFromProfile ? ProfileText : null),
+                input.League.CardsFromProfile ? ProfileText : null,
+                input.League.CardsKnown ? null : NoLeagueStatsText),
             HomeText = c.HomeForm.CardsFor is { } hc ? $"Nhận {Num(hc)} / Đối thủ {Num(c.HomeForm.CardsAgainst ?? 0)}" : "—",
             AwayText = c.AwayForm.CardsFor is { } ac ? $"Nhận {Num(ac)} / Đối thủ {Num(c.AwayForm.CardsAgainst ?? 0)}" : "—",
             Expected = expCards,
@@ -612,11 +657,22 @@ public static class MatchAnalyzer
 
         // Cờ 2: xung đột thị trường – dữ liệu.
         var conflicts = new List<string>();
-        if (h.Verdict == HandicapVerdict.SuspectedTrap && h.IsAnomaly)
+        var lineMoved = h.LineMove is { } lm && Math.Abs(lm) >= AnomalyMove;
+        if (h.Verdict == HandicapVerdict.SuspectedTrap && h.IsAnomaly && (lineMoved || h.Scenario == HandicapScenario.ShallowLineForBetterHome))
         {
             conflicts.Add(h.Scenario == HandicapScenario.ShallowLineForBetterHome
                 ? "kèo thơm ảo cho đội xếp trên, không có lý do lực lượng"
                 : $"kèo chấp lệch {Signed(h.Delta ?? 0)} so với dự phóng mà không có lý do chấn thương/đội hình");
+        }
+        else if (h.Verdict == HandicapVerdict.SuspectedTrap && h.IsAnomaly && h.Delta is { } dl && dl != 0)
+        {
+            // Lệch dự phóng nhưng nhà cái không dịch kèo: chỉ nghi cửa nhà cái đang nâng; cửa còn lại và tài xỉu vẫn xét (tối đa B).
+            var trap = dl < 0 ? PickSide.Home : PickSide.Away;
+            var trapName = trap == PickSide.Home ? input.HomeName : input.AwayName;
+            flags.Add(new RedFlag(2, "Kèo lạ — nghi cửa được nâng",
+                $"Nhà cái {Sentence(h.HMarket!.Value, input)} lệch {Signed(dl)} so với dự phóng {Sentence(h.HExp, input)} mà kèo không dịch, không thấy lý do lực lượng → không chọn {trapName} trước trận.",
+                [(Market.AsianHandicap, trap)]));
+            c.HandicapUnreliable ??= $"Kèo lạ chưa rõ nguyên nhân (lệch {Signed(dl)})";
         }
         else if (h.Verdict == HandicapVerdict.SuspectedTrap && h.HMarket is { } trapLine)
         {
@@ -789,6 +845,7 @@ public static class MatchAnalyzer
             Line = isHome ? line : -line,
             Odds = isHome ? market.Current.PriceA : market.Current.PriceB,
             Probability = isHome ? home : away,
+            MarketShare = isHome ? PickProbability.NoVig(market.Current.PriceA, market.Current.PriceB) : PickProbability.NoVig(market.Current.PriceB, market.Current.PriceA),
             MeetsRule = !trustMarket && Math.Abs(delta) >= 0.25m,
             Label = $"{(isHome ? c.Input.HomeName : c.Input.AwayName)} {Signed(isHome ? line : -line)}",
         };
@@ -820,6 +877,7 @@ public static class MatchAnalyzer
             Line = line,
             Odds = isOver ? movement.Current.PriceA : movement.Current.PriceB,
             Probability = isOver ? over : under,
+            MarketShare = isOver ? PickProbability.NoVig(movement.Current.PriceA, movement.Current.PriceB) : PickProbability.NoVig(movement.Current.PriceB, movement.Current.PriceA),
             MeetsRule = row.Lean == side,
             Label = $"{(isOver ? "Tài" : "Xỉu")} {Num((double)line)} {unit}",
         };
@@ -851,6 +909,7 @@ public static class MatchAnalyzer
             Line = isHome ? line : -line,
             Odds = isHome ? movement.Current.PriceA : movement.Current.PriceB,
             Probability = isHome ? home : away,
+            MarketShare = isHome ? PickProbability.NoVig(movement.Current.PriceA, movement.Current.PriceB) : PickProbability.NoVig(movement.Current.PriceB, movement.Current.PriceA),
             MeetsRule = row.Lean == side,
             Label = $"{(isHome ? c.Input.HomeName : c.Input.AwayName)} {Signed(isHome ? line : -line)} góc",
         };
@@ -863,10 +922,30 @@ public static class MatchAnalyzer
 
     private static void Grade(AnalysisPickResult pick, Ctx c, IReadOnlyList<RedFlag> flags)
     {
+        var sample = pick.Market is Market.CornersOverUnder or Market.CornersHandicap
+            ? Math.Min(c.HomeForm.CornerMatches, c.AwayForm.CornerMatches)
+            : Math.Min(c.HomeForm.Matches, c.AwayForm.Matches);
+        pick.Sample = sample;
+        var lowSample = sample < MinSample;
+
+        var model = pick.Probability;
+        pick.ModelProbability = model;
+        pick.Reasons.Insert(0, $"Mô hình: thắng {Pct(model.Win)}{(model.HalfWin > 0.005 ? $" + nửa {Pct(model.HalfWin)}" : "")}, hoàn {Pct(model.Push)}, thua {Pct(model.Loss)}{(model.HalfLoss > 0.005 ? $" + nửa {Pct(model.HalfLoss)}" : "")} · EV {Signed(model.ExpectedValue(pick.Odds))}/1 đơn vị @{LineText.Odds(pick.Odds)}");
+
+        // Trộn với giá nhà cái: mô hình chỉ thấy vài chục trận, thị trường thấy cả lực lượng, tin tức, dòng tiền.
+        double? divergence = null;
+        if (pick.MarketShare is { } q && model.Share is { } share)
+        {
+            var w = ModelWeight(sample);
+            var blended = q + w * (share - q);
+            pick.Probability = model.WithShare(blended);
+            divergence = share - q;
+            pick.Reasons.Insert(1, $"Giá nhà cái (đã bỏ lời) cho cửa này {Pct(q)}, mô hình {Pct(share)} → dùng {Pct(blended)} (tin mô hình {Pct(w)} vì mẫu {sample} trận) · EV {Signed(pick.ExpectedValue)}");
+        }
+
         var p = pick.Probability;
         var ev = pick.ExpectedValue;
         var score = 5.0 + Math.Clamp(6 * p.Net, -2.5, 2.5) + Math.Clamp(8 * ev, -1.5, 1.5);
-        pick.Reasons.Insert(0, $"Mô hình: thắng {Pct(p.Win)}{(p.HalfWin > 0.005 ? $" + nửa {Pct(p.HalfWin)}" : "")}, hoàn {Pct(p.Push)}, thua {Pct(p.Loss)}{(p.HalfLoss > 0.005 ? $" + nửa {Pct(p.HalfLoss)}" : "")} · EV {Signed(ev)}/1 đơn vị @{LineText.Odds(pick.Odds)}");
 
         if (pick.MeetsRule)
         {
@@ -894,8 +973,15 @@ public static class MatchAnalyzer
         {
             if (ApiAgrees(pick, c))
             {
-                score += 0.25;
-                pick.Reasons.Add("Dự đoán API cùng hướng (+0.25)");
+                if (pick.Market == Market.AsianHandicap && pick.Line >= 1m)
+                {
+                    pick.Reasons.Add("Dự đoán API chọn đội được chấp từ 1 trái trở lên thắng — trái hẳn kèo nhà cái, không cộng điểm");
+                }
+                else
+                {
+                    score += 0.25;
+                    pick.Reasons.Add("Dự đoán API cùng hướng (+0.25)");
+                }
             }
 
             if (c.Input.RuleSides.Contains(pick.Side))
@@ -912,11 +998,6 @@ public static class MatchAnalyzer
             }
         }
 
-        var sample = pick.Market is Market.CornersOverUnder or Market.CornersHandicap
-            ? Math.Min(c.HomeForm.CornerMatches, c.AwayForm.CornerMatches)
-            : Math.Min(c.HomeForm.Matches, c.AwayForm.Matches);
-        pick.Sample = sample;
-        var lowSample = sample < MinSample;
         if (lowSample)
         {
             score -= 1.0;
@@ -948,6 +1029,18 @@ public static class MatchAnalyzer
             score = Math.Max(score, 6.0);
         }
 
+        if (divergence is { } dv && Math.Abs(dv) >= MarketDivergenceCap && sample < ReliableSample)
+        {
+            capB = true;
+            pick.Reasons.Add($"Mô hình lệch giá nhà cái {Pct(Math.Abs(dv))} mà mẫu chỉ {sample} trận: dễ là mô hình sai hơn là nhà cái sai → tối đa nhóm B");
+        }
+
+        if (pick.Market == Market.AsianHandicap && c.HandicapUnreliable is { } why)
+        {
+            capB = true;
+            pick.Reasons.Add($"{why} → kèo chấp tối đa nhóm B");
+        }
+
         score = Math.Round(Math.Clamp(score, 0, 10), 1);
         if (capB)
         {
@@ -959,6 +1052,12 @@ public static class MatchAnalyzer
             score = Math.Min(score, 7.9);
         }
 
+        if (ev < 0 && pick.MarketShare is not null && score >= 6)
+        {
+            score = 5.9;
+            pick.Reasons.Add($"Sau khi tính giá nhà cái, EV âm ({Signed(ev)}): không vào");
+        }
+
         pick.Score = score;
         foreach (var flag in flags.Where(f => f.Covers(pick.Market, pick.Side)))
         {
@@ -968,7 +1067,9 @@ public static class MatchAnalyzer
         if (pick.Flags.Count > 0)
         {
             pick.Group = AnalysisGroup.C;
-            pick.Reasons.Add($"Dính cờ đỏ {string.Join(", ", pick.Flags.Distinct())}: loại trước trận");
+            // Điểm hiển thị phải khớp với việc bị loại: không để "9.9 điểm mà nhóm C".
+            pick.Score = Math.Min(score, 5.9);
+            pick.Reasons.Add($"Dính cờ đỏ {string.Join(", ", pick.Flags.Distinct())}: loại trước trận{(score > 5.9 ? $" (điểm trước cờ đỏ {score:0.0})" : "")}");
         }
         else if (score >= 8 && pick.MeetsRule && dna >= 0 && !capB && !lowSample)
         {
@@ -1170,12 +1271,20 @@ public static class MatchAnalyzer
 
     // ---------------------------------------------------------------- Tiện ích
 
+    /// <summary>Số ngày nghỉ từ trận trước; quá <see cref="MaxRestDays"/> ngày thường là CSDL thiếu trận (giải chưa theo dõi) nên coi như không rõ.</summary>
     private static double? RestDays(IReadOnlyList<TeamMatch> history, DateTime kickoff) =>
-        history.FirstOrDefault(m => m.KickoffUtc < kickoff) is { } last ? (kickoff - last.KickoffUtc).TotalDays : null;
+        history.FirstOrDefault(m => m.KickoffUtc < kickoff) is { } last && (kickoff - last.KickoffUtc).TotalDays is var days && days <= MaxRestDays ? days : null;
+
+    public const int MaxRestDays = 21;
 
     private const string ProfileText = "TB giải theo hồ sơ 1 năm (CSDL chưa đủ 20 trận)";
 
+    private const string NoLeagueStatsText = "chưa có số liệu của giải (API không có thống kê hoặc chưa tải): tạm dùng số mặc định";
+
     private static string Hint(params string?[] parts) => string.Join(" · ", parts.Where(p => !string.IsNullOrEmpty(p)));
+
+    /// <summary>Tỉ trọng tin mô hình khi trộn với giá nhà cái, theo số trận mẫu.</summary>
+    public static double ModelWeight(int sample) => Math.Clamp(ModelWeightMin + ModelWeightPerMatch * sample, ModelWeightMin, ModelWeightMax);
 
     private static double Shrink(double value, int n, double prior) =>
         n >= MinSample ? value : (value * n + prior * (MinSample - n)) / MinSample;
@@ -1241,5 +1350,8 @@ public static class MatchAnalyzer
         public double ExpGoalsForTrust => Input.Totals is { } t ? (double)t.Current.Line : Input.League.Goals;
 
         public bool TrustMarketHandicap { get; set; }
+
+        /// <summary>Lý do dự phóng kèo chấp kém tin cậy (mẫu ít, trận cúp, kèo lạ chưa rõ): kèo chấp tối đa nhóm B.</summary>
+        public string? HandicapUnreliable { get; set; }
     }
 }

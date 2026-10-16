@@ -47,6 +47,11 @@ public sealed record LeagueBaseline(int Matches, double? AvgGoals, int StatMatch
 
     public bool CardsFromProfile => !(StatMatches >= 20 && AvgCards.HasValue) && ProfileCards.HasValue;
 
+    /// <summary>Có số liệu góc / thẻ thật của giải (CSDL ≥ 20 trận có thống kê hoặc hồ sơ 1 năm); không thì đang dùng số mặc định.</summary>
+    public bool CornersKnown => StatMatches >= 20 && AvgCorners.HasValue || ProfileCorners.HasValue;
+
+    public bool CardsKnown => StatMatches >= 20 && AvgCards.HasValue || ProfileCards.HasValue;
+
     public double Goals => Matches >= 20 && AvgGoals is { } g ? g : ProfileGoals ?? DefaultGoals;
 
     public double Corners => StatMatches >= 20 && AvgCorners is { } c ? c : ProfileCorners ?? DefaultCorners;
@@ -351,7 +356,14 @@ public sealed class AnalysisPickResult
 
     public required decimal Odds { get; init; }
 
-    public required PickProbability Probability { get; init; }
+    /// <summary>Xác suất dùng để chấm: mô hình đã trộn với giá nhà cái (xem <see cref="ModelProbability"/>).</summary>
+    public required PickProbability Probability { get; set; }
+
+    /// <summary>Xác suất thuần của mô hình (Poisson / nhị thức âm), trước khi trộn giá nhà cái.</summary>
+    public PickProbability? ModelProbability { get; set; }
+
+    /// <summary>Xác suất nhà cái cho cửa này sau khi bỏ phần lời (null nếu không có odds hai cửa).</summary>
+    public double? MarketShare { get; init; }
 
     public double ExpectedValue => Probability.ExpectedValue(Odds);
 

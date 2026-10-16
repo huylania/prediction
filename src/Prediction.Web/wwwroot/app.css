@@ -291,3 +291,12 @@ h1:focus {
 .dna-profile { font-size: .72rem; color: #475569; }
 .dna-summary { font-size: .72rem; color: #94a3b8; }
 .dna-analysis { font-size: .72rem; color: #475569; margin: .2rem 0 0; padding-left: 1rem; }
+
+/* Kiểm chứng DNA */
+.dna-check-line { font-size: .72rem; margin-top: .15rem; }
+.dna-chk { display: inline-block; padding: 0 .35rem; border-radius: .6rem; font-weight: 600; margin-right: .2rem; background: #eef2f7; color: #475569; }
+.dna-chk.ok { background: #dcfce7; color: #166534; }
+.dna-chk.bad { background: #fee2e2; color: #b91c1c; }
+.dna-chk.mid { background: #fef9c3; color: #854d0e; }
+.dna-chk.na { background: #f1f5f9; color: #64748b; }
+td.dna-bad { background: #fee2e2; box-shadow: inset 0 0 0 2px #fca5a5; }
