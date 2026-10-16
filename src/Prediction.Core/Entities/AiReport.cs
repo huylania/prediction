@@ -26,4 +26,7 @@ public class AiReport
     public decimal CostUsd { get; set; }
 
     public DateTime CreatedAtUtc { get; set; }
+
+    /// <summary>false = bản dở dang (lỗi hoặc bấm Dừng giữa chừng); phần đã viết vẫn được lưu vì đã tính tiền.</summary>
+    public bool Complete { get; set; } = true;
 }

@@ -237,6 +237,17 @@ Chi phí là ước tính theo bảng giá (Opus $4/$20, Sonnet $2/$10 mỗi tri
 - Giới hạn ngày giờ tính theo log, gồm cả lần lỗi.
 - Trận gọi lỗi (Claude không trả JSON, dừng giữa chừng…) chờ 12 giờ mới thử lại. Trước đây trận lỗi bị gọi lại mỗi 30 phút mà không tính vào giới hạn.
 
+**Nội dung Claude viết đều được lưu trong CSDL** (để xem lại, không phải trả tiền lần nữa):
+
+| Tính năng | Bảng | Xem lại ở đâu |
+|---|---|---|
+| Báo cáo AI | `AiReports` (mỗi lần viết 1 dòng) | Tab Phân tích chuyên sâu → "Các bản đã viết (n)". Mặc định hiện bản hoàn chỉnh mới nhất. |
+| Thông tin bên lề | `MatchSideInfos` (bản hiện hành) + `MatchSideInfoVersions` (bản cũ) | Tab Lịch sử & bên lề → "Bản cũ (n)". "Điền lại" không còn xóa bản cũ. |
+| Góc Live — đọc ảnh / nhận định | `CornerAiNotes` | Trang Góc Live → "Lịch sử Claude ở Góc Live": tình hình trận lúc gọi, kết luận công thức, góc cuối để so lại, nội dung. Nhận định của trận đang đá hiện lại khi tải lại trang. Ảnh không lưu, chỉ lưu số liệu đọc ra. |
+
+- Bị lỗi hoặc bấm **Dừng** giữa chừng: phần Claude đã viết vẫn được lưu, đánh dấu **dở dang**, vì phần đó đã bị tính tiền.
+- Bảng `AiUsageLogs` chỉ ghi chi phí, không ghi nội dung.
+
 ## Mốc kèo, lịch sử kèo & thông tin bên lề
 
 Tab **Lịch sử & bên lề** ở trang chi tiết trận (và thẻ cảnh báo ⚠ trên thẻ trận):

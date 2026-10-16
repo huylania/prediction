@@ -61,6 +61,9 @@ namespace Prediction.Web.Data.Migrations
                     b.Property<int>("CacheWriteTokens")
                         .HasColumnType("int");
 
+                    b.Property<bool>("Complete")
+                        .HasColumnType("bit");
+
                     b.Property<decimal>("CostUsd")
                         .HasPrecision(10, 4)
                         .HasColumnType("decimal(10,4)");
@@ -362,6 +365,92 @@ namespace Prediction.Web.Data.Migrations
                     b.HasKey("FixtureId");
 
                     b.ToTable("ClosingLines");
+                });
+
+            modelBuilder.Entity("Prediction.Core.Entities.CornerAiNote", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<int>("AwayCorners")
+                        .HasColumnType("int");
+
+                    b.Property<int>("AwayGoals")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("Complete")
+                        .HasColumnType("bit");
+
+                    b.Property<decimal>("CostUsd")
+                        .HasPrecision(10, 4)
+                        .HasColumnType("decimal(10,4)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("DataJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<double?>("ExpectedTotal")
+                        .HasColumnType("float");
+
+                    b.Property<int?>("FixtureId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Headline")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<int>("HomeCorners")
+                        .HasColumnType("int");
+
+                    b.Property<int>("HomeGoals")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("int");
+
+                    b.Property<decimal?>("Line")
+                        .HasPrecision(6, 2)
+                        .HasColumnType("decimal(6,2)");
+
+                    b.Property<string>("Markdown")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Match")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int>("Minute")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Model")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<decimal?>("OverOdds")
+                        .HasPrecision(6, 2)
+                        .HasColumnType("decimal(6,2)");
+
+                    b.Property<decimal?>("UnderOdds")
+                        .HasPrecision(6, 2)
+                        .HasColumnType("decimal(6,2)");
+
+                    b.Property<int>("Window")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAtUtc");
+
+                    b.HasIndex("FixtureId", "Window", "CreatedAtUtc");
+
+                    b.ToTable("CornerAiNotes");
                 });
 
             modelBuilder.Entity("Prediction.Core.Entities.Fixture", b =>
@@ -1546,6 +1635,73 @@ namespace Prediction.Web.Data.Migrations
                     b.HasIndex("CreatedAtUtc");
 
                     b.ToTable("MatchSideInfos");
+                });
+
+            modelBuilder.Entity("Prediction.Core.Entities.MatchSideInfoVersion", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<int?>("AltitudeM")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("CostUsd")
+                        .HasPrecision(10, 4)
+                        .HasColumnType("decimal(10,4)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("FixtureId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsAuto")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Model")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Motivation")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("News")
+                        .HasMaxLength(3000)
+                        .HasColumnType("nvarchar(3000)");
+
+                    b.Property<DateTime>("ReplacedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Rivalry")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("Sources")
+                        .HasMaxLength(3000)
+                        .HasColumnType("nvarchar(3000)");
+
+                    b.Property<string>("Surface")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("VenueNotes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("Weather")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FixtureId", "ReplacedAtUtc");
+
+                    b.ToTable("MatchSideInfoVersions");
                 });
 
             modelBuilder.Entity("Prediction.Core.Entities.OddsCheckpoint", b =>
@@ -2745,6 +2901,17 @@ namespace Prediction.Web.Data.Migrations
                     b.HasOne("Prediction.Core.Entities.Fixture", "Fixture")
                         .WithOne()
                         .HasForeignKey("Prediction.Core.Entities.MatchSideInfo", "FixtureId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Fixture");
+                });
+
+            modelBuilder.Entity("Prediction.Core.Entities.MatchSideInfoVersion", b =>
+                {
+                    b.HasOne("Prediction.Core.Entities.Fixture", "Fixture")
+                        .WithMany()
+                        .HasForeignKey("FixtureId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 

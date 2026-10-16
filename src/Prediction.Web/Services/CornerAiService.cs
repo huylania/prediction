@@ -3,16 +3,21 @@ using System.Text;
 using System.Text.Json;
 using Anthropic;
 using Anthropic.Models.Beta.Messages;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Prediction.Core.Engine.Analysis;
 using Prediction.Core.Engine.LiveCorners;
 using Prediction.Core.Entities;
+using Prediction.Web.Data;
 
 namespace Prediction.Web.Services;
 
 /// <summary>Form "tính tay / từ ảnh AiScore" của mục Góc Live (sửa được trước khi tính).</summary>
 public sealed class LiveCornerForm
 {
+    /// <summary>Trận website đang theo dõi khi form được điền từ thẻ trận (null nếu nhập tay / đọc ảnh).</summary>
+    public int? FixtureId { get; set; }
+
     public string? Home { get; set; }
     public string? Away { get; set; }
     public CornerWindow Window { get; set; } = CornerWindow.FirstHalf;
@@ -67,6 +72,7 @@ public sealed class LiveCornerForm
     /// <summary>Điền form từ một trận website đang theo dõi (để sửa tay hoặc bổ sung tấn công nguy hiểm).</summary>
     public static LiveCornerForm From(LiveCornerMatch m) => new()
     {
+        FixtureId = m.Fixture.Id,
         Home = m.Home,
         Away = m.Away,
         Window = m.Input.Window,
@@ -101,7 +107,13 @@ public sealed record CornerAiCost(string Model, long InputTokens, long OutputTok
 /// AI của mục Góc Live — dùng RIÊNG file kỹ năng "phan-tich-goc" (không dùng chung với báo cáo phân tích chuyên sâu):
 /// đọc ảnh chụp AiScore thành số liệu cho form, và "Claude nhận định" từ số liệu + kết quả công thức của website.
 /// </summary>
-public sealed class CornerAiService(IOptions<AiReportOptions> options, IWebHostEnvironment env, AiUsageService usage, ILogger<CornerAiService> logger)
+public sealed class CornerAiService(
+    IOptions<AiReportOptions> options,
+    IWebHostEnvironment env,
+    AiUsageService usage,
+    IDbContextFactory<AppDbContext> dbFactory,
+    TimeProvider clock,
+    ILogger<CornerAiService> logger)
 {
     private const string VisionInstructions = """
         Bạn đọc ảnh chụp màn hình trận đang đá trên AiScore (hoặc ứng dụng tỉ số tương tự) cho mục "Góc Live" của website soi kèo cá nhân.
@@ -231,7 +243,88 @@ public sealed class CornerAiService(IOptions<AiReportOptions> options, IWebHostE
 
         var cost = new CornerAiCost(model, log.InputTokens + log.CacheReadTokens + log.CacheWriteTokens, log.OutputTokens, log.CostUsd);
         logger.LogInformation("Góc Live: đọc {Count} ảnh AiScore, {Input} token vào, {Output} ra, ~${Cost}", images.Count, cost.InputTokens, cost.OutputTokens, cost.CostUsd);
-        return (ParseForm(json.Value), cost);
+        var form = ParseForm(json.Value);
+        var formInput = form.ToInput();
+        var note = NoteFor(CornerAiKind.ReadImages, FormMatch(form), null, formInput, form.Minute > 0 ? LiveCornerAnalyzer.Analyze(formInput) : null);
+        note.DataJson = json.Value.GetRawText();
+        note.Markdown = form.Notes;
+        note.Model = model;
+        note.CostUsd = log.CostUsd;
+        await SaveNoteAsync(note);
+        return (form, cost);
+    }
+
+    /// <summary>Tên trận của form (đội đọc từ ảnh / nhập tay).</summary>
+    public static string FormMatch(LiveCornerForm form) =>
+        string.IsNullOrWhiteSpace(form.Home) && string.IsNullOrWhiteSpace(form.Away) ? "Trận nhập tay" : $"{form.Home ?? "?"} – {form.Away ?? "?"}";
+
+    /// <summary>Bản ghi một lần gọi Claude ở Góc Live, chụp lại tình hình trận và kết luận công thức lúc đó.</summary>
+    public static CornerAiNote NoteFor(CornerAiKind kind, string match, int? fixtureId, LiveCornerInput input, LiveCornerResult? result) => new()
+    {
+        Kind = kind,
+        FixtureId = fixtureId,
+        Match = match.Length > 200 ? match[..200] : match,
+        Window = input.Window,
+        Minute = input.Minute,
+        HomeCorners = input.HomeCorners,
+        AwayCorners = input.AwayCorners,
+        HomeGoals = input.HomeGoals,
+        AwayGoals = input.AwayGoals,
+        Line = input.Line,
+        OverOdds = input.OverOdds,
+        UnderOdds = input.UnderOdds,
+        ExpectedTotal = result is null ? null : Math.Round(result.ExpectedTotal, 2),
+        Headline = result?.Headline is { Length: > 300 } h ? h[..300] : result?.Headline,
+    };
+
+    /// <summary>Lưu lần gọi Claude ở Góc Live. Lỗi ghi CSDL chỉ ghi log, không làm hỏng tính năng.</summary>
+    private async Task SaveNoteAsync(CornerAiNote note)
+    {
+        try
+        {
+            note.CreatedAtUtc = clock.GetUtcNow().UtcDateTime;
+            await using var db = await dbFactory.CreateDbContextAsync(CancellationToken.None);
+            db.CornerAiNotes.Add(note);
+            await db.SaveChangesAsync(CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Không lưu được kết quả Claude ở Góc Live ({Match})", note.Match);
+        }
+    }
+
+    /// <summary>
+    /// Các lần gọi Claude ở Góc Live, mới nhất trước, kèm số góc cuối để so lại:
+    /// H1 = góc hết hiệp 1, H2 = tổng góc cả trận (chỉ khi trận đã kết thúc); null nếu chưa biết hoặc không gắn trận.
+    /// </summary>
+    public async Task<List<(CornerAiNote Note, int? FinalCorners)>> HistoryAsync(int take, CancellationToken ct = default)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        var notes = await db.CornerAiNotes.AsNoTracking().OrderByDescending(n => n.CreatedAtUtc).Take(take).ToListAsync(ct);
+        var ids = notes.Where(n => n.FixtureId is not null).Select(n => n.FixtureId!.Value).Distinct().ToList();
+        var stats = await db.FixtureStats.AsNoTracking().Include(s => s.Fixture).Where(s => ids.Contains(s.FixtureId)).ToDictionaryAsync(s => s.FixtureId, ct);
+        return notes.Select(n =>
+        {
+            int? final = null;
+            if (n.FixtureId is { } id && stats.TryGetValue(id, out var st))
+            {
+                final = n.Window == CornerWindow.FirstHalf
+                    ? st.FirstHalfHomeCorners + st.FirstHalfAwayCorners
+                    : st.Fixture?.IsFinished == true ? st.TotalCorners : null;
+            }
+
+            return (n, final);
+        }).ToList();
+    }
+
+    /// <summary>Nhận định mới nhất đã lưu của một trận ở một cửa sổ (H1/H2).</summary>
+    public async Task<CornerAiNote?> LatestCommentaryAsync(int fixtureId, CornerWindow window, CancellationToken ct = default)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        return await db.CornerAiNotes.AsNoTracking()
+            .Where(n => n.FixtureId == fixtureId && n.Window == window && n.Kind == CornerAiKind.Commentary)
+            .OrderByDescending(n => n.CreatedAtUtc)
+            .FirstOrDefaultAsync(ct);
     }
 
     /// <summary>Chuyển JSON Claude đọc từ ảnh thành form.</summary>
@@ -274,7 +367,7 @@ public sealed class CornerAiService(IOptions<AiReportOptions> options, IWebHostE
 
     /// <summary>"Claude nhận định": gửi số liệu + kết quả công thức, nhận phần trả lời theo mục 5 dạng streaming.</summary>
     public async Task<(string Markdown, CornerAiCost Cost)> CommentaryAsync(
-        string match, LiveCornerInput input, LiveCornerResult result, string? notes, Func<AiReportUpdate, Task> onUpdate, CancellationToken ct)
+        string match, int? fixtureId, LiveCornerInput input, LiveCornerResult result, string? notes, Func<AiReportUpdate, Task> onUpdate, CancellationToken ct)
     {
         if (!IsConfigured)
         {
@@ -297,6 +390,7 @@ public sealed class CornerAiService(IOptions<AiReportOptions> options, IWebHostE
             Messages = [new() { Role = Role.User, Content = UserMessage(match, input, result, notes) }],
         };
 
+
         var text = new StringBuilder();
         string? stopReason = null;
         long inTokens = 0, output = 0, cacheRead = 0, cacheWrite = 0;
@@ -309,6 +403,17 @@ public sealed class CornerAiService(IOptions<AiReportOptions> options, IWebHostE
             CostUsd = AiPricing.Cost(model, inTokens, output, cacheRead, cacheWrite, 0, cacheWrite1h: true),
             DurationMs = (int)watch.ElapsedMilliseconds, Ok = ok, Error = error,
         };
+
+        CornerAiNote Note(string markdown, bool complete, decimal cost)
+        {
+            var note = NoteFor(CornerAiKind.Commentary, match, fixtureId, input, result);
+            note.DataJson = DataJson(match, input, result, notes);
+            note.Markdown = markdown;
+            note.Model = model;
+            note.CostUsd = cost;
+            note.Complete = complete;
+            return note;
+        }
 
         try
         {
@@ -335,7 +440,14 @@ public sealed class CornerAiService(IOptions<AiReportOptions> options, IWebHostE
         }
         catch (Exception ex)
         {
-            await usage.LogAsync(Log(false, ex is OperationCanceledException ? "Đã dừng / quá thời gian" : ex.Message));
+            var failed = Log(false, ex is OperationCanceledException ? "Đã dừng / quá thời gian" : ex.Message);
+            await usage.LogAsync(failed);
+            if (text.Length > 0)
+            {
+                // Phần đã nhận vẫn bị tính tiền: lưu thành bản dở dang.
+                await SaveNoteAsync(Note(text.ToString().Trim() + $"\n\n> Bản dở dang ({failed.Error}).", false, failed.CostUsd));
+            }
+
             throw;
         }
 
@@ -351,6 +463,7 @@ public sealed class CornerAiService(IOptions<AiReportOptions> options, IWebHostE
 
         var log = Log(stopReason is not ("refusal" or "max_tokens"), stopReason is "refusal" or "max_tokens" ? $"stop_reason = {stopReason}" : null);
         await usage.LogAsync(log);
+        await SaveNoteAsync(Note(markdown, log.Ok, log.CostUsd));
         var cost = new CornerAiCost(model, inTokens + cacheRead + cacheWrite, output, log.CostUsd);
         logger.LogInformation("Góc Live: Claude nhận định {Match}, {Input} token vào, {Output} ra, ~${Cost}", match, cost.InputTokens, output, cost.CostUsd);
         return (markdown, cost);
@@ -365,7 +478,12 @@ public sealed class CornerAiService(IOptions<AiReportOptions> options, IWebHostE
     };
 
     /// <summary>Tin nhắn gửi Claude: số liệu live + bóc tách của website (JSON).</summary>
-    public static string UserMessage(string match, LiveCornerInput i, LiveCornerResult r, string? notes)
+    public static string UserMessage(string match, LiveCornerInput i, LiveCornerResult r, string? notes) =>
+        "Số liệu live và kết quả công thức của website (JSON):\n```json\n" + DataJson(match, i, r, notes) + "\n```\n"
+        + "Hãy nhận định theo đúng cấu trúc mục 5 của kỹ năng.";
+
+    /// <summary>Số liệu live + kết quả công thức gửi kèm "Claude nhận định" (JSON).</summary>
+    public static string DataJson(string match, LiveCornerInput i, LiveCornerResult r, string? notes)
     {
         var data = new
         {
@@ -414,8 +532,7 @@ public sealed class CornerAiService(IOptions<AiReportOptions> options, IWebHostE
             },
         };
 
-        return "Số liệu live và kết quả công thức của website (JSON):\n```json\n" + JsonSerializer.Serialize(data, Json) + "\n```\n"
-            + "Hãy nhận định theo đúng cấu trúc mục 5 của kỹ năng.";
+        return JsonSerializer.Serialize(data, Json);
     }
 
     private static AnthropicClient Client(AiReportOptions o) => string.IsNullOrWhiteSpace(o.BaseUrl)

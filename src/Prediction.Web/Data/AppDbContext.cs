@@ -22,6 +22,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<TeamDnaLeague> TeamDnaLeagues => Set<TeamDnaLeague>();
     public DbSet<AnalysisPick> AnalysisPicks => Set<AnalysisPick>();
     public DbSet<AiReport> AiReports => Set<AiReport>();
+    public DbSet<CornerAiNote> CornerAiNotes => Set<CornerAiNote>();
+    public DbSet<MatchSideInfoVersion> MatchSideInfoVersions => Set<MatchSideInfoVersion>();
     public DbSet<OddsCheckpoint> OddsCheckpoints => Set<OddsCheckpoint>();
     public DbSet<FixtureLineup> FixtureLineups => Set<FixtureLineup>();
     public DbSet<Venue> Venues => Set<Venue>();
@@ -313,6 +315,35 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(x => x.Model).HasMaxLength(100);
             e.Property(x => x.CostUsd).HasPrecision(10, 4);
             e.HasIndex(x => x.CreatedAtUtc);
+        });
+
+        b.Entity<MatchSideInfoVersion>(e =>
+        {
+            e.HasOne(x => x.Fixture).WithMany().HasForeignKey(x => x.FixtureId).OnDelete(DeleteBehavior.Cascade);
+            e.Property(x => x.Rivalry).HasMaxLength(2000);
+            e.Property(x => x.Motivation).HasMaxLength(2000);
+            e.Property(x => x.News).HasMaxLength(3000);
+            e.Property(x => x.VenueNotes).HasMaxLength(1000);
+            e.Property(x => x.Weather).HasMaxLength(500);
+            e.Property(x => x.Surface).HasMaxLength(50);
+            e.Property(x => x.Sources).HasMaxLength(3000);
+            e.Property(x => x.Model).HasMaxLength(100);
+            e.Property(x => x.CostUsd).HasPrecision(10, 4);
+            e.HasIndex(x => new { x.FixtureId, x.ReplacedAtUtc });
+        });
+
+        b.Entity<CornerAiNote>(e =>
+        {
+            e.Property(x => x.Match).HasMaxLength(200);
+            e.Property(x => x.Headline).HasMaxLength(300);
+            e.Property(x => x.Model).HasMaxLength(100);
+            e.Property(x => x.CostUsd).HasPrecision(10, 4);
+            e.Property(x => x.Line).HasPrecision(6, 2);
+            e.Property(x => x.OverOdds).HasPrecision(6, 2);
+            e.Property(x => x.UnderOdds).HasPrecision(6, 2);
+            e.Ignore(x => x.TotalCorners);
+            e.HasIndex(x => x.CreatedAtUtc);
+            e.HasIndex(x => new { x.FixtureId, x.Window, x.CreatedAtUtc });
         });
 
         b.Entity<LiveStatSnapshot>(e =>

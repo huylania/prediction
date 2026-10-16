@@ -101,10 +101,27 @@ public sealed class AiReportService(
 
     public string Model => options.Value.Model;
 
+    /// <summary>Bản hoàn chỉnh mới nhất của trận; chưa có bản hoàn chỉnh thì lấy bản dở dang mới nhất.</summary>
     public async Task<AiReport?> LatestAsync(int fixtureId, CancellationToken ct = default)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
-        return await db.AiReports.AsNoTracking().Where(r => r.FixtureId == fixtureId).OrderByDescending(r => r.CreatedAtUtc).FirstOrDefaultAsync(ct);
+        return await db.AiReports.AsNoTracking().Where(r => r.FixtureId == fixtureId)
+            .OrderByDescending(r => r.Complete).ThenByDescending(r => r.CreatedAtUtc).FirstOrDefaultAsync(ct);
+    }
+
+    /// <summary>Các bản báo cáo đã viết cho trận (không tải nội dung), mới nhất trước.</summary>
+    public async Task<List<AiReportSummary>> HistoryAsync(int fixtureId, CancellationToken ct = default)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        return await db.AiReports.AsNoTracking().Where(r => r.FixtureId == fixtureId).OrderByDescending(r => r.CreatedAtUtc)
+            .Select(r => new AiReportSummary(r.Id, r.CreatedAtUtc, r.Model, r.CostUsd, r.WebSearches, r.Complete, r.StopReason))
+            .ToListAsync(ct);
+    }
+
+    public async Task<AiReport?> GetAsync(long id, CancellationToken ct = default)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        return await db.AiReports.AsNoTracking().FirstOrDefaultAsync(r => r.Id == id, ct);
     }
 
     /// <summary>Gọi Claude viết báo cáo cho trận, đẩy từng đoạn chữ qua <paramref name="onUpdate"/> và lưu kết quả.</summary>
@@ -157,6 +174,21 @@ public sealed class AiReportService(
             WebSearches = (int)searches, CostUsd = AiPricing.Cost(model, input, output, cacheRead, cacheWrite, searches, cacheWrite1h: true),
             DurationMs = (int)watch.ElapsedMilliseconds, Ok = ok, Error = error,
         };
+        AiReport Report(string markdown, bool complete) => new()
+        {
+            FixtureId = fixtureId,
+            Model = model,
+            Markdown = markdown,
+            StopReason = stopReason,
+            InputTokens = (int)input,
+            OutputTokens = (int)output,
+            CacheReadTokens = (int)cacheRead,
+            CacheWriteTokens = (int)cacheWrite,
+            WebSearches = (int)searches,
+            CostUsd = AiPricing.Cost(model, input, output, cacheRead, cacheWrite, searches, cacheWrite1h: true),
+            CreatedAtUtc = clock.GetUtcNow().UtcDateTime,
+            Complete = complete,
+        };
 
         try
         {
@@ -199,8 +231,15 @@ public sealed class AiReportService(
         }
         catch (Exception ex)
         {
-            // Phần đã chạy vẫn bị tính tiền: ghi log với số token nhận được tới lúc lỗi.
-            await usage.LogAsync(Log(false, ex is OperationCanceledException ? "Đã dừng / quá thời gian" : ex.Message));
+            // Phần đã chạy vẫn bị tính tiền: ghi log với số token nhận được tới lúc lỗi, và lưu phần đã viết thành bản dở dang.
+            var reason = ex is OperationCanceledException ? "Đã dừng / quá thời gian" : ex.Message;
+            await usage.LogAsync(Log(false, reason));
+            if (text.Length > 0)
+            {
+                stopReason ??= ex is OperationCanceledException ? "cancelled" : "error";
+                await SavePartialAsync(Report(text.ToString().Trim() + $"\n\n> Bản dở dang: {reason}. Bấm \"Phân tích lại\" để viết bản đầy đủ.", false));
+            }
+
             throw;
         }
 
@@ -218,20 +257,7 @@ public sealed class AiReportService(
             markdown += "\n\n> Claude dừng giữa chừng sau nhiều lượt tra cứu web. Bấm \"Phân tích lại\" nếu cần bản đầy đủ.";
         }
 
-        var report = new AiReport
-        {
-            FixtureId = fixtureId,
-            Model = model,
-            Markdown = markdown,
-            StopReason = stopReason,
-            InputTokens = (int)input,
-            OutputTokens = (int)output,
-            CacheReadTokens = (int)cacheRead,
-            CacheWriteTokens = (int)cacheWrite,
-            WebSearches = (int)searches,
-            CostUsd = AiPricing.Cost(model, input, output, cacheRead, cacheWrite, searches, cacheWrite1h: true),
-            CreatedAtUtc = clock.GetUtcNow().UtcDateTime,
-        };
+        var report = Report(markdown, true);
 
         await using (var db = await dbFactory.CreateDbContextAsync(CancellationToken.None))
         {
@@ -244,6 +270,21 @@ public sealed class AiReportService(
         logger.LogInformation("Báo cáo AI trận {Fixture}: {Input}+{CacheRead} cache đọc +{CacheWrite} cache ghi vào, {Output} ra, {Searches} lượt web, ~${Cost}",
             fixtureId, input, cacheRead, cacheWrite, output, searches, report.CostUsd);
         return report;
+    }
+
+    /// <summary>Lưu bản dở dang; lỗi ghi CSDL chỉ ghi log để không che lỗi gốc.</summary>
+    private async Task SavePartialAsync(AiReport report)
+    {
+        try
+        {
+            await using var db = await dbFactory.CreateDbContextAsync(CancellationToken.None);
+            db.AiReports.Add(report);
+            await db.SaveChangesAsync(CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Không lưu được bản dở dang của báo cáo AI trận {Fixture}", report.FixtureId);
+        }
     }
 
     private static Effort ParseEffort(string value) => value.Trim().ToLowerInvariant() switch
@@ -506,3 +547,6 @@ public sealed class AiReportService(
 
     private static double Round(double value) => Math.Round(value, 2);
 }
+
+/// <summary>Một bản báo cáo AI đã lưu (không kèm nội dung) cho danh sách "Các bản đã viết".</summary>
+public sealed record AiReportSummary(long Id, DateTime CreatedAtUtc, string Model, decimal CostUsd, int WebSearches, bool Complete, string? StopReason);

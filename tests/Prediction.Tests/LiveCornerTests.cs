@@ -232,4 +232,34 @@ public class LiveCornerTests
         Assert.Contains("kèo góc cả trận", message);
         Assert.Contains("ghi chú", message);
     }
+
+    [Fact]
+    public void Corner_ai_note_snapshots_match_state_and_formula_result()
+    {
+        var form = CornerAiService.ParseForm(SideInfoService.Parse("""{"home":"A","away":"B","window":"H2","minute":77,"home_corners":5,"away_corners":4,"home_goals":1,"away_goals":0,"line_live":10.5,"over_odds":1.9,"under_odds":1.9}""")!.Value);
+        Assert.Equal("A – B", CornerAiService.FormMatch(form));
+        Assert.Equal("Trận nhập tay", CornerAiService.FormMatch(new LiveCornerForm()));
+
+        var input = form.ToInput();
+        var result = LiveCornerAnalyzer.Analyze(input);
+        var note = CornerAiService.NoteFor(CornerAiKind.Commentary, new string('x', 250), 42, input, result);
+        Assert.Equal(200, note.Match.Length);
+        Assert.Equal(42, note.FixtureId);
+        Assert.Equal(CornerWindow.SecondHalf, note.Window);
+        Assert.Equal(77, note.Minute);
+        Assert.Equal(9, note.TotalCorners);
+        Assert.Equal((1, 0), (note.HomeGoals, note.AwayGoals));
+        Assert.Equal(10.5m, note.Line);
+        Assert.Equal(Math.Round(result.ExpectedTotal, 2), note.ExpectedTotal);
+        Assert.Equal(result.Headline, note.Headline);
+        Assert.True(note.Complete);
+
+        // Dữ liệu gửi Claude lưu kèm là JSON hợp lệ (chính phần nằm trong tin nhắn).
+        var json = CornerAiService.DataJson("A – B", input, result, null);
+        Assert.Equal(77, JsonDocument.Parse(json).RootElement.GetProperty("so_lieu_live").GetProperty("phut").GetInt32());
+        Assert.Contains(json, CornerAiService.UserMessage("A – B", input, result, null));
+
+        // Đọc ảnh chưa có phút: không có kết luận công thức.
+        Assert.Null(CornerAiService.NoteFor(CornerAiKind.ReadImages, "A – B", null, new LiveCornerForm().ToInput(), null).Headline);
+    }
 }

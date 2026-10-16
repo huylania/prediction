@@ -37,6 +37,38 @@
         {
             <div class="alert alert-danger py-2 small">@_error</div>
         }
+        @if (!_running && _history.Count > 1)
+        {
+            <details class="small mb-2" open="@(_viewing is not null)">
+                <summary>Các bản đã viết (@_history.Count)</summary>
+                <ul class="list-unstyled mb-0 ms-2">
+                    @foreach (var h in _history)
+                    {
+                        var current = _report?.Id == h.Id;
+                        <li>
+                            @if (current)
+                            {
+                                <strong>@Time.Short(h.CreatedAtUtc)</strong>
+                            }
+                            else
+                            {
+                                <button class="btn btn-link btn-sm p-0" @onclick="() => ShowAsync(h.Id)">@Time.Short(h.CreatedAtUtc)</button>
+                            }
+                            <span class="text-muted">· @h.Model · @h.WebSearches lượt web · ~$@h.CostUsd.ToString("0.00")</span>
+                            @if (!h.Complete) { <span class="badge bg-warning text-dark">dở dang</span> }
+                            @if (current) { <span class="text-muted">(đang xem)</span> }
+                        </li>
+                    }
+                </ul>
+            </details>
+        }
+        @if (!_running && _viewing is not null)
+        {
+            <div class="alert alert-secondary py-1 px-2 small mb-2">
+                Đang xem bản lúc @Time.Short(_viewing.CreatedAtUtc)@(_viewing.Complete ? "" : " (dở dang)"), không phải bản mới nhất.
+                <button class="btn btn-link btn-sm p-0 align-baseline" @onclick="ShowLatestAsync">Về bản mới nhất</button>
+            </div>
+        }
         @if (_running ? _buffer.Length > 0 : _report is not null)
         {
             <div class="ai-markdown">@((MarkupString)Markdown.ToHtml(_running ? _buffer.ToString() : _report!.Markdown, Pipeline))</div>
@@ -50,6 +82,8 @@
     private static readonly MarkdownPipeline Pipeline = new MarkdownPipelineBuilder().UseAdvancedExtensions().DisableHtml().Build();
 
     private AiReport? _report;
+    private AiReport? _viewing;
+    private List<AiReportSummary> _history = [];
     private bool _running;
     private string? _status;
     private string? _error;
@@ -61,8 +95,28 @@
     {
         if (Reports.IsConfigured)
         {
-            _report = await Reports.LatestAsync(FixtureId);
+            await ShowLatestAsync();
         }
+    }
+
+    private async Task ShowLatestAsync()
+    {
+        _viewing = null;
+        _report = await Reports.LatestAsync(FixtureId);
+        _history = await Reports.HistoryAsync(FixtureId);
+    }
+
+    private async Task ShowAsync(long id)
+    {
+        var report = await Reports.GetAsync(id);
+        if (report is null)
+        {
+            return;
+        }
+
+        var latest = await Reports.LatestAsync(FixtureId);
+        _report = report;
+        _viewing = latest?.Id == id ? null : report;
     }
 
     private async Task GenerateAsync()
@@ -75,14 +129,15 @@
         try
         {
             _report = await Reports.GenerateAsync(FixtureId, OnUpdateAsync, _cts.Token);
+            _viewing = null;
         }
         catch (OperationCanceledException)
         {
-            _error = "Đã dừng. Phần đã nhận không được lưu.";
+            _error = _buffer.Length > 0 ? "Đã dừng. Phần đã nhận được lưu thành bản dở dang (xem ở \"Các bản đã viết\")." : "Đã dừng.";
         }
         catch (Exception ex)
         {
-            _error = $"Lỗi khi gọi Claude: {ex.Message}";
+            _error = $"Lỗi khi gọi Claude: {ex.Message}" + (_buffer.Length > 0 ? " Phần đã nhận được lưu thành bản dở dang." : "");
         }
         finally
         {
@@ -90,6 +145,9 @@
             _cts?.Dispose();
             _cts = null;
         }
+
+        _history = await Reports.HistoryAsync(FixtureId);
+        _report ??= await Reports.LatestAsync(FixtureId); // lần đầu viết mà lỗi giữa chừng: hiện bản dở dang vừa lưu
     }
 
     private async Task OnUpdateAsync(AiReportUpdate update)

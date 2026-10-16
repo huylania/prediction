@@ -4,6 +4,7 @@
 @using System.Globalization
 @using Prediction.Core.Engine.LiveCorners
 @using Prediction.Web.ApiFootball
+@using Markdig
 @inject LiveCornerService Corners
 @inject CornerAiService CornerAi
 @inject SyncCoordinator Sync
@@ -87,7 +88,7 @@ else
                     <div class="d-flex gap-2 mt-2">
                         <button class="btn btn-sm btn-outline-secondary" @onclick="() => EditFrom(m)">Sửa / bổ sung số liệu</button>
                     </div>
-                    <CornerCommentary Match="@MatchLabel(m)" Input="m.Input" Result="m.Result" />
+                    <CornerCommentary Match="@MatchLabel(m)" FixtureId="m.Fixture.Id" Input="m.Input" Result="m.Result" OnSaved="ReloadAiNotesAsync" />
                 </div>
             }
         </div>
@@ -234,10 +235,53 @@ else
                     <div class="hint">Phút @fi.Minute nằm ngoài cửa sổ vàng (@(fi.Window == CornerWindow.FirstHalf ? "25–30'" : "75–80'")): công thức vẫn tính nhưng độ tin cậy thấp hơn.</div>
                 }
                 <CornerResultView I="fi" R="fr" />
-                <CornerCommentary @key="_formVersion" Match="@FormLabel" Input="fi" Result="fr" Notes="@_form.Notes" />
+                <CornerCommentary @key="_formVersion" Match="@FormLabel" FixtureId="_form.FixtureId" Input="fi" Result="fr" Notes="@_form.Notes" OnSaved="ReloadAiNotesAsync" />
             </div>
         }
     </div>
+
+    @if (_aiNotes.Count > 0)
+    {
+        <div class="gl-section-title">Lịch sử Claude ở Góc Live <span class="hint">(@_aiNotes.Count lần gần nhất, lưu trong CSDL)</span></div>
+        <div class="table-responsive">
+            <table class="table table-sm small bg-white border">
+                <thead><tr><th>Giờ</th><th>Trận</th><th>Loại</th><th>Lúc gọi</th><th>Mốc kèo</th><th>Công thức</th><th class="text-end">Góc cuối</th><th class="text-end">~$</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var (n, final) in _aiNotes)
+                    {
+                        <tr>
+                            <td class="text-nowrap">@Time.Short(n.CreatedAtUtc)</td>
+                            <td>@if (n.FixtureId is { } fid) { <a href="tran-dau/@fid">@n.Match</a> } else { @n.Match }</td>
+                            <td class="text-nowrap">@(n.Kind == CornerAiKind.ReadImages ? "Đọc ảnh" : "Nhận định")@if (!n.Complete) { <span class="badge bg-warning text-dark ms-1">dở dang</span> }</td>
+                            <td class="text-nowrap">@(n.Window == CornerWindow.FirstHalf ? "H1" : "H2") @n.Minute' · @n.HomeGoals-@n.AwayGoals · @n.TotalCorners góc</td>
+                            <td class="text-nowrap">@(n.Line is { } l ? LineText.Number(l) : "—")@if (n.OverOdds is { } o && n.UnderOdds is { } u) { <span class="text-muted"> (@LineText.Odds(o) / @LineText.Odds(u))</span> }</td>
+                            <td>@n.Headline@if (n.ExpectedTotal is { } x) { <span class="text-muted"> · Exp @x.ToString("0.0", Inv)</span> }</td>
+                            <td class="text-end">@(final?.ToString() ?? "—")</td>
+                            <td class="text-end">@n.CostUsd.ToString("0.000", Inv)</td>
+                            <td><button class="btn btn-sm btn-link p-0" @onclick="() => ToggleNote(n.Id)">@(_openNotes.Contains(n.Id) ? "Ẩn" : "Xem")</button></td>
+                        </tr>
+                        @if (_openNotes.Contains(n.Id))
+                        {
+                            <tr>
+                                <td colspan="9">
+                                    @if (n.Kind == CornerAiKind.Commentary && !string.IsNullOrWhiteSpace(n.Markdown))
+                                    {
+                                        <div class="ai-markdown small">@((MarkupString)Markdown.ToHtml(n.Markdown, NotePipeline))</div>
+                                    }
+                                    else
+                                    {
+                                        @if (!string.IsNullOrWhiteSpace(n.Markdown)) { <div class="small mb-1">Ghi chú từ ảnh: @n.Markdown</div> }
+                                        <pre class="small bg-light p-2 mb-0">@n.DataJson</pre>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+        <p class="hint">Góc cuối: H1 = góc hết hiệp 1, H2 = tổng góc cả trận (khi trận đã kết thúc); chỉ có khi lần gọi gắn với trận website đang theo dõi.</p>
+    }
 
     <div class="gl-section-title">Thành tích khuyến nghị đã chốt</div>
     <p class="hint">Mỗi trận chốt tối đa một khuyến nghị cho mỗi cửa sổ (lần đầu ra Tài/Xỉu trong cửa sổ vàng, theo odds live lúc đó). H1 chấm theo góc hiệp 1, H2 theo góc cả trận. Lãi/lỗ tính trên 1 đơn vị.</p>
@@ -311,12 +355,14 @@ else
     private string? _readNote;
     private bool _reading;
     private List<CornerImage> _images = [];
+    private List<(CornerAiNote Note, int? FinalCorners)> _aiNotes = [];
+    private readonly HashSet<long> _openNotes = [];
 
     private List<LiveCornerMatch> InWindow => _live.Where(m => m.InWindow).ToList();
 
     private List<LiveCornerMatch> Others => _live.Where(m => !m.InWindow).OrderByDescending(m => m.Approaching).ThenByDescending(m => m.Input.Minute).ToList();
 
-    private string FormLabel => string.IsNullOrWhiteSpace(_form.Home) && string.IsNullOrWhiteSpace(_form.Away) ? "Trận nhập tay" : $"{_form.Home ?? "?"} – {_form.Away ?? "?"}";
+    private string FormLabel => CornerAiService.FormMatch(_form);
 
     private string FavouriteText
     {
@@ -374,6 +420,7 @@ else
             _live = await Corners.LiveAsync();
             _picks = await Corners.PicksAsync(30);
             _stats = await StatsAsync();
+            _aiNotes = await CornerAi.HistoryAsync(50);
             var ids = _picks.SelectMany(p => new[] { p.Fixture!.HomeTeamId, p.Fixture.AwayTeamId });
             _teams = await Corners.TeamNamesAsync(ids);
             _loadedAt = Corners.UtcNow;
@@ -533,8 +580,9 @@ else
         {
             var (form, cost) = await CornerAi.ReadScreenshotsAsync(_images, default);
             _form = form;
-            _readNote = $"Claude đã đọc {_images.Count} ảnh (~${cost.CostUsd.ToString("0.000", Inv)}). Kiểm lại các ô bên dưới, chỉnh động lực / cửa trên nếu cần rồi bấm Tính.";
+            _readNote = $"Claude đã đọc {_images.Count} ảnh (~${cost.CostUsd.ToString("0.000", Inv)}, đã lưu vào Lịch sử Claude). Kiểm lại các ô bên dưới, chỉnh động lực / cửa trên nếu cần rồi bấm Tính.";
             Compute();
+            await ReloadAiNotesAsync();
         }
         catch (Exception ex)
         {
@@ -547,6 +595,18 @@ else
     }
 
     private static string Key(LiveCornerMatch m) => $"{m.Fixture.Id}-{(int)m.Input.Window}";
+
+    private async Task ReloadAiNotesAsync() => _aiNotes = await CornerAi.HistoryAsync(50);
+
+    private void ToggleNote(long id)
+    {
+        if (!_openNotes.Add(id))
+        {
+            _openNotes.Remove(id);
+        }
+    }
+
+    private static readonly MarkdownPipeline NotePipeline = new MarkdownPipelineBuilder().UseAdvancedExtensions().DisableHtml().Build();
 
     private static string MatchLabel(LiveCornerMatch m) => $"{m.Home} – {m.Away} ({m.League})";
 

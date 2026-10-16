@@ -2,8 +2,9 @@
 @using Markdig
 @using Prediction.Core.Engine.LiveCorners
 @inject CornerAiService CornerAi
+@inject TimeDisplay Time
 
-@* Nút "Claude nhận định" của mục Góc Live (file kỹ năng phan-tich-goc riêng). Bấm khi cần, không lưu lại. *@
+@* Nút "Claude nhận định" của mục Góc Live (file kỹ năng phan-tich-goc riêng). Kết quả lưu vào CSDL (bảng CornerAiNotes). *@
 @if (CornerAi.IsConfigured)
 {
     <div class="d-flex flex-wrap gap-2 align-items-center mt-2">
@@ -19,6 +20,10 @@
             @if (_cost is { } c)
             {
                 <span class="hint">@c.Model · ~$@c.CostUsd.ToString("0.000")</span>
+            }
+            else if (_saved is { } n)
+            {
+                <span class="hint">Đã lưu lúc @Time.Short(n.CreatedAtUtc) (phút @n.Minute, @n.TotalCorners góc) · @n.Model · ~$@n.CostUsd.ToString("0.000")@(n.Complete ? "" : " · dở dang")</span>
             }
         }
     </div>
@@ -38,6 +43,12 @@
     [Parameter, EditorRequired] public LiveCornerResult Result { get; set; } = default!;
     [Parameter] public string? Notes { get; set; }
 
+    /// <summary>Trận website đang theo dõi: để lưu kèm và hiện lại nhận định đã lưu khi tải lại trang.</summary>
+    [Parameter] public int? FixtureId { get; set; }
+
+    /// <summary>Gọi sau mỗi lần nhận định (để trang làm mới mục Lịch sử Claude).</summary>
+    [Parameter] public EventCallback OnSaved { get; set; }
+
     private static readonly MarkdownPipeline Pipeline = new MarkdownPipelineBuilder().UseAdvancedExtensions().DisableHtml().Build();
 
     private bool _running;
@@ -47,6 +58,21 @@
     private readonly System.Text.StringBuilder _buffer = new();
     private CancellationTokenSource? _cts;
     private DateTime _lastRender;
+    private CornerAiNote? _saved;
+    private (int, CornerWindow)? _loadedFor;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // Chỉ nạp một lần cho mỗi trận + cửa sổ (trang Góc Live tự làm mới mỗi phút).
+        if (FixtureId is not { } id || _loadedFor == (id, Input.Window) || _running || _markdown is not null)
+        {
+            return;
+        }
+
+        _loadedFor = (id, Input.Window);
+        _saved = await CornerAi.LatestCommentaryAsync(id, Input.Window);
+        _markdown = _saved?.Markdown;
+    }
 
     private async Task RunAsync()
     {
@@ -56,15 +82,15 @@
         _buffer.Clear();
         try
         {
-            (_markdown, _cost) = await CornerAi.CommentaryAsync(Match, Input, Result, Notes, OnUpdateAsync, _cts.Token);
+            (_markdown, _cost) = await CornerAi.CommentaryAsync(Match, FixtureId, Input, Result, Notes, OnUpdateAsync, _cts.Token);
         }
         catch (OperationCanceledException)
         {
-            _error = "Đã dừng.";
+            _error = _buffer.Length > 0 ? "Đã dừng. Phần đã nhận được lưu thành bản dở dang (xem ở Lịch sử Claude)." : "Đã dừng.";
         }
         catch (Exception ex)
         {
-            _error = $"Lỗi khi gọi Claude: {ex.Message}";
+            _error = $"Lỗi khi gọi Claude: {ex.Message}" + (_buffer.Length > 0 ? " Phần đã nhận được lưu thành bản dở dang." : "");
         }
         finally
         {
@@ -72,6 +98,8 @@
             _cts?.Dispose();
             _cts = null;
         }
+
+        await OnSaved.InvokeAsync();
     }
 
     private async Task OnUpdateAsync(AiReportUpdate update)

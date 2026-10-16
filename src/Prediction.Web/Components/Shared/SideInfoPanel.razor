@@ -39,6 +39,29 @@
         {
             <div class="small text-muted mb-2">Chưa có. @(_auto ? "Website tự điền cho các trận nhóm A/B trong 24 giờ tới (tắt ở trang Chi phí AI)." : "")</div>
         }
+        @if (_versions.Count > 0)
+        {
+            <details class="small mb-2">
+                <summary>Bản cũ (@_versions.Count)</summary>
+                @foreach (var v in _versions)
+                {
+                    <div class="border-start ps-2 my-2">
+                        <div class="text-muted mb-1">Điền lúc @Time.Short(v.CreatedAtUtc) · @v.Model · @(v.IsAuto ? "tự động" : "bấm tay") · ~$@v.CostUsd.ToString("0.00") · thay lúc @Time.Short(v.ReplacedAtUtc)</div>
+                        <dl class="row mb-0">
+                            @Row("Lịch sử thù hận / đối đầu", v.Rivalry)
+                            @Row("Động lực", v.Motivation)
+                            @Row("Tin bên lề", v.News)
+                            @Row("Đặc điểm sân", v.VenueNotes)
+                            @Row("Thời tiết", v.Weather)
+                            @if (v.AltitudeM is not null || v.Surface is not null)
+                            {
+                                @Row("Độ cao / mặt sân", $"{(v.AltitudeM is { } a ? $"{a} m" : "—")} / {v.Surface ?? "—"}")
+                            }
+                        </dl>
+                    </div>
+                }
+            </details>
+        }
         <div class="d-flex align-items-center gap-2">
             <button class="btn btn-sm btn-outline-primary" disabled="@_running" @onclick="GenerateAsync">@(Info is null ? "AI điền thông tin bên lề" : "Điền lại")</button>
             @if (_running)
@@ -67,8 +90,21 @@
     private bool _running;
     private string? _error;
     private bool _auto;
+    private List<MatchSideInfoVersion> _versions = [];
+    private (int, DateTime?)? _loadedFor;
 
     protected override async Task OnInitializedAsync() => _auto = await SideInfo.AutoEnabledAsync();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // Nạp lại bản cũ khi đổi trận hoặc khi bản hiện hành đổi (vừa "Điền lại").
+        var key = (FixtureId, Info?.CreatedAtUtc);
+        if (_loadedFor != key)
+        {
+            _loadedFor = key;
+            _versions = await SideInfo.VersionsAsync(FixtureId);
+        }
+    }
 
     private static RenderFragment Row(string label, string? value) => __builder =>
     {

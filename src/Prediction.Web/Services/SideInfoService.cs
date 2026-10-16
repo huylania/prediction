@@ -56,6 +56,13 @@ public sealed class SideInfoService(
 
     public string Model => options.Value.SideInfoModel;
 
+    /// <summary>Các bản cũ đã bị "Điền lại" thay thế, mới nhất trước.</summary>
+    public async Task<List<MatchSideInfoVersion>> VersionsAsync(int fixtureId, CancellationToken ct = default)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        return await db.MatchSideInfoVersions.AsNoTracking().Where(v => v.FixtureId == fixtureId).OrderByDescending(v => v.ReplacedAtUtc).ToListAsync(ct);
+    }
+
     public DateTime UtcNow => clock.GetUtcNow().UtcDateTime;
 
     /// <summary>Tự điền cho các trận nhóm A/B trong 24 giờ tới (trong giới hạn chi phí/ngày).</summary>
@@ -204,6 +211,11 @@ public sealed class SideInfoService(
         {
             info = new MatchSideInfo { FixtureId = fixtureId };
             db.MatchSideInfos.Add(info);
+        }
+        else
+        {
+            // Giữ bản cũ để so sánh (đã trả tiền), bản mới thay vào làm bản hiện hành.
+            db.MatchSideInfoVersions.Add(MatchSideInfoVersion.Of(info, now));
         }
 
         info.Rivalry = Str(json, "rivalry", 2000);
