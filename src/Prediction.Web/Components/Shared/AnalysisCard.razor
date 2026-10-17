@@ -34,9 +34,9 @@
         @if (a.Flags.Count > 0)
         {
             <div class="mt-1">
-                @foreach (var flag in a.Flags.DistinctBy(x => (x.Number, x.Title)))
+                @foreach (var g in a.Flags.GroupBy(x => (x.Number, x.Title)))
                 {
-                    <span class="flag-pill" title="@flag.Detail">Cờ @flag.Number: @flag.Title</span>
+                    <span class="flag-pill" title="@g.First().Detail">Cờ @g.Key.Number: @g.Key.Title@Blocks(g, best)</span>
                 }
             </div>
         }
@@ -46,9 +46,10 @@
                 <li>@reason</li>
             }
         </ul>
-        @foreach (var other in a.Picks.Skip(1).Where(p => p.Group != AnalysisGroup.C).Take(2))
+        @* Chỉ kèm kèo cùng nhóm với kèo chính (thẻ A không kèm kèo B); kèo khác xem ở trang chi tiết. *@
+        @foreach (var other in a.Picks.Skip(1).Where(p => p.Group == best.Group && p.Group != AnalysisGroup.C).Take(2))
         {
-            <div class="meta mt-1">+ @other.Label @@@LineText.Odds(other.Odds) <AnalysisBadge Group="other.Group" Score="other.Score" /></div>
+            <div class="meta mt-1">Kèo khác cùng nhóm: @other.Label @@@LineText.Odds(other.Odds) <AnalysisBadge Group="other.Group" Score="other.Score" /></div>
         }
     }
 </div>
@@ -57,6 +58,24 @@
     [Parameter, EditorRequired] public MatchAnalysisResult R { get; set; } = default!;
 
     private static string Pct(double v) => (v * 100).ToString("0", System.Globalization.CultureInfo.InvariantCulture) + "%";
+
+    /// <summary>" · chặn chấp châu Á" khi cờ không áp lên kèo đang hiện, để khỏi tưởng cờ chặn kèo này.</summary>
+    private static string Blocks(IEnumerable<RedFlag> flags, AnalysisPickResult best)
+    {
+        var list = flags.ToList();
+        if (list.Any(x => x.Covers(best.Market, best.Side)))
+        {
+            return "";
+        }
+
+        var markets = list.SelectMany(x => x.Applies)
+            .Select(x => Lower(AnalysisView.MarketName(x.Market)) + (x.Market == best.Market && x.Side is not null ? " cửa kia" : ""))
+            .Distinct()
+            .ToList();
+        return markets.Count == 0 ? "" : " · chặn " + string.Join(", ", markets);
+    }
+
+    private static string Lower(string s) => s.Length == 0 ? s : char.ToLowerInvariant(s[0]) + s[1..];
 
     private static string Signed(double v) => (v >= 0 ? "+" : "−") + Math.Abs(v).ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
 }
