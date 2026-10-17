@@ -9,6 +9,7 @@
 @inject CornerAiService CornerAi
 @inject SyncCoordinator Sync
 @inject LiveCornerFastService Fast
+@inject Microsoft.Extensions.Options.IOptions<SyncOptions> SyncOpts
 @inject ApiFootballClient Api
 @inject TimeDisplay Time
 @inject IJSRuntime JS
@@ -49,11 +50,11 @@
     <div class="hint mb-2">
         @if (!fs.Enabled)
         {
-            <span>Góc Live nhanh: tắt (@fs.PausedReason) — chỉ cập nhật theo nhịp 2 phút.</span>
+            <span>Góc Live nhanh: tắt (@fs.PausedReason) — chỉ cập nhật theo nhịp @SyncOpts.Value.Effective().LiveIntervalMinutes phút.</span>
         }
         else if (fs.PausedReason is { } why)
         {
-            <span class="text-danger">Góc Live nhanh tạm dừng: @why — quay về nhịp 2 phút.</span>
+            <span class="text-danger">Góc Live nhanh tạm dừng: @why — quay về nhịp @SyncOpts.Value.Effective().LiveIntervalMinutes phút.</span>
         }
         else
         {
@@ -497,7 +498,7 @@ else
         return list;
     }
 
-    /// <summary>Góc Live vừa chốt/chấm (nhịp nhanh hoặc 2 phút): tải lại ngay để báo khuyến nghị mới, bỏ qua nếu đang tải dở.</summary>
+    /// <summary>Góc Live vừa chốt/chấm (nhịp nhanh hoặc nhịp thường): tải lại ngay để báo khuyến nghị mới, bỏ qua nếu đang tải dở.</summary>
     private void OnCornersUpdated()
     {
         if (Interlocked.Exchange(ref _reloading, 1) == 1)

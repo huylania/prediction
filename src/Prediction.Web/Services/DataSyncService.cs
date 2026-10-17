@@ -64,7 +64,7 @@ public sealed class SyncOptions
 
     /// <summary>
     /// Góc Live nhanh: khi có trận ở vùng nóng quanh cửa sổ vàng thì cứ chừng này giây lấy lại số liệu + kèo góc live và chốt khuyến nghị
-    /// (≈ 2 request/lần). 0 = tắt, chỉ dùng nhịp 2 phút.
+    /// (≈ 2 request/lần). 0 = tắt, chỉ dùng nhịp thường (<see cref="LiveIntervalMinutes"/>).
     /// </summary>
     public int LiveCornerFastSeconds { get; set; } = 30;
 
@@ -73,10 +73,66 @@ public sealed class SyncOptions
     public int LiveCornerHotH2From { get; set; } = 72;
     public int LiveCornerHotH2To { get; set; } = 81;
 
-    /// <summary>Còn ít hơn số request này trong ngày thì Góc Live nhanh tự tạm dừng (quay về nhịp 2 phút).</summary>
+    /// <summary>Còn ít hơn số request này trong ngày thì Góc Live nhanh tự tạm dừng (quay về nhịp thường).</summary>
     public int LiveCornerFastMinRemaining { get; set; } = 1500;
 
     public HotZone HotZone => new(LiveCornerHotH1From, LiveCornerHotH1To, LiveCornerHotH2From, LiveCornerHotH2To);
+
+    /// <summary>
+    /// Hồ sơ đồng bộ: "Auto" (mặc định) dùng giá trị <see cref="Ultra"/> khi giới hạn ngày của gói API ≥ <see cref="SyncUltraOptions.MinDailyLimit"/>,
+    /// ngược lại dùng các giá trị gốc (cho gói Pro 7.500/ngày); "Pro" / "Ultra" ép cố định một hồ sơ.
+    /// </summary>
+    public string Plan { get; set; } = "Auto";
+
+    public SyncUltraOptions Ultra { get; set; } = new();
+
+    public bool UsesUltra(int? dailyLimit) => Plan.Trim().ToLowerInvariant() switch
+    {
+        "ultra" => true,
+        "pro" => false,
+        _ => dailyLimit is { } l && l >= Ultra.MinDailyLimit,
+    };
+
+    /// <summary>Cấu hình áp dụng với giới hạn ngày này: chính nó nếu là hồ sơ Pro, hoặc bản sao đã thay các giá trị Ultra.</summary>
+    public SyncOptions For(int? dailyLimit)
+    {
+        if (!UsesUltra(dailyLimit))
+        {
+            return this;
+        }
+
+        var o = (SyncOptions)MemberwiseClone();
+        o.OddsIntervalMinutes = Ultra.OddsIntervalMinutes;
+        o.LiveIntervalMinutes = Ultra.LiveIntervalMinutes;
+        o.LiveOddsIntervalMinutes = Ultra.LiveOddsIntervalMinutes;
+        o.LiveCornersIntervalMinutes = Ultra.LiveCornersIntervalMinutes;
+        o.LiveCornerFastSeconds = Ultra.LiveCornerFastSeconds;
+        o.StatsMaxRequests = Ultra.StatsMaxRequests;
+        o.QuotaReserve = Ultra.QuotaReserve;
+        o.LiveCornerFastMinRemaining = Ultra.LiveCornerFastMinRemaining;
+        return o;
+    }
+
+    /// <summary>Cấu hình đang áp dụng theo giới hạn ngày đọc từ header của request API gần nhất.</summary>
+    public SyncOptions Effective() => For(ApiFootballClient.DailyLimit);
+
+    public string PlanName(int? dailyLimit) => UsesUltra(dailyLimit) ? "Ultra" : "Pro";
+}
+
+/// <summary>Giá trị thay thế khi dùng gói lớn (API-Football Ultra 75.000 request/ngày, ~25–35 nghìn request/ngày với 19–30 giải).</summary>
+public sealed class SyncUltraOptions
+{
+    /// <summary>Hồ sơ "Auto" bật Ultra khi giới hạn ngày (header x-ratelimit-requests-limit) ≥ số này.</summary>
+    public int MinDailyLimit { get; set; } = 50000;
+
+    public int OddsIntervalMinutes { get; set; } = 20;
+    public int LiveIntervalMinutes { get; set; } = 1;
+    public int LiveOddsIntervalMinutes { get; set; } = 1;
+    public int LiveCornersIntervalMinutes { get; set; } = 1;
+    public int LiveCornerFastSeconds { get; set; } = 20;
+    public int StatsMaxRequests { get; set; } = 200;
+    public int QuotaReserve { get; set; } = 5000;
+    public int LiveCornerFastMinRemaining { get; set; } = 3000;
 }
 
 /// <summary>Các tác vụ lấy dữ liệu từ API-Football và ghi vào CSDL.</summary>
@@ -304,7 +360,7 @@ public sealed class DataSyncService(
         var now = Now;
         var settledBefore = now.AddHours(-3);
         var leagues = await db.Leagues.AsNoTracking().Where(l => l.IsTracked && !l.IsDemo && l.HasStatsCoverage).ToListAsync(ct);
-        var limit = maxRequests ?? o.StatsMaxRequests;
+        var limit = maxRequests ?? o.Effective().StatsMaxRequests;
         var pending = new List<(int Id, DateTime Kickoff)>();
         foreach (var league in leagues)
         {
@@ -893,7 +949,7 @@ public sealed class DataSyncService(
     }
 
     /// <summary>Còn quá ít request trong ngày: dừng các tác vụ phụ để dành cho kèo và trực tiếp.</summary>
-    public static bool QuotaLow(SyncOptions o) => ApiFootballClient.RemainingToday is { } r && r < o.QuotaReserve;
+    public static bool QuotaLow(SyncOptions o) => ApiFootballClient.RemainingToday is { } r && r < o.Effective().QuotaReserve;
 
     private FixtureStats ApplyStats(Dictionary<int, FixtureStats> stats, Fixture fixture, FixtureItem item, DateTime now)
     {

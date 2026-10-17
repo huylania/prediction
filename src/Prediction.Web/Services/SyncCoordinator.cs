@@ -255,11 +255,11 @@ public sealed class SyncBackgroundService(
     ILogger<SyncBackgroundService> logger) : BackgroundService
 {
     private readonly Dictionary<string, DateTime> _lastRun = [];
+    private string? _plan;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var o = options.Value;
-        if (!o.Enabled)
+        if (!options.Value.Enabled)
         {
             logger.LogInformation("Đồng bộ nền đang tắt (Sync:Enabled = false).");
             return;
@@ -273,6 +273,15 @@ public sealed class SyncBackgroundService(
         using var timer = new PeriodicTimer(TimeSpan.FromMinutes(1));
         do
         {
+            // Đọc lại hồ sơ mỗi phút: gói Ultra (giới hạn ngày lớn) dùng chu kỳ dày hơn.
+            var o = options.Value.Effective();
+            var plan = options.Value.PlanName(ApiFootballClient.DailyLimit);
+            if (plan != _plan)
+            {
+                logger.LogInformation("Hồ sơ đồng bộ: {Plan} (giới hạn ngày {Limit})", plan, ApiFootballClient.DailyLimit?.ToString() ?? "chưa biết");
+                _plan = plan;
+            }
+
             foreach (var (job, minutes) in Schedule(o))
             {
                 if (stoppingToken.IsCancellationRequested)

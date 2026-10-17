@@ -22,7 +22,7 @@ Hỗ trợ **kèo chấp châu Á** và **tài xỉu** (kể cả các mức 1/4
 
 - [.NET 10 SDK](https://dotnet.microsoft.com/download)
 - SQL Server: LocalDB (có sẵn khi cài Visual Studio), Express, Developer, hoặc chạy bằng Docker.
-- API key của [API-Football](https://www.api-football.com/) (api-sports.io v3). Với 19 giải mặc định, website dùng khoảng **5.000–6.500 request vào ngày cuối tuần** (kèo, tỉ số + thống kê trực tiếp, chấn thương, HLV, tải dần thống kê lịch sử), nên cần **gói Pro (7.500 request/ngày) trở lên**. Khi còn dưới 1.000 request trong ngày, các tác vụ phụ tự tạm dừng.
+- API key của [API-Football](https://www.api-football.com/) (api-sports.io v3). Với 19 giải mặc định, website dùng khoảng **5.000–6.500 request vào ngày cuối tuần** (kèo, tỉ số + thống kê trực tiếp, chấn thương, HLV, tải dần thống kê lịch sử), nên cần **gói Pro (7.500 request/ngày) trở lên**. Khi còn dưới 1.000 request trong ngày, các tác vụ phụ tự tạm dừng. Với **gói Ultra (75.000 request/ngày)** website tự chuyển sang hồ sơ đồng bộ dày hơn (xem bảng chu kỳ bên dưới), dùng khoảng **25–35 nghìn request/ngày**.
 - (Tùy chọn) API key Claude từ [console.anthropic.com](https://console.anthropic.com/) nếu muốn dùng báo cáo AI.
 
 ## Cài đặt và chạy
@@ -75,15 +75,15 @@ Về dữ liệu kèo: API-Football ghi kèo chấp kiểu "cùng số" (`Home -
 
 Website tự đồng bộ ở chế độ nền theo chu kỳ:
 
-| Dữ liệu | Chu kỳ mặc định | Ghi chú |
+| Dữ liệu | Chu kỳ mặc định (Pro) | Ghi chú |
 |---|---|---|
 | Lịch & kết quả | 2 giờ | 1 request/giải |
-| Tỉ số & thống kê trực tiếp | 2 phút | chỉ khi có trận đang đá; 1 request / 20 trận |
-| Kèo live | 2 phút | chỉ khi có trận đang đá; 1 request (`odds/live`) cho mọi trận: chấp, tài xỉu (cả trận + hiệp 1) và kèo góc cho Góc Live |
-| Kèo theo giải | 1 giờ | chấp, tài xỉu, góc, chấp góc, thẻ; bắt kèo mở và biến động |
+| Tỉ số & thống kê trực tiếp | 2 phút (Ultra: 1 phút) | chỉ khi có trận đang đá; 1 request / 20 trận |
+| Kèo live | 2 phút (Ultra: 1 phút) | chỉ khi có trận đang đá; 1 request (`odds/live`) cho mọi trận: chấp, tài xỉu (cả trận + hiệp 1) và kèo góc cho Góc Live |
+| Kèo theo giải | 1 giờ (Ultra: 20 phút) | chấp, tài xỉu, góc, chấp góc, thẻ; bắt kèo mở và biến động |
 | Kèo sát giờ | 15 phút | từng trận, trong 3 giờ trước giờ bóng lăn → kèo đóng |
 | Tư vấn API | 6 giờ + 1 lần ~1 giờ trước trận | các trận trong 3 ngày tới |
-| Thống kê trận đã đá | 30 phút, tối đa 20 request/lần | góc, thẻ, sút, xG, phút ghi bàn; mùa này + mùa trước, trận gần nhất trước. Lần đầu tải dần trong ~12 giờ |
+| Thống kê trận đã đá | 30 phút, tối đa 20 request/lần (Ultra: 200) | góc, thẻ, sút, xG, phút ghi bàn; mùa này + mùa trước, trận gần nhất trước. Lần đầu tải dần trong ~12 giờ (Ultra: ~1–2 giờ) |
 | Chấn thương | 6 giờ | các trận trong 24 giờ tới (giải có hỗ trợ) |
 | HLV | 1 ngày | các đội có trận trong 3 ngày tới, mỗi đội 1 lần/tuần |
 | Gợi ý | 5 phút | sinh, chốt và chấm gợi ý (không tốn request) |
@@ -96,6 +96,28 @@ Website tự đồng bộ ở chế độ nền theo chu kỳ:
 | AI điền thông tin bên lề | 30 phút | chỉ khi có key Claude: các trận nhóm A/B trong 24 giờ tới, tối đa $3/ngày |
 
 Chỉnh chu kỳ trong `appsettings.json`, mục `Sync`. Nhà cái mặc định là Bet365 (`ApiFootball:BookmakerId = 8`).
+
+**Hồ sơ đồng bộ Pro / Ultra** (`Sync:Plan`, mặc định `Auto`):
+
+- Website đọc giới hạn ngày của gói từ header `x-ratelimit-requests-limit` của mỗi request.
+  - Giới hạn **≥ 50.000** (gói Ultra 75.000) thì tự dùng các giá trị trong `Sync:Ultra`.
+  - Ngược lại dùng các giá trị gốc trong `Sync`, đặt cho gói Pro 7.500.
+  - Gói đổi (gia hạn, hết hạn, đổi key) thì hồ sơ đổi theo ngay ở phút sau.
+- Giá trị Ultra:
+
+  | Tác vụ | Ultra |
+  |---|---|
+  | Kèo theo giải | 20 phút |
+  | Tỉ số, thống kê, kèo live và Góc Live | 1 phút |
+  | Góc Live nhanh | 20 giây |
+  | Thống kê mùa cũ | 200 request/lần |
+  | Tác vụ phụ tạm dừng khi quota dưới | 5.000 |
+  | Góc Live nhanh tạm dừng khi quota dưới | 3.000 |
+
+  Ước tính khoảng 25–35 nghìn request vào ngày đông trận. Phần dư dùng cho Góc Live nhanh cả ngày và thêm giải nếu cần.
+- Ép cố định một hồ sơ: `"Plan": "Pro"` hoặc `"Plan": "Ultra"`.
+  - Ép Ultra trên gói Pro sẽ cạn quota trước buổi trưa.
+- Trang **Cài đặt** hiện hồ sơ đang dùng và các chu kỳ thực tế.
 
 **Kèo live (trong trận)**:
 - Thẻ trận đang đá có dòng *Kèo live*: kèo chấp, tài xỉu cả trận (và hiệp 1 khi đang hiệp 1), kèm kèo trước trận để so.
@@ -353,15 +375,15 @@ Menu **Góc Live** (`/goc-live`) là mục **riêng**, chạy theo file kỹ nă
   - Số góc còn lại tính theo **Poisson**. Chỉ phát lệnh khi **tỉ lệ thắng không tính hòa ≥ 62%** và biên ≥ 0.60 (H1) / 0.65 (H2).
   - **Điểm tin cậy theo bậc**, không lạm phát 10/10: 9.0–9.5 (≥ 72%, |Δ| ≥ 1.10) · 8.0–8.9 (65–71%) · 7.0–7.9 (62–64%).
   - Thẻ trận hiện từng bộ lọc ✓/✗. Form tính tay có thêm ô **Tổng góc hết H1** và **Kèo chấp trước trận**.
-- **Dữ liệu tự động**: tác vụ trực tiếp (2 phút/lần) lưu thêm ảnh chụp số liệu theo phút (góc, sút, sút bị chặn, thẻ đỏ, tỉ số) và số góc hiệp 1 (dùng để tách nhịp hiệp 2). Kèo góc live lấy chung request `odds/live` với tác vụ **Kèo live** (`Sync:LiveOddsIntervalMinutes`, mặc định 2 phút), chỉ lưu cho trận ở phút 20–32 hoặc 70–82. Tác vụ **Góc Live** (`Sync:LiveCornersIntervalMinutes`) chỉ chốt/chấm khuyến nghị, không tốn request. Kèo đọc được: *Asian Corners* / *Total Corners* (cả trận) và *Corners 1st Half* (hiệp 1).
+- **Dữ liệu tự động**: tác vụ trực tiếp (2 phút/lần, Ultra 1 phút) lưu thêm ảnh chụp số liệu theo phút (góc, sút, sút bị chặn, thẻ đỏ, tỉ số) và số góc hiệp 1 (dùng để tách nhịp hiệp 2). Kèo góc live lấy chung request `odds/live` với tác vụ **Kèo live** (`Sync:LiveOddsIntervalMinutes`, mặc định 2 phút, Ultra 1 phút), chỉ lưu cho trận ở phút 20–32 hoặc 70–82. Tác vụ **Góc Live** (`Sync:LiveCornersIntervalMinutes`) chỉ chốt/chấm khuyến nghị, không tốn request. Kèo đọc được: *Asian Corners* / *Total Corners* (cả trận) và *Corners 1st Half* (hiệp 1).
 - **Góc Live nhanh** (chống báo muộn ở phút 25 và 75):
   - Tiến trình nền riêng, không xếp hàng sau các tác vụ nặng như kèo theo giải hay tư vấn.
-  - Cứ 15 giây xem trong CSDL có trận nào ở **vùng nóng** không: phút 22–31 hoặc 72–81, tính theo phút ước lượng = phút API + thời gian đã trôi.
-  - Có thì cứ **30 giây** chạy một chu kỳ liền: số liệu riêng các trận đó (20 trận/request), kèo live (1 request), rồi chốt khuyến nghị ngay.
+  - Cứ 5 giây xem trong CSDL có trận nào ở **vùng nóng** không: phút 22–31 hoặc 72–81, tính theo phút ước lượng = phút API + thời gian đã trôi.
+  - Có thì cứ **30 giây** (gói Ultra: **20 giây**) chạy một chu kỳ liền: số liệu riêng các trận đó (20 trận/request), kèo live (1 request), rồi chốt khuyến nghị ngay.
   - Trang Góc Live nhận tín hiệu và tải lại ngay, kêu "ting" trong vài giây thay vì chờ tới 1 phút. Nút "Cập nhật ngay" cũng chạy theo kiểu này.
-  - **Chi phí:** khoảng 2 request/chu kỳ, tức khoảng 4 request mỗi phút có trận nóng. Ngày đông trận tốn thêm khoảng 1.000–2.000 request.
-  - Quota còn dưới `LiveCornerFastMinRemaining` (1.500) thì tự tạm dừng và quay về nhịp 2 phút.
-  - Cấu hình trong mục `Sync`: `LiveCornerFastSeconds` (30; 0 = tắt), `LiveCornerHotH1From/To`, `LiveCornerHotH2From/To`, `LiveCornerFastMinRemaining`.
+  - **Chi phí:** khoảng 2 request/chu kỳ, tức khoảng 4 request mỗi phút có trận nóng (Ultra 20 giây: khoảng 6 request/phút). Ngày đông trận tốn thêm khoảng 1.000–2.000 request (Ultra khoảng 1.500–3.000).
+  - Quota còn dưới `LiveCornerFastMinRemaining` (Pro 1.500, Ultra 3.000) thì tự tạm dừng và quay về nhịp thường (Pro 2 phút, Ultra 1 phút).
+  - Cấu hình trong mục `Sync`: `LiveCornerFastSeconds` (30; 0 = tắt), `LiveCornerHotH1From/To`, `LiveCornerHotH2From/To`, `LiveCornerFastMinRemaining`. Gói Ultra dùng `Sync:Ultra:LiveCornerFastSeconds` (20) và `Sync:Ultra:LiveCornerFastMinRemaining` (3.000).
 - **Không có "tấn công nguy hiểm"**: API-Football không có số này. Website thay bằng (sút + góc)/phút và nhịp 10–15 phút gần nhất. Muốn có số chính xác thì dùng ảnh AiScore.
 - **Trang Góc Live**:
   - Thẻ từng trận đang trong cửa sổ, kèm bóc tách hệ số. Trang tự làm mới mỗi phút.

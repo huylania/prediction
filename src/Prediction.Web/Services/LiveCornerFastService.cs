@@ -10,9 +10,9 @@ namespace Prediction.Web.Services;
 public sealed record LiveCornerFastStatus(bool Enabled, int Seconds, HotZone Zone, int HotFixtures, DateTime? LastRunUtc, string? PausedReason);
 
 /// <summary>
-/// Góc Live nhanh: tiến trình nền riêng (không xếp hàng sau các tác vụ nặng). Cứ 15 giây xem trong CSDL có trận nào ở vùng nóng
+/// Góc Live nhanh: tiến trình nền riêng (không xếp hàng sau các tác vụ nặng). Cứ 5 giây xem trong CSDL có trận nào ở vùng nóng
 /// quanh cửa sổ vàng (mặc định phút 22–31 và 72–81, theo phút ước lượng) không; có thì cứ <see cref="SyncOptions.LiveCornerFastSeconds"/> giây
-/// chạy một chu kỳ: số liệu các trận đó + kèo live + chốt khuyến nghị. Quota còn thấp thì tạm dừng, nhịp 2 phút vẫn chạy như cũ.
+/// chạy một chu kỳ: số liệu các trận đó + kèo live + chốt khuyến nghị. Quota còn thấp thì tạm dừng, nhịp thường (Pro 2 phút, Ultra 1 phút) vẫn chạy như cũ.
 /// </summary>
 public sealed class LiveCornerFastService(
     SyncCoordinator coordinator,
@@ -22,7 +22,8 @@ public sealed class LiveCornerFastService(
     TimeProvider clock,
     ILogger<LiveCornerFastService> logger) : BackgroundService
 {
-    public static readonly TimeSpan CheckEvery = TimeSpan.FromSeconds(15);
+    /// <summary>Nhịp kiểm tra; phải nhỏ để chu kỳ thật bám đúng số giây cấu hình (15 giây sẽ làm 20 giây thành 30).</summary>
+    public static readonly TimeSpan CheckEvery = TimeSpan.FromSeconds(5);
 
     private DateTime? _lastRunUtc;
 
@@ -30,10 +31,9 @@ public sealed class LiveCornerFastService(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var o = options.Value;
-        if (!o.Enabled || o.LiveCornerFastSeconds <= 0)
+        if (!options.Value.Enabled)
         {
-            Status = new LiveCornerFastStatus(false, o.LiveCornerFastSeconds, o.HotZone, 0, null, !o.Enabled ? "đồng bộ nền đang tắt" : "LiveCornerFastSeconds = 0");
+            Status = new LiveCornerFastStatus(false, 0, options.Value.HotZone, 0, null, "đồng bộ nền đang tắt");
             return;
         }
 
@@ -42,7 +42,8 @@ public sealed class LiveCornerFastService(
         {
             try
             {
-                await TickAsync(o, stoppingToken);
+                // Hồ sơ Pro/Ultra đọc lại mỗi lượt: giây/lần và ngưỡng quota theo gói đang dùng.
+                await TickAsync(options.Value.Effective(), stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -59,6 +60,12 @@ public sealed class LiveCornerFastService(
     private async Task TickAsync(SyncOptions o, CancellationToken ct)
     {
         var now = clock.GetUtcNow().UtcDateTime;
+        if (o.LiveCornerFastSeconds <= 0)
+        {
+            Status = new LiveCornerFastStatus(false, o.LiveCornerFastSeconds, o.HotZone, 0, _lastRunUtc, "LiveCornerFastSeconds = 0");
+            return;
+        }
+
         if (!api.IsConfigured)
         {
             Status = new LiveCornerFastStatus(true, o.LiveCornerFastSeconds, o.HotZone, 0, _lastRunUtc, "chưa có API key");

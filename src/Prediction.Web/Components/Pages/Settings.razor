@@ -53,7 +53,7 @@
                             Còn lại hôm nay (theo request gần nhất): <strong>@remaining</strong>@(ApiFootballClient.DailyLimit is { } limit ? $" / {limit}" : "") request
                             @if (DataSyncService.QuotaLow(SyncOpts.Value))
                             {
-                                <span class="badge bg-warning text-dark ms-1">dưới @SyncOpts.Value.QuotaReserve — tạm dừng thống kê, HLV, chấn thương, tư vấn</span>
+                                <span class="badge bg-warning text-dark ms-1">dưới @Eff.QuotaReserve — tạm dừng thống kê, HLV, chấn thương, tư vấn</span>
                             }
                         </div>
                     }
@@ -64,21 +64,28 @@
                     <pre class="small bg-light p-2 mb-1">dotnet user-secrets set ApiFootball:ApiKey "KEY_CUA_BAN"</pre>
                     <p class="small text-muted mb-0">hoặc đặt biến môi trường <code>ApiFootball__ApiKey</code>, rồi khởi động lại website.</p>
                 }
-                <div class="small text-muted mt-2">
-                    Chu kỳ: lịch/kết quả @SyncOpts.Value.FixturesIntervalMinutes phút · kèo theo giải @SyncOpts.Value.OddsIntervalMinutes phút ·
-                    kèo sát giờ @SyncOpts.Value.ClosingOddsIntervalMinutes phút (trong @SyncOpts.Value.ClosingWindowMinutes phút trước trận) ·
-                    tư vấn API @SyncOpts.Value.AdviceIntervalMinutes phút · tỉ số và thống kê trực tiếp @SyncOpts.Value.LiveIntervalMinutes phút (chỉ khi có trận đang đá) ·
-                    thống kê trận đã đá @SyncOpts.Value.StatsIntervalMinutes phút (tối đa @SyncOpts.Value.StatsMaxRequests request/lần) ·
-                    chấn thương @SyncOpts.Value.InjuriesIntervalMinutes phút · HLV @SyncOpts.Value.CoachesIntervalMinutes phút ·
-                    dò đội hình @SyncOpts.Value.LineupsIntervalMinutes phút (trong @SyncOpts.Value.LineupsWindowMinutes phút trước trận, có đội hình là chụp kèo) ·
-                    chụp kèo @SyncOpts.Value.PreKickoffMinutes phút trước trận · đối đầu & sân @SyncOpts.Value.H2HIntervalMinutes phút · thời tiết @SyncOpts.Value.WeatherIntervalMinutes phút (Open-Meteo, miễn phí) ·
-                    kèo live (chấp, tài xỉu, góc) @SyncOpts.Value.LiveOddsIntervalMinutes phút (chỉ khi có trận đang đá, 1 request cho mọi trận) ·
-                    Góc Live chốt/chấm @SyncOpts.Value.LiveCornersIntervalMinutes phút.
-                    <b>Góc Live nhanh</b>: @(SyncOpts.Value.LiveCornerFastSeconds > 0 ? $"{SyncOpts.Value.LiveCornerFastSeconds} giây/lần" : "tắt") khi có trận ở phút
-                    @SyncOpts.Value.LiveCornerHotH1From–@SyncOpts.Value.LiveCornerHotH1To / @SyncOpts.Value.LiveCornerHotH2From–@SyncOpts.Value.LiveCornerHotH2To
-                    (≈ 2 request/lần, tiến trình riêng không chờ tác vụ nặng; tạm dừng khi quota dưới @SyncOpts.Value.LiveCornerFastMinRemaining)
+                <div class="small mt-2">
+                    Hồ sơ đồng bộ: <strong>@SyncOpts.Value.PlanName(ApiFootballClient.DailyLimit)</strong>
+                    @(SyncOpts.Value.Plan.Trim().Equals("Auto", StringComparison.OrdinalIgnoreCase)
+                        ? $"(tự chọn: giới hạn {(ApiFootballClient.DailyLimit?.ToString() ?? "chưa biết")}/ngày, Ultra khi ≥ {SyncOpts.Value.Ultra.MinDailyLimit})"
+                        : $"(ép bằng Sync:Plan = {SyncOpts.Value.Plan})")
+                    · ước tính @(SyncOpts.Value.UsesUltra(ApiFootballClient.DailyLimit) ? "25–35 nghìn" : "5–6,5 nghìn") request vào ngày đông trận.
+                </div>
+                <div class="small text-muted mt-1">
+                    Chu kỳ: lịch/kết quả @Eff.FixturesIntervalMinutes phút · kèo theo giải @Eff.OddsIntervalMinutes phút ·
+                    kèo sát giờ @Eff.ClosingOddsIntervalMinutes phút (trong @Eff.ClosingWindowMinutes phút trước trận) ·
+                    tư vấn API @Eff.AdviceIntervalMinutes phút · tỉ số và thống kê trực tiếp @Eff.LiveIntervalMinutes phút (chỉ khi có trận đang đá) ·
+                    thống kê trận đã đá @Eff.StatsIntervalMinutes phút (tối đa @Eff.StatsMaxRequests request/lần) ·
+                    chấn thương @Eff.InjuriesIntervalMinutes phút · HLV @Eff.CoachesIntervalMinutes phút ·
+                    dò đội hình @Eff.LineupsIntervalMinutes phút (trong @Eff.LineupsWindowMinutes phút trước trận, có đội hình là chụp kèo) ·
+                    chụp kèo @Eff.PreKickoffMinutes phút trước trận · đối đầu & sân @Eff.H2HIntervalMinutes phút · thời tiết @Eff.WeatherIntervalMinutes phút (Open-Meteo, miễn phí) ·
+                    kèo live (chấp, tài xỉu, góc) @Eff.LiveOddsIntervalMinutes phút (chỉ khi có trận đang đá, 1 request cho mọi trận) ·
+                    Góc Live chốt/chấm @Eff.LiveCornersIntervalMinutes phút.
+                    <b>Góc Live nhanh</b>: @(Eff.LiveCornerFastSeconds > 0 ? $"{Eff.LiveCornerFastSeconds} giây/lần" : "tắt") khi có trận ở phút
+                    @Eff.LiveCornerHotH1From–@Eff.LiveCornerHotH1To / @Eff.LiveCornerHotH2From–@Eff.LiveCornerHotH2To
+                    (≈ 2 request/lần, tiến trình riêng không chờ tác vụ nặng; tạm dừng khi quota dưới @Eff.LiveCornerFastMinRemaining)
                     @(FastCorners.Status is { Enabled: true } fs ? $"— đang có {fs.HotFixtures} trận ở vùng nóng{(fs.PausedReason is { } why ? $", tạm dừng: {why}" : "")}" : "").
-                    Khi quota còn dưới @SyncOpts.Value.QuotaReserve request, các tác vụ phụ tạm dừng. Sửa trong <code>appsettings.json</code> mục <code>Sync</code>.
+                    Khi quota còn dưới @Eff.QuotaReserve request, các tác vụ phụ tạm dừng. Sửa trong <code>appsettings.json</code> mục <code>Sync</code> (giá trị gói Ultra ở <code>Sync:Ultra</code>).
                 </div>
             </div>
         </div>
@@ -243,6 +250,9 @@
 </div>
 
 @code {
+    /// <summary>Cấu hình đang áp dụng (Pro hoặc Ultra theo giới hạn ngày của gói).</summary>
+    private SyncOptions Eff => SyncOpts.Value.Effective();
+
     [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
 
     private List<League> _leagues = [];
