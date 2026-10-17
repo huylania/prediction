@@ -483,3 +483,5 @@ $RECYCLE.BIN/
 
 # Bản trả về API khi tìm id đội (scripts/dna/resolve_team_ids.py)
 scripts/dna/.cache/
+# Kết quả tính DNA từ API (scripts/dna/dna_from_api.py)
+scripts/dna/tu_api/

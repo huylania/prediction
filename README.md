@@ -235,6 +235,27 @@ Trang **DNA & nhân sự** cho sửa nhãn DNA của giải/đội (đã nhập 
 - Lọc "Có tích ngược số liệu" ở tab Đội bóng; "Chi tiết" ghi số liệu từng tích.
 - Nút **Gỡ các tích ngược số liệu** (bấm 2 lần để xác nhận) hoặc **Tải script SQL** để chạy tay; chỉ bỏ đúng tích bị bác, giữ tích khác và ghi chú.
 
+**Tính lại DNA từ API-Football** (`scripts/dna/dna_from_api.py`) — khi nghi file DNA (đội hoặc giải) ghi sai số liệu, sai nhãn hay nhầm đội:
+- Chạy `APIFOOTBALL_KEY=<key> python3 scripts/dna/dna_from_api.py [--out thư_mục]`.
+  - Script lấy mọi trận đã đá trong **1 năm qua** của 46 giải: lịch, tỉ số, tỉ số hiệp 1, thống kê góc/thẻ, phút ghi bàn.
+  - Khoảng 1.000 request. Phản hồi lưu ở `scripts/dna/.cache/` nên chạy lại cùng ngày không tốn request. Script tự dừng khi quota còn dưới 2.000.
+- Công thức và ngưỡng giống hệt mục "Kiểm chứng DNA" của website.
+  - Nhãn = 1 khi số liệu thật đạt ngưỡng "khớp", còn lại = 0.
+  - Giữ giá trị file cũ, kèm ghi chú, khi chưa đủ trận, khi API không có số liệu góc/thẻ, hoặc khi nhãn cần dữ liệu kèo (Bắt nạt đội yếu, Cửa dưới hay ăn, Phân hoá lớn / tín kèo trên).
+- Ghi 4 file vào `scripts/dna/tu_api/` (không commit):
+
+  | File | Nội dung |
+  |---|---|
+  | `dna_doi_bong_30_giai_1nam_API.csv` | Cùng cột với file đội, số liệu và nhãn tính từ API. Thay thẳng file cũ được. |
+  | `dna_doi_bong_doi_chieu.csv` | Mỗi dòng một đội: tên file ↔ tên API, cách khớp tên, số trận file/API. Từng nhãn ghi "đúng / 1→0 SAI / 1→0 bỏ, lưng chừng / 0→1 thiếu nhãn / giữ" kèm số liệu. Thêm cảnh báo: 0 trận ở giải (sai đội), tên khớp gần đúng, số trận lệch, số liệu file lệch API. Đội sai nhiều nhất nằm trên cùng. |
+  | `dna_giai_dau_46_giai_1nam_API.csv` | Cùng cột với file giải, tính từ API. |
+  | `dna_giai_dau_doi_chieu.csv` | Đối chiếu từng giải. |
+
+- **Nạp lại vào website**, thay nhãn cũ bằng nhãn tính từ API:
+  - `python3 scripts/dna/gen_team_dna_sql.py --source scripts/dna/tu_api/dna_doi_bong_30_giai_1nam_API.csv --output team_dna_api.sql --replace`
+  - `python3 scripts/dna/gen_league_dna_sql.py --source scripts/dna/tu_api/dna_giai_dau_46_giai_1nam_API.csv --output league_dna_api.sql --replace`
+  - Chạy 2 file `.sql` như mục trên. Không có `--replace` thì nhãn được cộng thêm (OR) như trước.
+
 **DNA giải đấu 46 giải (số liệu 1 năm)** — `scripts/dna/`:
 - **11 đặc điểm giải** (tab Giải đấu ở trang DNA): Tài bàn, Xỉu bàn, Thánh địa sân nhà, Tài góc, Xỉu góc, Bàn muộn, Cửa dưới hay ăn (đồng đều), Phân hóa lớn / tín kèo trên, Vua hòa / thắng sát nút, Nổ sớm H1, Mưa thẻ.
 - Mỗi giải có thêm hồ sơ 1 năm: TB bàn, % Tài 2.5, % hòa, % chủ nhà thắng, TB góc, % có bàn H1, % bàn sau phút 75, TB thẻ, tóm tắt và lý do. Hồ sơ hiện ở trang DNA và mục 1 của trang phân tích.

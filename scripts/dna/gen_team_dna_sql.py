@@ -1,12 +1,16 @@
 """Sinh script SQL nạp DNA đội bóng (file 30 giải, 1 năm) vào bảng dbo.TeamDnas.
 
-    python3 scripts/dna/gen_team_dna_sql.py
+    python3 scripts/dna/gen_team_dna_sql.py [--source file.csv] [--output file.sql] [--replace]
 
 Đọc dna_doi_bong_30_giai_1nam.csv + team-ids.csv (id API-Football, tạo bằng resolve_team_ids.py)
 và ghi team_dna_30_giai.sql. Mỗi đội 1 hồ sơ: đội có nhiều dòng (vd giải quốc nội + cúp châu lục)
 lấy dòng nhiều trận nhất, bằng nhau thì ưu tiên giải quốc nội. Mọi giải của đội trong file vẫn được ghi
 vào dbo.TeamDnaLeagues để trang DNA lọc được theo từng giải (kể cả cúp châu lục).
+
+--replace: nhãn của đội = đúng nhãn trong file (bỏ nhãn cũ không còn trong file), dùng khi nạp file tính lại từ API
+(dna_from_api.py). Mặc định cộng thêm nhãn (phép OR), giữ nhãn cũ.
 """
+import argparse
 import csv
 import datetime
 from decimal import Decimal, InvalidOperation
@@ -70,8 +74,16 @@ def league_name(raw: str) -> str:
 
 
 def main() -> None:
-    rows = list(csv.DictReader(SOURCE.open(encoding="utf-8-sig")))
-    ids = {(r["League_Id"], r["Doi_Bong"]): r for r in csv.DictReader(IDS.open(encoding="utf-8"))}
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--source", type=Path, default=SOURCE)
+    parser.add_argument("--ids", type=Path, default=IDS)
+    parser.add_argument("--output", type=Path, default=OUTPUT)
+    parser.add_argument("--replace", action="store_true", help="ghi đè nhãn thay vì cộng thêm (OR)")
+    args = parser.parse_args()
+    source, output = args.source, args.output
+
+    rows = list(csv.DictReader(source.open(encoding="utf-8-sig")))
+    ids = {(r["League_Id"], r["Doi_Bong"]): r for r in csv.DictReader(args.ids.open(encoding="utf-8"))}
 
     best: dict[int, dict] = {}
     names: dict[int, str] = {}
@@ -104,9 +116,11 @@ def main() -> None:
         f"-- DNA đội bóng {len({r['League_Id'] for r in rows})} giải (số liệu 1 năm) → dbo.TeamDnas + dbo.TeamDnaLeagues",
         f"-- Sinh tự động bởi scripts/dna/gen_team_dna_sql.py ngày {today}: {len(values)} đội từ {len(rows)} dòng CSV.",
         "-- CHẠY SAU KHI website bản mới đã khởi động ít nhất 1 lần (migration DnaLeagues thêm bảng giải của đội, bật theo dõi 11 giải mới).",
-        "-- Đội đã có DNA: giữ các tích cũ + cộng thêm tích từ file (phép OR), giữ Tên và Ghi chú; ghi đè số liệu 1 năm.",
+        f"-- Nguồn: {source.name}.",
+        ("-- Đội đã có DNA: nhãn = ĐÚNG nhãn trong file (bỏ nhãn cũ không còn trong file), giữ Tên và Ghi chú; ghi đè số liệu 1 năm."
+         if args.replace else "-- Đội đã có DNA: giữ các tích cũ + cộng thêm tích từ file (phép OR), giữ Tên và Ghi chú; ghi đè số liệu 1 năm."),
         "-- Đội chưa có: thêm mới. Chạy lại nhiều lần vẫn cho cùng kết quả.",
-        f"-- Cách chạy: mở bằng SSMS / Azure Data Studio rồi Execute, hoặc: sqlcmd -S <máy> -d <CSDL> -U <user> -P <mật khẩu> -f 65001 -i {OUTPUT.name}",
+        f"-- Cách chạy: mở bằng SSMS / Azure Data Studio rồi Execute, hoặc: sqlcmd -S <máy> -d <CSDL> -U <user> -P <mật khẩu> -f 65001 -i {output.name}",
         "SET NOCOUNT ON;",
         "SET XACT_ABORT ON;",
         "",
@@ -153,7 +167,7 @@ def main() -> None:
         "MERGE dbo.TeamDnas AS t",
         "USING #src AS s ON t.TeamId = s.TeamId",
         "WHEN MATCHED THEN UPDATE SET",
-        "        t.Tags = t.Tags | s.Tags,",
+        "        t.Tags = s.Tags," if args.replace else "        t.Tags = t.Tags | s.Tags,",
         "        t.SourceLeagueId = s.SourceLeagueId,",
         "        t.SourceLeagueName = s.SourceLeagueName,",
         "        t.Matches = s.Matches,",
@@ -190,8 +204,8 @@ def main() -> None:
     if skipped:
         lines += ["", "-- Các dòng CSV chưa có id đội (sửa team-ids.csv rồi sinh lại):"] + [f"--   {s}" for s in skipped]
 
-    OUTPUT.write_text("\n".join(lines) + "\n", encoding="utf-8-sig")
-    print(f"Đã ghi {OUTPUT.name}: {len(values)} đội, {len(league_values)} dòng đội–giải ({len(rows)} dòng CSV, {len(skipped)} dòng thiếu id).")
+    output.write_text("\n".join(lines) + "\n", encoding="utf-8-sig")
+    print(f"Đã ghi {output.name}: {len(values)} đội, {len(league_values)} dòng đội–giải ({len(rows)} dòng CSV, {len(skipped)} dòng thiếu id).")
 
 
 if __name__ == "__main__":
