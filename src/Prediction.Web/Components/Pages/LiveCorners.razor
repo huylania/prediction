@@ -8,6 +8,7 @@
 @inject LiveCornerService Corners
 @inject CornerAiService CornerAi
 @inject SyncCoordinator Sync
+@inject LiveCornerFastService Fast
 @inject ApiFootballClient Api
 @inject TimeDisplay Time
 @inject IJSRuntime JS
@@ -23,7 +24,7 @@
 </p>
 
 <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
-    <button class="btn btn-sm btn-outline-primary" disabled="@(_refreshing || Sync.CurrentJob is not null)" @onclick="RefreshNowAsync">
+    <button class="btn btn-sm btn-outline-primary" disabled="@(_refreshing || Sync.CurrentLiveJob is not null)" @onclick="RefreshNowAsync">
         @(_refreshing ? "Đang cập nhật…" : "Cập nhật ngay")
     </button>
     <label class="small d-flex align-items-center gap-1">
@@ -41,8 +42,25 @@
     {
         <span class="badge bg-secondary">Thông báo trình duyệt bị chặn (mở lại trong cài đặt trình duyệt)</span>
     }
-    <span class="hint">Tự làm mới mỗi phút@(_loadedAt is { } t ? $" · lần cuối {Time.ToLocal(t):HH:mm:ss}" : "") · cần để trang mở (tab nền được).</span>
+    <span class="hint">Tự làm mới ngay khi có số liệu mới (và mỗi 30 giây)@(_loadedAt is { } t ? $" · lần cuối {Time.ToLocal(t):HH:mm:ss}" : "") · cần để trang mở (tab nền được).</span>
 </div>
+@if (Fast.Status is { } fs)
+{
+    <div class="hint mb-2">
+        @if (!fs.Enabled)
+        {
+            <span>Góc Live nhanh: tắt (@fs.PausedReason) — chỉ cập nhật theo nhịp 2 phút.</span>
+        }
+        else if (fs.PausedReason is { } why)
+        {
+            <span class="text-danger">Góc Live nhanh tạm dừng: @why — quay về nhịp 2 phút.</span>
+        }
+        else
+        {
+            <span>⚡ Góc Live nhanh: quét @fs.Seconds giây/lần khi có trận ở phút @fs.Zone.H1From–@fs.Zone.H1To / @fs.Zone.H2From–@fs.Zone.H2To · đang có <strong>@fs.HotFixtures</strong> trận@(fs.LastRunUtc is { } lr ? $" · lần quét cuối {Time.ToLocal(lr):HH:mm:ss}" : "")</span>
+        }
+    </div>
+}
 @if (_message is not null)
 {
     <div class="alert alert-info py-2 small">@_message</div>
@@ -350,6 +368,7 @@ else
     private string? _permission;
     private PeriodicTimer? _timer;
     private CancellationTokenSource? _cts;
+    private int _reloading;
     private readonly HashSet<string> _announced = [];
     private bool _primed;
 
@@ -388,8 +407,9 @@ else
         {
             // Chỉ chạy khi đã kết nối tương tác (không chạy lúc prerender).
             _cts = new CancellationTokenSource();
-            _timer = new PeriodicTimer(TimeSpan.FromSeconds(60));
+            _timer = new PeriodicTimer(TimeSpan.FromSeconds(30));
             _ = TickAsync(_cts.Token);
+            Corners.Updated += OnCornersUpdated;
             try
             {
                 _permission = await JS.InvokeAsync<string>("gocLive.permission");
@@ -477,6 +497,32 @@ else
         return list;
     }
 
+    /// <summary>Góc Live vừa chốt/chấm (nhịp nhanh hoặc 2 phút): tải lại ngay để báo khuyến nghị mới, bỏ qua nếu đang tải dở.</summary>
+    private void OnCornersUpdated()
+    {
+        if (Interlocked.Exchange(ref _reloading, 1) == 1)
+        {
+            return;
+        }
+
+        _ = InvokeAsync(async () =>
+        {
+            try
+            {
+                await LoadAsync(true);
+                StateHasChanged();
+            }
+            catch (Exception)
+            {
+                // trang đã đóng hoặc mất kết nối: bỏ qua, lần sau tải lại
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _reloading, 0);
+            }
+        });
+    }
+
     private async Task RefreshNowAsync()
     {
         _refreshing = true;
@@ -484,7 +530,17 @@ else
         try
         {
             var messages = new List<string>();
-            if (Api.IsConfigured)
+            var ranFast = false;
+            if (Api.IsConfigured && _live.Count > 0)
+            {
+                // Chạy như Góc Live nhanh (khóa live riêng) để không phải chờ tác vụ nặng đang chạy.
+                ranFast = true;
+                if ((await Sync.RunFastCornersAsync(_live.Select(m => m.Fixture.Id).ToList(), default))?.Message is { } fm)
+                {
+                    messages.Add(fm);
+                }
+            }
+            else if (Api.IsConfigured)
             {
                 foreach (var job in new[] { SyncJobs.Live, SyncJobs.LiveOdds })
                 {
@@ -495,8 +551,7 @@ else
                 }
             }
 
-            var corners = await Sync.RunNamedAsync(SyncJobs.LiveCorners, default);
-            if (corners?.Message is { } cm)
+            if (!ranFast && (await Sync.RunNamedAsync(SyncJobs.LiveCorners, default))?.Message is { } cm)
             {
                 messages.Add(cm);
             }
@@ -620,6 +675,7 @@ else
 
     public async ValueTask DisposeAsync()
     {
+        Corners.Updated -= OnCornersUpdated;
         _cts?.Cancel();
         _timer?.Dispose();
         _cts?.Dispose();

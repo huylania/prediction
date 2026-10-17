@@ -30,6 +30,12 @@ public static class SyncJobs
     public const string LiveCorners = "live-corners";
     public const string LiveOdds = "live-odds";
 
+    /// <summary>Góc Live nhanh: số liệu + kèo góc live + chốt khuyến nghị cho các trận ở vùng nóng (chạy riêng, không chờ tác vụ nặng).</summary>
+    public const string LiveFast = "live-fast";
+
+    /// <summary>Tác vụ ghi dữ liệu trận đang đá: dùng chung khóa live với Góc Live nhanh để không ghi chồng lên nhau.</summary>
+    public static bool TouchesLive(string job) => job is Live or LiveOdds or LiveCorners;
+
     /// <summary>Tác vụ phụ: tạm dừng khi quota trong ngày sắp hết.</summary>
     public static bool IsLowPriority(string job) => job is Stats or Coaches or Injuries or Advice or HeadToHead or Venues;
 
@@ -56,6 +62,7 @@ public static class SyncJobs
         SideInfo => "AI điền thông tin bên lề",
         LiveCorners => "Góc Live",
         LiveOdds => "Kèo live",
+        LiveFast => "Góc Live nhanh",
         _ => job,
     };
 }
@@ -76,7 +83,16 @@ public sealed class SyncCoordinator(
 {
     private readonly SemaphoreSlim _lock = new(1, 1);
 
+    /// <summary>
+    /// Khóa riêng cho dữ liệu trận đang đá. Góc Live nhanh chỉ giữ khóa này nên không phải chờ các tác vụ nặng (kèo theo giải, tư vấn…);
+    /// các tác vụ live thường (Trực tiếp, Kèo live, Góc Live) giữ cả hai khóa.
+    /// </summary>
+    private readonly SemaphoreSlim _liveLock = new(1, 1);
+
     public string? CurrentJob { get; private set; }
+
+    /// <summary>Góc Live nhanh đang chạy (không chặn các nút đồng bộ khác).</summary>
+    public string? CurrentLiveJob { get; private set; }
 
     public event Action? Changed;
 
@@ -85,9 +101,40 @@ public sealed class SyncCoordinator(
     /// </summary>
     public async Task<SyncLog?> RunAsync(string job, Func<DataSyncService, CancellationToken, Task<string?>> work, CancellationToken ct)
     {
-        await _lock.WaitAsync(ct);
+        var fast = job == SyncJobs.LiveFast;
+        var live = fast || SyncJobs.TouchesLive(job);
+        if (!fast)
+        {
+            await _lock.WaitAsync(ct);
+        }
+
+        if (live)
+        {
+            try
+            {
+                await _liveLock.WaitAsync(ct);
+            }
+            catch
+            {
+                if (!fast)
+                {
+                    _lock.Release();
+                }
+
+                throw;
+            }
+        }
+
         var started = clock.GetUtcNow().UtcDateTime;
-        CurrentJob = job;
+        if (fast)
+        {
+            CurrentLiveJob = job;
+        }
+        else
+        {
+            CurrentJob = job;
+        }
+
         Changed?.Invoke();
         SyncLog? log = null;
         try
@@ -99,7 +146,7 @@ public sealed class SyncCoordinator(
             try
             {
                 message = await work(sync, ct);
-                if (job is not (SyncJobs.Suggestions or SyncJobs.Analysis or SyncJobs.SideInfo or SyncJobs.LiveCorners or SyncJobs.LiveOdds))
+                if (job is not (SyncJobs.Suggestions or SyncJobs.Analysis or SyncJobs.SideInfo or SyncJobs.LiveCorners or SyncJobs.LiveOdds or SyncJobs.LiveFast))
                 {
                     var suggestionMessage = await suggestions.RefreshAsync(ct);
                     message = message is null || suggestionMessage is null ? message : $"{message} {suggestionMessage}";
@@ -134,11 +181,40 @@ public sealed class SyncCoordinator(
         }
         finally
         {
-            CurrentJob = null;
-            _lock.Release();
+            if (fast)
+            {
+                CurrentLiveJob = null;
+            }
+            else
+            {
+                CurrentJob = null;
+            }
+
+            if (live)
+            {
+                _liveLock.Release();
+            }
+
+            if (!fast)
+            {
+                _lock.Release();
+            }
+
             Changed?.Invoke();
         }
     }
+
+    /// <summary>
+    /// Một chu kỳ Góc Live nhanh: số liệu các trận ở vùng nóng (20 trận/request) → kèo live (1 request) → chốt khuyến nghị (không gọi API).
+    /// Chỉ ghi nhật ký khi có khuyến nghị được chốt/chấm.
+    /// </summary>
+    public Task<SyncLog?> RunFastCornersAsync(IReadOnlyCollection<int> hotFixtureIds, CancellationToken ct) =>
+        RunAsync(SyncJobs.LiveFast, async (s, c) =>
+        {
+            await s.SyncLiveAsync(hotFixtureIds, c);
+            await s.SyncLiveOddsAsync(c);
+            return await liveCorners.ProcessAsync(c);
+        }, ct);
 
     public Task<SyncLog?> RunNamedAsync(string job, CancellationToken ct) => job switch
     {

@@ -354,6 +354,14 @@ Menu **Góc Live** (`/goc-live`) là mục **riêng**, chạy theo file kỹ nă
   - **Điểm tin cậy theo bậc**, không lạm phát 10/10: 9.0–9.5 (≥ 72%, |Δ| ≥ 1.10) · 8.0–8.9 (65–71%) · 7.0–7.9 (62–64%).
   - Thẻ trận hiện từng bộ lọc ✓/✗. Form tính tay có thêm ô **Tổng góc hết H1** và **Kèo chấp trước trận**.
 - **Dữ liệu tự động**: tác vụ trực tiếp (2 phút/lần) lưu thêm ảnh chụp số liệu theo phút (góc, sút, sút bị chặn, thẻ đỏ, tỉ số) và số góc hiệp 1 (dùng để tách nhịp hiệp 2). Kèo góc live lấy chung request `odds/live` với tác vụ **Kèo live** (`Sync:LiveOddsIntervalMinutes`, mặc định 2 phút), chỉ lưu cho trận ở phút 20–32 hoặc 70–82. Tác vụ **Góc Live** (`Sync:LiveCornersIntervalMinutes`) chỉ chốt/chấm khuyến nghị, không tốn request. Kèo đọc được: *Asian Corners* / *Total Corners* (cả trận) và *Corners 1st Half* (hiệp 1).
+- **Góc Live nhanh** (chống báo muộn ở phút 25 và 75):
+  - Tiến trình nền riêng, không xếp hàng sau các tác vụ nặng như kèo theo giải hay tư vấn.
+  - Cứ 15 giây xem trong CSDL có trận nào ở **vùng nóng** không: phút 22–31 hoặc 72–81, tính theo phút ước lượng = phút API + thời gian đã trôi.
+  - Có thì cứ **30 giây** chạy một chu kỳ liền: số liệu riêng các trận đó (20 trận/request), kèo live (1 request), rồi chốt khuyến nghị ngay.
+  - Trang Góc Live nhận tín hiệu và tải lại ngay, kêu "ting" trong vài giây thay vì chờ tới 1 phút. Nút "Cập nhật ngay" cũng chạy theo kiểu này.
+  - **Chi phí:** khoảng 2 request/chu kỳ, tức khoảng 4 request mỗi phút có trận nóng. Ngày đông trận tốn thêm khoảng 1.000–2.000 request.
+  - Quota còn dưới `LiveCornerFastMinRemaining` (1.500) thì tự tạm dừng và quay về nhịp 2 phút.
+  - Cấu hình trong mục `Sync`: `LiveCornerFastSeconds` (30; 0 = tắt), `LiveCornerHotH1From/To`, `LiveCornerHotH2From/To`, `LiveCornerFastMinRemaining`.
 - **Không có "tấn công nguy hiểm"**: API-Football không có số này. Website thay bằng (sút + góc)/phút và nhịp 10–15 phút gần nhất. Muốn có số chính xác thì dùng ảnh AiScore.
 - **Trang Góc Live**:
   - Thẻ từng trận đang trong cửa sổ, kèm bóc tách hệ số. Trang tự làm mới mỗi phút.

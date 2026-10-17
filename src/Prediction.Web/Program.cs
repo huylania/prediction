@@ -52,6 +52,8 @@ builder.Services.AddSingleton<CornerAiService>();
 builder.Services.AddSingleton<DnaCheckService>();
 builder.Services.AddScoped<DataSyncService>();
 builder.Services.AddHostedService<SyncBackgroundService>();
+builder.Services.AddSingleton<LiveCornerFastService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<LiveCornerFastService>());
 
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(o =>

@@ -31,6 +31,9 @@ public sealed class LiveCornerService(IDbContextFactory<AppDbContext> dbFactory,
 {
     public DateTime UtcNow => clock.GetUtcNow().UtcDateTime;
 
+    /// <summary>Phát sau mỗi lần chốt/chấm (nhịp 2 phút hoặc Góc Live nhanh) để trang Góc Live tải lại ngay, không chờ hẹn giờ.</summary>
+    public event Action? Updated;
+
     /// <summary>Các trận đang đá (hiệp 1 từ phút 15, hiệp 2 từ phút 60) kèm phân tích.</summary>
     public async Task<List<LiveCornerMatch>> LiveAsync(CancellationToken ct = default)
     {
@@ -190,6 +193,7 @@ public sealed class LiveCornerService(IDbContextFactory<AppDbContext> dbFactory,
 
         await db.SaveChangesAsync(ct);
         var settled = await SettleAsync(db, now, ct);
+        Updated?.Invoke();
         return created == 0 && settled == 0 ? null : $"Góc Live: chốt {created} khuyến nghị, chấm {settled}.";
     }
 

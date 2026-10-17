@@ -5,6 +5,7 @@
 @using Prediction.Web.ApiFootball
 @inject IDbContextFactory<AppDbContext> DbFactory
 @inject SyncCoordinator Sync
+@inject LiveCornerFastService FastCorners
 @inject ApiFootballClient Api
 @inject IOptions<ApiFootballOptions> ApiOptions
 @inject IOptions<SyncOptions> SyncOpts
@@ -73,6 +74,10 @@
                     chụp kèo @SyncOpts.Value.PreKickoffMinutes phút trước trận · đối đầu & sân @SyncOpts.Value.H2HIntervalMinutes phút · thời tiết @SyncOpts.Value.WeatherIntervalMinutes phút (Open-Meteo, miễn phí) ·
                     kèo live (chấp, tài xỉu, góc) @SyncOpts.Value.LiveOddsIntervalMinutes phút (chỉ khi có trận đang đá, 1 request cho mọi trận) ·
                     Góc Live chốt/chấm @SyncOpts.Value.LiveCornersIntervalMinutes phút.
+                    <b>Góc Live nhanh</b>: @(SyncOpts.Value.LiveCornerFastSeconds > 0 ? $"{SyncOpts.Value.LiveCornerFastSeconds} giây/lần" : "tắt") khi có trận ở phút
+                    @SyncOpts.Value.LiveCornerHotH1From–@SyncOpts.Value.LiveCornerHotH1To / @SyncOpts.Value.LiveCornerHotH2From–@SyncOpts.Value.LiveCornerHotH2To
+                    (≈ 2 request/lần, tiến trình riêng không chờ tác vụ nặng; tạm dừng khi quota dưới @SyncOpts.Value.LiveCornerFastMinRemaining)
+                    @(FastCorners.Status is { Enabled: true } fs ? $"— đang có {fs.HotFixtures} trận ở vùng nóng{(fs.PausedReason is { } why ? $", tạm dừng: {why}" : "")}" : "").
                     Khi quota còn dưới @SyncOpts.Value.QuotaReserve request, các tác vụ phụ tạm dừng. Sửa trong <code>appsettings.json</code> mục <code>Sync</code>.
                 </div>
             </div>

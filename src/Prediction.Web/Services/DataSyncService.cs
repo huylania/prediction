@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using Prediction.Core.Engine.LiveCorners;
 using Prediction.Core.Entities;
 using Prediction.Web.ApiFootball;
 using Prediction.Web.Data;
@@ -60,6 +61,22 @@ public sealed class SyncOptions
 
     /// <summary>Còn ít hơn số request này trong ngày thì tạm dừng các tác vụ phụ (thống kê, HLV, chấn thương, tư vấn).</summary>
     public int QuotaReserve { get; set; } = 1000;
+
+    /// <summary>
+    /// Góc Live nhanh: khi có trận ở vùng nóng quanh cửa sổ vàng thì cứ chừng này giây lấy lại số liệu + kèo góc live và chốt khuyến nghị
+    /// (≈ 2 request/lần). 0 = tắt, chỉ dùng nhịp 2 phút.
+    /// </summary>
+    public int LiveCornerFastSeconds { get; set; } = 30;
+
+    public int LiveCornerHotH1From { get; set; } = 22;
+    public int LiveCornerHotH1To { get; set; } = 31;
+    public int LiveCornerHotH2From { get; set; } = 72;
+    public int LiveCornerHotH2To { get; set; } = 81;
+
+    /// <summary>Còn ít hơn số request này trong ngày thì Góc Live nhanh tự tạm dừng (quay về nhịp 2 phút).</summary>
+    public int LiveCornerFastMinRemaining { get; set; } = 1500;
+
+    public HotZone HotZone => new(LiveCornerHotH1From, LiveCornerHotH1To, LiveCornerHotH2From, LiveCornerHotH2To);
 }
 
 /// <summary>Các tác vụ lấy dữ liệu từ API-Football và ghi vào CSDL.</summary>
@@ -217,7 +234,10 @@ public sealed class DataSyncService(
     /// Chỉ gọi API khi có trận trong khung giờ thi đấu; lấy theo id (20 trận/request) để có kèm thống kê.
     /// Trả về thông điệp chỉ khi có trận vừa kết thúc, để nhật ký không bị lặp mỗi lần chạy.
     /// </summary>
-    public async Task<string?> SyncLiveAsync(CancellationToken ct)
+    public Task<string?> SyncLiveAsync(CancellationToken ct) => SyncLiveAsync(null, ct);
+
+    /// <param name="onlyIds">Chỉ lấy các trận này (Góc Live nhanh: trận ở vùng nóng); null = mọi trận đang đá.</param>
+    public async Task<string?> SyncLiveAsync(IReadOnlyCollection<int>? onlyIds, CancellationToken ct)
     {
         var now = Now;
         var leagues = await db.Leagues.AsNoTracking().Where(l => l.IsTracked && !l.IsDemo).ToDictionaryAsync(l => l.Id, ct);
@@ -226,7 +246,7 @@ public sealed class DataSyncService(
         var candidates = (await db.Fixtures
                 .Where(f => leagueIds.Contains(f.LeagueId) && f.KickoffUtc <= now && f.KickoffUtc >= windowStart)
                 .ToListAsync(ct))
-            .Where(f => !f.IsFinished && !f.IsCancelled && f.Status != "PST")
+            .Where(f => !f.IsFinished && !f.IsCancelled && f.Status != "PST" && (onlyIds is null || onlyIds.Contains(f.Id)))
             .ToList();
         if (candidates.Count == 0)
         {
@@ -797,8 +817,9 @@ public sealed class DataSyncService(
             return (0, 0);
         }
 
-        static bool NearCornerWindow(Fixture f) =>
-            f.Status == "1H" && f.Elapsed is >= 20 and <= 32 || f.Status == "2H" && f.Elapsed is >= 70 and <= 82;
+        // Phút ước lượng (phút API + thời gian đã trôi) để không sót kèo khi số liệu phút còn cũ.
+        bool NearCornerWindow(Fixture f) => LiveClock.EstimatedMinute(f.Status, f.Elapsed, f.UpdatedAtUtc, now) is { } m
+            && (f.Status == "1H" && m is >= 18 and <= 33 || f.Status == "2H" && m is >= 68 and <= 83);
 
         var ids = live.Keys.ToList();
         var latestGoals = (await db.LiveOddsSnapshots.AsNoTracking()
