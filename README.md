@@ -268,6 +268,48 @@ Chi phí là ước tính theo bảng giá (Opus $4/$20, Sonnet $2/$10 mỗi tri
 - Bị lỗi hoặc bấm **Dừng** giữa chừng: phần Claude đã viết vẫn được lưu, đánh dấu **dở dang**, vì phần đó đã bị tính tiền.
 - Bảng `AiUsageLogs` chỉ ghi chi phí, không ghi nội dung.
 
+## Tài 3 & chấp 0.75–1 (bộ chỉ số giờ + điểm)
+
+Trang **Tài 3 & chấp 0.75–1** (`/tai3-chap1`) lọc các trận sắp đá (3 ngày tới) đang có **đúng** một trong các mức kèo Bet365 sau. Đây là các mức một người chơi thắng nhiều nhất trong 91 phiếu cược tuần 10–17/10:
+
+| Mẫu | Cửa | Thành tích trong phiếu |
+|---|---|---|
+| Tài **3.0** | Tài (hoàn tiền khi đúng 3 bàn) | 13 thắng · 8 hoàn · 4 thua |
+| Chấp **1.0** | Cửa trên (hoàn tiền khi thắng cách 1 bàn) | 9 thắng · 6 hoàn · 2 thua |
+| Chấp **0.75** | Cửa trên (thắng cách 1 bàn: ăn nửa) | 2 thắng · 2 thua (mẫu nhỏ) |
+
+**Điểm** = 5 + tổng các chỉ số, giới hạn 0–10. Mỗi chỉ số ghi rõ cộng / trừ bao nhiêu và vì sao (bấm "Bộ chỉ số" trên thẻ):
+
+- **Xác suất và EV:** tính từ số bàn kỳ vọng của mô hình, đã trộn với giá nhà cái như phần Phân tích chuyên sâu.
+- **Biến động kèo:** kèo dịch về cửa này +0.5, dịch ngược −0.75.
+- **Website chấm cùng hay ngược cửa:** cùng cửa nhóm A/B +0.75 / +0.25; ngược cửa −1 / −0.5.
+- **Cờ đỏ:** dính cờ đỏ trên cửa này thì −2, tối đa 5.9.
+- **Mẫu dữ liệu:** dưới 5 trận thì −1, tối đa 7.9.
+- **Riêng Tài 3.0:**
+  - Tổng bàn kỳ vọng ≥ 3.3 cộng, ≤ 2.6 trừ.
+  - Tỉ lệ trận Tài 2.5 gần đây của hai đội.
+  - DNA Tài / Xỉu / thực dụng.
+- **Riêng chấp:**
+  - Cửa trên đá sân nhà +0.5, sân khách −0.5 (người chơi thắng 64% so với 44%).
+  - Dự phóng chấp mạnh hay yếu hơn kèo.
+  - DNA (mạnh sân nhà, bắt nạt đội yếu / giải cửa dưới hay ăn).
+  - Nhân sự cửa trên (HLV mới, vắng nhiều người).
+- EV âm thì tối đa 5.9.
+
+**≥ 8 vào được · 6–7.9 cân nhắc (tiền nhỏ) · dưới 6 bỏ qua.**
+
+**Giờ vào kèo** (khung xanh trên thẻ):
+
+| Tình huống | Gợi ý |
+|---|---|
+| Điểm dưới 6, hoặc còn dưới 10' tới giờ bóng lăn | Không vào |
+| Đã có đội hình | Vào ngay nếu mốc còn nguyên và giá ≥ **giá tối thiểu** (odds để EV = 0) |
+| Kèo đang chạy về cửa này và điểm ≥ 8 | Vào ngay, vì càng chờ giá càng xấu |
+| Kèo dịch ngược | Chờ đội hình (~60' trước giờ bóng lăn); Tài 3 xuống 2.75 hay chấp 1 xuống 0.75 thì bỏ |
+| Còn lại | Vào trong khung **60–30' trước giờ bóng lăn**, sau khi có đội hình (người chơi đặt trung vị 61' trước trận) |
+
+Job "Phân tích chuyên sâu" lưu các trận khớp mẫu vào bảng `LinePatternPicks`; kèo dịch khỏi mẫu thì bỏ. Bản cuối trước giờ bóng lăn là bản chốt; chấm sau trận. Cuối trang có **Thành tích bộ chỉ số** theo mẫu × nhóm điểm, để kiểm tra trận ≥ 8 điểm có thắng thật không.
+
 ## Mốc kèo, lịch sử kèo & thông tin bên lề
 
 Tab **Lịch sử & bên lề** ở trang chi tiết trận (và thẻ cảnh báo ⚠ trên thẻ trận):

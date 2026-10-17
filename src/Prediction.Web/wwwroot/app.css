@@ -300,3 +300,31 @@ h1:focus {
 .dna-chk.mid { background: #fef9c3; color: #854d0e; }
 .dna-chk.na { background: #f1f5f9; color: #64748b; }
 td.dna-bad { background: #fee2e2; box-shadow: inset 0 0 0 2px #fca5a5; }
+
+/* Tài 3 & chấp 0.75–1: bộ chỉ số giờ + điểm */
+.lp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: .8rem; align-items: start; }
+.lp-card { background: #fff; border: 1px solid #e3e6ea; border-left: 4px solid #e2e8f0; border-radius: 10px; padding: .65rem .75rem; min-width: 0; }
+.lp-card.lp-A { border-left-color: #16a34a; }
+.lp-card.lp-B { border-left-color: #f59e0b; }
+.lp-card .top { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; font-size: .75rem; color: #64748b; }
+.lp-card .top .details { margin-left: auto; font-weight: 600; text-decoration: none; }
+.lp-card .teams { font-weight: 700; color: #0f172a; margin: .2rem 0; }
+.lp-card .pick { display: flex; align-items: center; justify-content: space-between; gap: .5rem; font-weight: 700; }
+.lp-card .meta { font-size: .75rem; color: #64748b; }
+.lp-kind { display: inline-block; background: #eef2ff; color: #3730a3; border-radius: 6px; padding: 0 .4rem; font-size: .72rem; margin-right: .25rem; }
+.lp-entry { margin-top: .4rem; border-radius: 8px; padding: .35rem .5rem; font-size: .78rem; background: #f1f5f9; color: #334155; }
+.lp-entry-now { background: #dcfce7; color: #14532d; }
+.lp-entry-window { background: #e0f2fe; color: #0c4a6e; }
+.lp-entry-waitlineups { background: #fef3c7; color: #78350f; }
+.lp-entry-skip { background: #f1f5f9; color: #64748b; }
+.lp-window { font-variant-numeric: tabular-nums; font-weight: 700; margin-left: .35rem; }
+.lp-ind { margin-top: .4rem; font-size: .75rem; }
+.lp-ind summary { cursor: pointer; color: #475569; }
+.lp-ind table { width: 100%; margin-top: .25rem; border-collapse: collapse; }
+.lp-ind td { padding: .15rem .25rem; vertical-align: top; border-top: 1px solid #f1f5f9; color: #475569; }
+.lp-ind td.nm { white-space: nowrap; font-weight: 600; color: #334155; }
+.lp-ind td.pt { white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; font-weight: 700; color: #64748b; }
+.lp-ind td.pt.pos { color: #15803d; }
+.lp-ind td.pt.neg { color: #b91c1c; }
+.lp-ind tr.total td { border-top: 2px solid #e2e8f0; }
+@media (max-width: 575.98px) { .lp-grid { grid-template-columns: 1fr; } }

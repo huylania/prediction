@@ -21,6 +21,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<TeamDna> TeamDnas => Set<TeamDna>();
     public DbSet<TeamDnaLeague> TeamDnaLeagues => Set<TeamDnaLeague>();
     public DbSet<AnalysisPick> AnalysisPicks => Set<AnalysisPick>();
+    public DbSet<LinePatternPick> LinePatternPicks => Set<LinePatternPick>();
     public DbSet<AiReport> AiReports => Set<AiReport>();
     public DbSet<CornerAiNote> CornerAiNotes => Set<CornerAiNote>();
     public DbSet<MatchSideInfoVersion> MatchSideInfoVersions => Set<MatchSideInfoVersion>();
@@ -220,6 +221,24 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(x => x.Flags).HasMaxLength(50);
             e.HasOne(x => x.Fixture).WithMany().HasForeignKey(x => x.FixtureId).OnDelete(DeleteBehavior.Cascade);
             e.HasIndex(x => new { x.FixtureId, x.Market }).IsUnique();
+            e.HasIndex(x => x.Outcome);
+        });
+
+        b.Entity<LinePatternPick>(e =>
+        {
+            e.Property(x => x.Line).HasPrecision(6, 2);
+            e.Property(x => x.Odds).HasPrecision(8, 3);
+            e.Property(x => x.Score).HasPrecision(4, 1);
+            e.Property(x => x.WinProbability).HasPrecision(5, 4);
+            e.Property(x => x.PushProbability).HasPrecision(5, 4);
+            e.Property(x => x.ExpectedValue).HasPrecision(8, 4);
+            e.Property(x => x.MinOdds).HasPrecision(8, 3);
+            e.Property(x => x.Profit).HasPrecision(10, 4);
+            e.Property(x => x.Label).HasMaxLength(200);
+            e.Property(x => x.EntryText).HasMaxLength(400);
+            e.Property(x => x.Indicators).HasMaxLength(1000);
+            e.HasOne(x => x.Fixture).WithMany().HasForeignKey(x => x.FixtureId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => new { x.FixtureId, x.Pattern }).IsUnique();
             e.HasIndex(x => x.Outcome);
         });
 

@@ -70,6 +70,19 @@ public enum BetOutcome
     Void = 6,
 }
 
+/// <summary>Mẫu kèo người chơi hay thắng (từ phân tích phiếu cược): chấm riêng bằng bộ chỉ số giờ + điểm.</summary>
+public enum LinePattern
+{
+    /// <summary>Tài đúng 3.0 bàn (hoàn tiền khi có đúng 3 bàn).</summary>
+    Over3 = 1,
+
+    /// <summary>Cửa trên chấp đúng 0.75 (thắng 1 bàn: ăn nửa).</summary>
+    Favourite075 = 2,
+
+    /// <summary>Cửa trên chấp đúng 1.0 (thắng 1 bàn: hoàn tiền).</summary>
+    Favourite1 = 3,
+}
+
 public static class PickSideExtensions
 {
     public static Market Market(this PickSide side) =>

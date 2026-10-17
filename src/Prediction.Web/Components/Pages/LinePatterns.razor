@@ -1,0 +1,208 @@
+@page "/tai3-chap1"
+@rendermode InteractiveServer
+@inject AnalysisService Analyses
+@inject TimeDisplay Time
+
+<PageTitle>Tài 3 & chấp 0.75–1</PageTitle>
+
+<h1 class="h3 mb-1">Tài 3 & chấp 0.75–1</h1>
+<p class="text-muted small mb-3">
+    Bộ chỉ số <b>giờ + điểm</b> cho các mẫu kèo người chơi thắng nhiều nhất (91 phiếu tuần 10–17/10):
+    Tài 3.0 — 13 thắng · 8 hoàn · 4 thua; chấp 1.0 cửa trên — 9 thắng · 6 hoàn · 2 thua; chấp 0.75 cửa trên — 2 thắng · 2 thua (mẫu nhỏ).
+    Điểm <b>≥ 8 vào được</b> · 6–7.9 cân nhắc · dưới 6 bỏ qua. Kèo Bet365 hiện tại; điểm tự cập nhật theo kèo, đội hình và số liệu mới.
+</p>
+
+@if (_loading)
+{
+    <p class="text-muted">Đang chấm các trận sắp đá…</p>
+}
+else
+{
+    <div class="d-flex flex-wrap gap-2 mb-2">
+        @foreach (var (key, label) in Tabs)
+        {
+            <button class="chip @(_tab == key ? "active" : "")" @onclick="() => _tab = key">@label <span class="text-muted">@Count(key)</span></button>
+        }
+        <span class="mx-1"></span>
+        @foreach (var d in new[] { 1, 2, 3 })
+        {
+            <button class="chip @(_days == d ? "active" : "")" @onclick="() => _days = d">@(d == 1 ? "24 giờ tới" : $"{d} ngày tới")</button>
+        }
+        <span class="mx-1"></span>
+        <button class="chip @(_byScore ? "" : "active")" @onclick="() => _byScore = false">Theo giờ đá</button>
+        <button class="chip @(_byScore ? "active" : "")" @onclick="() => _byScore = true">Theo điểm</button>
+        <button class="chip @(_onlyGood ? "active" : "")" @onclick="() => _onlyGood = !_onlyGood">Chỉ ≥ 6 điểm</button>
+    </div>
+
+    @if (Visible.Count == 0)
+    {
+        <div class="empty-state">Chưa có trận nào đang có kèo Tài 3.0 hoặc chấp 0.75 / 1.0 trong khoảng này.</div>
+    }
+    else
+    {
+        <div class="lp-grid mt-3">
+            @foreach (var (r, p) in Visible)
+            {
+                var f = r.Fixture;
+                var left = f.KickoffUtc - Analyses.UtcNow;
+                <div class="lp-card lp-@AnalysisGroupText.Short(p.Group)">
+                    <div class="top">
+                        <span class="fw-bold text-dark">@Time.Weekday(f.KickoffUtc) @Time.ToLocal(f.KickoffUtc).ToString("dd/MM HH:mm")</span>
+                        <span class="text-muted">còn @Left(left)</span>
+                        <span class="mc-league">@r.League?.Name</span>
+                        <a class="details" href="tran-dau/@f.Id?tab=phan-tich">Chi tiết →</a>
+                    </div>
+                    <div class="teams">@r.Home <span class="text-muted fw-normal mx-1">vs</span> @r.Away</div>
+                    <div class="pick">
+                        <span><span class="lp-kind">@LinePatternScorer.Name(p.Pattern)</span> @p.Label <span class="text-muted fw-normal">@@@LineText.Odds(p.Odds)</span></span>
+                        <span class="grp grp-@AnalysisGroupText.Short(p.Group)" title="@LinePatternScorer.Verdict(p.Score)">@p.Score.ToString("0.0") · @LinePatternScorer.Verdict(p.Score)</span>
+                    </div>
+                    <div class="meta">
+                        Thắng @Pct(p.Probability.WinAny)@(p.Probability.Push > 0.005 ? $" · hoàn {Pct(p.Probability.Push)}" : "") · thua @Pct(p.Probability.LossAny)
+                        · EV @Signed(p.ExpectedValue)@(p.MinOdds is { } mo ? $" · giá tối thiểu {LineText.Odds(mo)}" : "")
+                    </div>
+                    <div class="meta">
+                        Kèo: @(p.OpenLine is { } ol && p.OpenOdds is { } oo ? $"mở {LineText.Number(Math.Abs(ol))} @{LineText.Odds(oo)} → " : "")hiện @LineText.Number(Math.Abs(p.Line)) @@@LineText.Odds(p.Odds)
+                        @if (p.OddsUpdatedUtc is { } up)
+                        {
+                            <span> · cập nhật @Time.Short(up)</span>
+                        }
+                    </div>
+                    <div class="lp-entry lp-entry-@p.Entry.Timing.ToString().ToLowerInvariant()">
+                        <b>@EntryLabel(p.Entry.Timing)</b>
+                        @if (p.Entry.FromUtc is { } from && p.Entry.ToUtc is { } to)
+                        {
+                            <span class="lp-window">@(p.Entry.Timing == EntryTiming.Now ? $"tới {Time.ToLocal(to):HH:mm}" : $"{Time.ToLocal(from):HH:mm}–{Time.ToLocal(to):HH:mm}")</span>
+                        }
+                        <span> — @p.Entry.Text</span>
+                    </div>
+                    <details class="lp-ind">
+                        <summary>Bộ chỉ số (@p.Indicators.Count(i => i.Points > 0) cộng · @p.Indicators.Count(i => i.Points < 0) trừ)</summary>
+                        <table>
+                            @foreach (var i in p.Indicators)
+                            {
+                                <tr>
+                                    <td class="nm">@i.Name</td>
+                                    <td class="pt @(i.Points > 0 ? "pos" : i.Points < 0 ? "neg" : "")">@(i.Points == 0 ? "0" : (i.Points > 0 ? "+" : "−") + Math.Abs(i.Points).ToString("0.##"))</td>
+                                    <td>@i.Text</td>
+                                </tr>
+                            }
+                            <tr class="total"><td class="nm">Tổng</td><td class="pt">@p.Score.ToString("0.0")</td><td>5 + tổng các chỉ số (giới hạn 0–10, có trần khi dính cờ đỏ / EV âm / ít dữ liệu)</td></tr>
+                        </table>
+                    </details>
+                </div>
+            }
+        </div>
+    }
+
+    <h2 class="h5 mt-4">Thành tích bộ chỉ số</h2>
+    <p class="hint">Mỗi trận khớp mẫu được chốt theo kèo cuối trước giờ bóng lăn và chấm sau trận (1 đơn vị). Dùng để kiểm tra điểm ≥ 8 có thắng thật không.</p>
+    @if (_stats.All(s => s.Count == 0))
+    {
+        <div class="text-muted small mb-3">Chưa có trận nào được chấm. Website sẽ tự lưu và chấm khi job "Phân tích chuyên sâu" chạy.</div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-sm bg-white border">
+                <thead><tr><th>Mẫu</th><th>Nhóm điểm</th><th class="text-end">Số kèo</th><th class="text-end">T / TN / H / BN / B</th><th class="text-end">Tỉ lệ thắng</th><th class="text-end">Lãi/lỗ</th><th class="text-end">ROI</th></tr></thead>
+                <tbody>
+                    @foreach (var s in _stats.Where(s => s.Count > 0))
+                    {
+                        <tr class="@(s.Group is null ? "fw-semibold table-light" : "")">
+                            <td>@(s.Pattern is { } pt ? LinePatternScorer.Name(pt) : "")</td>
+                            <td>@(s.Group switch { AnalysisGroup.A => "≥ 8 (vào được)", AnalysisGroup.B => "6–7.9 (cân nhắc)", AnalysisGroup.C => "< 6 (bỏ qua)", _ => "Tất cả" })</td>
+                            <td class="text-end">@s.Count</td>
+                            <td class="text-end">@s.Win / @s.HalfWin / @s.Push / @s.HalfLoss / @s.Loss</td>
+                            <td class="text-end">@Fmt.Pct(s.WinRate)</td>
+                            <td class="text-end @Fmt.Sign(s.Profit)">@Fmt.Profit(s.Profit)</td>
+                            <td class="text-end @Fmt.Sign(s.Profit)">@Fmt.Roi(s.Count == 0 ? null : s.Profit / s.Count)</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    @if (_recent.Count > 0)
+    {
+        <h3 class="h6 mt-3">Trận đã chấm gần đây</h3>
+        <div class="table-responsive">
+            <table class="table table-sm small bg-white border">
+                <thead><tr><th>Trận</th><th>Mẫu</th><th>Kèo</th><th>Điểm</th><th>Kết quả</th><th class="text-end">Lãi/lỗ</th></tr></thead>
+                <tbody>
+                    @foreach (var p in _recent)
+                    {
+                        <tr>
+                            <td><a href="tran-dau/@p.FixtureId?tab=phan-tich">@Time.Short(p.Fixture!.KickoffUtc)</a> <span class="text-muted">@p.Fixture.HomeGoals-@p.Fixture.AwayGoals</span></td>
+                            <td>@LinePatternScorer.Name(p.Pattern)</td>
+                            <td>@p.Label @@@LineText.Odds(p.Odds)</td>
+                            <td><span class="grp grp-@AnalysisGroupText.Short(p.Group)">@p.Score.ToString("0.0")</span></td>
+                            <td><OutcomeBadge Outcome="p.Outcome" /></td>
+                            <td class="text-end @Fmt.Sign(p.Profit ?? 0)">@(p.Profit is { } pr ? Fmt.Profit(pr) : "")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+}
+
+@code {
+    private static readonly (string Key, string Label)[] Tabs =
+    [
+        ("all", "Tất cả"),
+        (nameof(LinePattern.Over3), "Tài 3.0"),
+        (nameof(LinePattern.Favourite075), "Chấp 0.75"),
+        (nameof(LinePattern.Favourite1), "Chấp 1.0"),
+    ];
+
+    private bool _loading = true;
+    private List<(MatchAnalysisResult Match, LinePatternResult Pattern)> _all = [];
+    private List<AnalysisService.LinePatternStat> _stats = [];
+    private List<LinePatternPick> _recent = [];
+    private string _tab = "all";
+    private int _days = 3;
+    private bool _byScore;
+    private bool _onlyGood;
+
+    private IEnumerable<(MatchAnalysisResult Match, LinePatternResult Pattern)> InWindow =>
+        _all.Where(x => x.Match.Fixture.KickoffUtc <= Analyses.UtcNow.AddDays(_days) && (!_onlyGood || x.Pattern.Score >= LinePatternScorer.ConsiderScore));
+
+    private int Count(string key) => InWindow.Count(x => key == "all" || x.Pattern.Pattern.ToString() == key);
+
+    private List<(MatchAnalysisResult Match, LinePatternResult Pattern)> Visible
+    {
+        get
+        {
+            var items = InWindow.Where(x => _tab == "all" || x.Pattern.Pattern.ToString() == _tab);
+            return (_byScore
+                    ? items.OrderByDescending(x => x.Pattern.Score).ThenBy(x => x.Match.Fixture.KickoffUtc)
+                    : items.OrderBy(x => x.Match.Fixture.KickoffUtc).ThenByDescending(x => x.Pattern.Score))
+                .ToList();
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _all = await Analyses.LinePatternsAsync(AnalysisService.Lookahead);
+        (_stats, _recent) = await Analyses.LinePatternHistoryAsync();
+        _loading = false;
+    }
+
+    private static string EntryLabel(EntryTiming t) => t switch
+    {
+        EntryTiming.Now => "Vào ngay",
+        EntryTiming.Window => "Khung giờ vào",
+        EntryTiming.WaitLineups => "Chờ đội hình",
+        _ => "Không vào",
+    };
+
+    private static string Left(TimeSpan t) => t.TotalHours >= 24
+        ? $"{(int)t.TotalDays} ngày {t.Hours} giờ"
+        : t.TotalMinutes >= 60 ? $"{(int)t.TotalHours} giờ {t.Minutes:00} phút" : $"{Math.Max(0, (int)t.TotalMinutes)} phút";
+
+    private static string Pct(double v) => (v * 100).ToString("0", System.Globalization.CultureInfo.InvariantCulture) + "%";
+
+    private static string Signed(double v) => (v >= 0 ? "+" : "−") + Math.Abs(v).ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
+}

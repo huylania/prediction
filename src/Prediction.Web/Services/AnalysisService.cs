@@ -286,9 +286,171 @@ public sealed class AnalysisService(IDbContextFactory<AppDbContext> dbFactory, T
         }
 
         await db.SaveChangesAsync(ct);
+        var patterns = await SavePatternsAsync(db, analyses, now, ct);
         var settled = await SettleAsync(db, now, ct);
-        return upserted == 0 && settled == 0 ? null : $"Phân tích chuyên sâu: {analyses.Count} trận, {upserted} khuyến nghị; chấm {settled} khuyến nghị.";
+        var settledPatterns = await SettlePatternsAsync(db, now, ct);
+        return upserted == 0 && settled == 0 && patterns == 0 && settledPatterns == 0
+            ? null
+            : $"Phân tích chuyên sâu: {analyses.Count} trận, {upserted} khuyến nghị; chấm {settled} khuyến nghị. Tài 3 / chấp 0.75–1: {patterns} trận, chấm {settledPatterns}.";
     }
+
+    // ------------------------------------------------------------------ Bộ chỉ số Tài 3.0 / chấp 0.75–1
+
+    /// <summary>Trận sắp đá khớp mẫu Tài 3.0 / chấp 0.75 / chấp 1.0 cửa trên, chấm theo số liệu mới nhất.</summary>
+    public async Task<List<(MatchAnalysisResult Match, LinePatternResult Pattern)>> LinePatternsAsync(TimeSpan window, CancellationToken ct = default)
+    {
+        var upcoming = await UpcomingAsync(window, null, ct);
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        var lineups = await LineupsKnownAsync(db, upcoming.Select(r => r.Fixture.Id).ToList(), ct);
+        var now = UtcNow;
+        return upcoming
+            .SelectMany(r => LinePatternScorer.Score(r.Input, r.Analysis, now, lineups.Contains(r.Fixture.Id)).Select(p => (r, p)))
+            .ToList();
+    }
+
+    public sealed record LinePatternStat(LinePattern? Pattern, AnalysisGroup? Group, int Count, int Win, int HalfWin, int Push, int HalfLoss, int Loss, decimal Profit)
+    {
+        public decimal? WinRate => Win + HalfWin / 2m + Loss + HalfLoss / 2m is var n && n > 0 ? (Win + HalfWin / 2m) / n : null;
+    }
+
+    /// <summary>Thành tích bộ chỉ số theo mẫu × nhóm điểm (≥ 8 / 6–7.9 / &lt; 6), tính trên các trận đã chấm.</summary>
+    public async Task<(List<LinePatternStat> Stats, List<LinePatternPick> Recent)> LinePatternHistoryAsync(int recent = 30, CancellationToken ct = default)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        var settled = await db.LinePatternPicks.AsNoTracking()
+            .Where(p => p.Outcome != BetOutcome.Pending && p.Outcome != BetOutcome.Void)
+            .Select(p => new { p.Pattern, p.Group, p.Outcome, p.Profit })
+            .ToListAsync(ct);
+        LinePatternStat Stat(LinePattern? pattern, AnalysisGroup? group, IEnumerable<BetOutcome> outcomes, decimal profit)
+        {
+            var o = outcomes.ToList();
+            return new LinePatternStat(pattern, group, o.Count, o.Count(x => x == BetOutcome.Win), o.Count(x => x == BetOutcome.HalfWin),
+                o.Count(x => x == BetOutcome.Push), o.Count(x => x == BetOutcome.HalfLoss), o.Count(x => x == BetOutcome.Loss), profit);
+        }
+
+        var stats = new List<LinePatternStat>();
+        foreach (var pattern in Enum.GetValues<LinePattern>())
+        {
+            var rows = settled.Where(x => x.Pattern == pattern).ToList();
+            stats.Add(Stat(pattern, null, rows.Select(x => x.Outcome), rows.Sum(x => x.Profit ?? 0)));
+            foreach (var group in new[] { AnalysisGroup.A, AnalysisGroup.B, AnalysisGroup.C })
+            {
+                var g = rows.Where(x => x.Group == group).ToList();
+                stats.Add(Stat(pattern, group, g.Select(x => x.Outcome), g.Sum(x => x.Profit ?? 0)));
+            }
+        }
+
+        var recentRows = await db.LinePatternPicks.AsNoTracking().Include(p => p.Fixture)
+            .Where(p => p.Outcome != BetOutcome.Pending)
+            .OrderByDescending(p => p.Fixture!.KickoffUtc)
+            .Take(recent)
+            .ToListAsync(ct);
+        return (stats, recentRows);
+    }
+
+    private static async Task<HashSet<int>> LineupsKnownAsync(AppDbContext db, List<int> fixtureIds, CancellationToken ct)
+    {
+        var known = new HashSet<int>();
+        foreach (var chunk in fixtureIds.Chunk(Chunk))
+        {
+            known.UnionWith(await db.FixtureLineups.AsNoTracking().Where(l => chunk.Contains(l.FixtureId)).Select(l => l.FixtureId).Distinct().ToListAsync(ct));
+        }
+
+        return known;
+    }
+
+    /// <summary>Lưu trận khớp mẫu (bản cuối trước giờ bóng lăn là bản chốt); kèo đã dịch khỏi mẫu thì bỏ bản còn chờ.</summary>
+    private static async Task<int> SavePatternsAsync(AppDbContext db, Dictionary<int, MatchAnalysisResult> analyses, DateTime now, CancellationToken ct)
+    {
+        if (analyses.Count == 0)
+        {
+            return 0;
+        }
+
+        var ids = analyses.Keys.ToList();
+        var lineups = await LineupsKnownAsync(db, ids, ct);
+        var stored = new Dictionary<(int, LinePattern), LinePatternPick>();
+        foreach (var chunk in ids.Chunk(Chunk))
+        {
+            foreach (var row in await db.LinePatternPicks.Where(p => chunk.Contains(p.FixtureId)).ToListAsync(ct))
+            {
+                stored[(row.FixtureId, row.Pattern)] = row;
+            }
+        }
+
+        var matched = 0;
+        foreach (var (fixtureId, a) in analyses)
+        {
+            var results = LinePatternScorer.Score(a.Input, a.Analysis, now, lineups.Contains(fixtureId));
+            foreach (var r in results)
+            {
+                if (!stored.TryGetValue((fixtureId, r.Pattern), out var row))
+                {
+                    row = new LinePatternPick { FixtureId = fixtureId, Pattern = r.Pattern, CreatedAtUtc = now };
+                    db.LinePatternPicks.Add(row);
+                }
+
+                row.Side = r.Side;
+                row.Line = r.Line;
+                row.Odds = r.Odds;
+                row.Score = (decimal)r.Score;
+                row.Group = r.Group;
+                row.WinProbability = Math.Round((decimal)r.Probability.WinAny, 4);
+                row.PushProbability = Math.Round((decimal)r.Probability.Push, 4);
+                row.ExpectedValue = Math.Round((decimal)r.ExpectedValue, 4);
+                row.MinOdds = r.MinOdds;
+                row.Label = Cut(r.Label, 200);
+                row.EntryText = Cut(r.Entry.Text, 400);
+                row.Indicators = Cut(string.Join("; ", r.Indicators.Where(i => i.Points != 0).Select(i => $"{i.Name} {(i.Points > 0 ? "+" : "−")}{Math.Abs(i.Points):0.##}")), 1000);
+                row.UpdatedAtUtc = now;
+                row.Outcome = BetOutcome.Pending;
+                matched++;
+            }
+
+            var current = results.Select(r => r.Pattern).ToHashSet();
+            foreach (var gone in stored.Values.Where(p => p.FixtureId == fixtureId && p.Outcome == BetOutcome.Pending && !current.Contains(p.Pattern)))
+            {
+                db.LinePatternPicks.Remove(gone);
+            }
+        }
+
+        await db.SaveChangesAsync(ct);
+        return matched;
+    }
+
+    private static async Task<int> SettlePatternsAsync(AppDbContext db, DateTime now, CancellationToken ct)
+    {
+        var pending = await db.LinePatternPicks
+            .Include(p => p.Fixture)
+            .Where(p => p.Outcome == BetOutcome.Pending && p.Fixture!.KickoffUtc <= now)
+            .ToListAsync(ct);
+        var settled = 0;
+        foreach (var pick in pending)
+        {
+            var f = pick.Fixture!;
+            if (f.IsCancelled || f.Status == "PST" && f.KickoffUtc < now.AddDays(-2))
+            {
+                (pick.Outcome, pick.Profit) = (BetOutcome.Void, 0);
+            }
+            else if (f.IsFinished && f.HomeGoals is { } h && f.AwayGoals is { } a)
+            {
+                var r = Settlement.Settle(pick.Side, pick.Line, pick.Odds, h, a);
+                (pick.Outcome, pick.Profit) = (r.Outcome, r.Profit);
+            }
+            else
+            {
+                continue;
+            }
+
+            pick.SettledAtUtc = now;
+            settled++;
+        }
+
+        await db.SaveChangesAsync(ct);
+        return settled;
+    }
+
+    private static string Cut(string text, int max) => text.Length > max ? text[..max] : text;
 
     private static async Task<int> SettleAsync(AppDbContext db, DateTime now, CancellationToken ct)
     {

@@ -937,7 +937,7 @@ public static class MatchAnalyzer
         if (pick.MarketShare is { } q && model.Share is { } share)
         {
             var w = ModelWeight(sample);
-            var blended = q + w * (share - q);
+            var blended = BlendedShare(share, q, sample);
             pick.Probability = model.WithShare(blended);
             divergence = share - q;
             pick.Reasons.Insert(1, $"Giá nhà cái (đã bỏ lời) cho cửa này {Pct(q)}, mô hình {Pct(share)} → dùng {Pct(blended)} (tin mô hình {Pct(w)} vì mẫu {sample} trận) · EV {Signed(pick.ExpectedValue)}");
@@ -1285,6 +1285,14 @@ public static class MatchAnalyzer
 
     /// <summary>Tỉ trọng tin mô hình khi trộn với giá nhà cái, theo số trận mẫu.</summary>
     public static double ModelWeight(int sample) => Math.Clamp(ModelWeightMin + ModelWeightPerMatch * sample, ModelWeightMin, ModelWeightMax);
+
+    /// <summary>Tỉ lệ ăn sau khi trộn tỉ lệ của mô hình với giá nhà cái (đã bỏ lời) theo <see cref="ModelWeight"/>.</summary>
+    public static double BlendedShare(double modelShare, double marketShare, int sample) =>
+        marketShare + ModelWeight(sample) * (modelShare - marketShare);
+
+    /// <summary>Phân phối của mô hình sau khi trộn với giá nhà cái; không có giá thì giữ nguyên.</summary>
+    public static PickProbability BlendWithMarket(PickProbability model, double? marketShare, int sample) =>
+        marketShare is { } q && model.Share is { } share ? model.WithShare(BlendedShare(share, q, sample)) : model;
 
     private static double Shrink(double value, int n, double prior) =>
         n >= MinSample ? value : (value * n + prior * (MinSample - n)) / MinSample;
