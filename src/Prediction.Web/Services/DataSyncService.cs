@@ -76,6 +76,13 @@ public sealed class SyncOptions
     /// <summary>Còn ít hơn số request này trong ngày thì Góc Live nhanh tự tạm dừng (quay về nhịp thường).</summary>
     public int LiveCornerFastMinRemaining { get; set; } = 1500;
 
+    /// <summary>
+    /// Kèo live gọi chung (odds/live) thiếu trận nào thì gọi riêng theo giải, tối đa chừng này giải mỗi lần.
+    /// Pro chỉ gọi bù cho trận gần cửa sổ góc; <see cref="LiveOddsFallbackAllLive"/> = true thì gọi bù cho mọi trận đang đá.
+    /// </summary>
+    public int LiveOddsFallbackMaxLeagues { get; set; } = 8;
+    public bool LiveOddsFallbackAllLive { get; set; }
+
     public HotZone HotZone => new(LiveCornerHotH1From, LiveCornerHotH1To, LiveCornerHotH2From, LiveCornerHotH2To);
 
     /// <summary>
@@ -110,6 +117,8 @@ public sealed class SyncOptions
         o.StatsMaxRequests = Ultra.StatsMaxRequests;
         o.QuotaReserve = Ultra.QuotaReserve;
         o.LiveCornerFastMinRemaining = Ultra.LiveCornerFastMinRemaining;
+        o.LiveOddsFallbackMaxLeagues = Ultra.LiveOddsFallbackMaxLeagues;
+        o.LiveOddsFallbackAllLive = Ultra.LiveOddsFallbackAllLive;
         return o;
     }
 
@@ -133,6 +142,8 @@ public sealed class SyncUltraOptions
     public int StatsMaxRequests { get; set; } = 200;
     public int QuotaReserve { get; set; } = 5000;
     public int LiveCornerFastMinRemaining { get; set; } = 3000;
+    public int LiveOddsFallbackMaxLeagues { get; set; } = 30;
+    public bool LiveOddsFallbackAllLive { get; set; } = true;
 }
 
 /// <summary>Các tác vụ lấy dữ liệu từ API-Football và ghi vào CSDL.</summary>
@@ -861,12 +872,17 @@ public sealed class DataSyncService(
     /// kèo chấp/tài xỉu bàn (cả trận; hiệp 1 khi đang hiệp 1) cho mọi trận, kèo góc cho trận gần cửa sổ vàng của Góc Live
     /// (hiệp 1 phút 20–32, hiệp 2 phút 70–82). Chỉ ghi khi mức/odds đổi.
     /// </summary>
-    public async Task<(int Goals, int Corners)> SyncLiveOddsAsync(CancellationToken ct)
+    public Task<(int Goals, int Corners)> SyncLiveOddsAsync(CancellationToken ct) => SyncLiveOddsAsync(null, ct);
+
+    /// <param name="onlyIds">Chỉ các trận này (Góc Live nhanh: trận ở vùng nóng); null = mọi trận đang đá.</param>
+    public async Task<(int Goals, int Corners)> SyncLiveOddsAsync(IReadOnlyCollection<int>? onlyIds, CancellationToken ct)
     {
         var now = Now;
+        var sync = options.Value.Effective();
         var live = await db.Fixtures.AsNoTracking()
             .Where(f => f.League!.IsTracked && !f.League.IsDemo && f.KickoffUtc <= now && f.KickoffUtc >= now.AddHours(-3)
-                && (f.Status == "1H" || f.Status == "HT" || f.Status == "2H"))
+                && (f.Status == "1H" || f.Status == "HT" || f.Status == "2H")
+                && (onlyIds == null || onlyIds.Contains(f.Id)))
             .ToDictionaryAsync(f => f.Id, ct);
         if (live.Count == 0)
         {
@@ -891,8 +907,24 @@ public sealed class DataSyncService(
                 .ToListAsync(ct))
             .ToDictionary(o => (o.FixtureId, o.Window));
 
+        // Gọi chung trước (1 request); trận nào thiếu thì gọi bù theo giải.
+        var items = await api.GetLiveOddsAsync(null, ct);
+        var returned = items.Select(i => i.Fixture.Id).ToHashSet();
+        var fallback = LiveOddsFallbackLeagues(
+            live.Values.Select(f => (f.Id, f.LeagueId, Wanted: f.Status != "HT" && (sync.LiveOddsFallbackAllLive || NearCornerWindow(f)))),
+            returned, sync.LiveOddsFallbackMaxLeagues);
+        foreach (var leagueId in fallback)
+        {
+            if (QuotaLow(sync) && !live.Values.Any(f => f.LeagueId == leagueId && NearCornerWindow(f)))
+            {
+                continue; // quota thấp: chỉ gọi bù cho giải có trận gần cửa sổ góc
+            }
+
+            items.AddRange((await api.GetLiveOddsAsync(leagueId, ct)).Where(i => returned.Add(i.Fixture.Id)));
+        }
+
         int goals = 0, corners = 0;
-        foreach (var item in await api.GetLiveOddsAsync(ct))
+        foreach (var item in items)
         {
             if (!live.TryGetValue(item.Fixture.Id, out var f))
             {
@@ -947,6 +979,18 @@ public sealed class DataSyncService(
         await db.SaveChangesAsync(ct);
         return (goals, corners);
     }
+
+    /// <summary>
+    /// Các giải cần gọi kèo live riêng: có trận cần kèo (<c>Wanted</c>) mà lần gọi chung không trả về.
+    /// Giải thiếu nhiều trận nhất trước, tối đa <paramref name="maxLeagues"/> giải.
+    /// </summary>
+    public static List<int> LiveOddsFallbackLeagues(IEnumerable<(int Id, int LeagueId, bool Wanted)> live, IReadOnlySet<int> returned, int maxLeagues) =>
+        live.Where(f => f.Wanted && !returned.Contains(f.Id))
+            .GroupBy(f => f.LeagueId)
+            .OrderByDescending(g => g.Count()).ThenBy(g => g.Key)
+            .Take(Math.Max(0, maxLeagues))
+            .Select(g => g.Key)
+            .ToList();
 
     /// <summary>Còn quá ít request trong ngày: dừng các tác vụ phụ để dành cho kèo và trực tiếp.</summary>
     public static bool QuotaLow(SyncOptions o) => ApiFootballClient.RemainingToday is { } r && r < o.Effective().QuotaReserve;

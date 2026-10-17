@@ -212,7 +212,7 @@ public sealed class SyncCoordinator(
         RunAsync(SyncJobs.LiveFast, async (s, c) =>
         {
             await s.SyncLiveAsync(hotFixtureIds, c);
-            await s.SyncLiveOddsAsync(c);
+            await s.SyncLiveOddsAsync(hotFixtureIds, c);
             return await liveCorners.ProcessAsync(c);
         }, ct);
 

@@ -79,7 +79,7 @@
                     chấn thương @Eff.InjuriesIntervalMinutes phút · HLV @Eff.CoachesIntervalMinutes phút ·
                     dò đội hình @Eff.LineupsIntervalMinutes phút (trong @Eff.LineupsWindowMinutes phút trước trận, có đội hình là chụp kèo) ·
                     chụp kèo @Eff.PreKickoffMinutes phút trước trận · đối đầu & sân @Eff.H2HIntervalMinutes phút · thời tiết @Eff.WeatherIntervalMinutes phút (Open-Meteo, miễn phí) ·
-                    kèo live (chấp, tài xỉu, góc) @Eff.LiveOddsIntervalMinutes phút (chỉ khi có trận đang đá, 1 request cho mọi trận) ·
+                    kèo live (chấp, tài xỉu, góc) @Eff.LiveOddsIntervalMinutes phút (chỉ khi có trận đang đá, 1 request chung; trận bị thiếu thì gọi bù theo giải, tối đa @Eff.LiveOddsFallbackMaxLeagues giải/lần@(Eff.LiveOddsFallbackAllLive ? "" : ", chỉ trận gần cửa sổ góc")) ·
                     Góc Live chốt/chấm @Eff.LiveCornersIntervalMinutes phút.
                     <b>Góc Live nhanh</b>: @(Eff.LiveCornerFastSeconds > 0 ? $"{Eff.LiveCornerFastSeconds} giây/lần" : "tắt") khi có trận ở phút
                     @Eff.LiveCornerHotH1From–@Eff.LiveCornerHotH1To / @Eff.LiveCornerHotH2From–@Eff.LiveCornerHotH2To

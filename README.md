@@ -79,7 +79,7 @@ Website tự đồng bộ ở chế độ nền theo chu kỳ:
 |---|---|---|
 | Lịch & kết quả | 2 giờ | 1 request/giải |
 | Tỉ số & thống kê trực tiếp | 2 phút (Ultra: 1 phút) | chỉ khi có trận đang đá; 1 request / 20 trận |
-| Kèo live | 2 phút (Ultra: 1 phút) | chỉ khi có trận đang đá; 1 request (`odds/live`) cho mọi trận: chấp, tài xỉu (cả trận + hiệp 1) và kèo góc cho Góc Live |
+| Kèo live | 2 phút (Ultra: 1 phút) | chỉ khi có trận đang đá; 1 request chung (`odds/live`) cho mọi trận: chấp, tài xỉu (cả trận + hiệp 1) và kèo góc cho Góc Live. Lúc đông trận (vd chiều thứ Bảy 17/10: 283 trận đang đá) gọi chung chỉ trả về 1 trận, nên trận nào thiếu thì gọi bù `odds/live?league=…` theo giải (Pro: tối đa 8 giải, chỉ trận gần cửa sổ góc; Ultra: 30 giải, mọi trận) |
 | Kèo theo giải | 1 giờ (Ultra: 20 phút) | chấp, tài xỉu, góc, chấp góc, thẻ; bắt kèo mở và biến động |
 | Kèo sát giờ | 15 phút | từng trận, trong 3 giờ trước giờ bóng lăn → kèo đóng |
 | Tư vấn API | 6 giờ + 1 lần ~1 giờ trước trận | các trận trong 3 ngày tới |

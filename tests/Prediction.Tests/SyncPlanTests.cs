@@ -21,6 +21,9 @@ public class SyncPlanTests
         Assert.Equal(200, o.StatsMaxRequests);
         Assert.Equal(5000, o.QuotaReserve);
         Assert.Equal(3000, o.LiveCornerFastMinRemaining);
+        Assert.True(o.LiveOddsFallbackAllLive);
+        Assert.Equal(30, o.LiveOddsFallbackMaxLeagues);
+        Assert.False(pro.LiveOddsFallbackAllLive);
 
         // Các giá trị khác giữ nguyên, bản gốc không bị sửa.
         Assert.Equal(pro.ClosingOddsIntervalMinutes, o.ClosingOddsIntervalMinutes);
@@ -75,6 +78,26 @@ public class SyncPlanTests
         }
 
         Assert.All(runs.Zip(runs.Skip(1)), p => Assert.Equal(seconds, (p.Second - p.First).TotalSeconds));
+    }
+
+    [Fact]
+    public void Live_odds_fallback_calls_only_leagues_with_missing_wanted_fixtures()
+    {
+        var live = new[]
+        {
+            (Id: 1, LeagueId: 39, Wanted: true),
+            (Id: 2, LeagueId: 40, Wanted: true),
+            (Id: 3, LeagueId: 40, Wanted: true),
+            (Id: 4, LeagueId: 140, Wanted: true), // gọi chung đã trả về
+            (Id: 5, LeagueId: 78, Wanted: false), // không cần kèo (vd giờ nghỉ)
+        };
+
+        var leagues = DataSyncService.LiveOddsFallbackLeagues(live, new HashSet<int> { 4 }, 10);
+        Assert.Equal([40, 39], leagues); // giải thiếu nhiều trận nhất trước
+
+        Assert.Equal([40], DataSyncService.LiveOddsFallbackLeagues(live, new HashSet<int> { 4 }, 1));
+        Assert.Empty(DataSyncService.LiveOddsFallbackLeagues(live, new HashSet<int> { 1, 2, 3, 4 }, 10));
+        Assert.Empty(DataSyncService.LiveOddsFallbackLeagues(live, new HashSet<int>(), 0));
     }
 
     [Fact]

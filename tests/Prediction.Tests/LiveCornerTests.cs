@@ -227,6 +227,25 @@ public class LiveCornerTests
     }
 
     [Fact]
+    public void Parses_live_odds_fetched_per_league()
+    {
+        // odds/live?league=40 lúc 13:10 UTC thứ Bảy 17/10 (gọi chung odds/live lúc đó chỉ trả về 1 trận của giải khác).
+        var json = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Data", "odds-live-league.json"));
+        var envelope = JsonSerializer.Deserialize<ApiEnvelope>(json, ApiFootballClient.Json)!;
+        var items = envelope.Response.Deserialize<List<LiveOddsItem>>(ApiFootballClient.Json)!;
+
+        Assert.Equal([1563207, 1563212, 1563208], items.Select(i => i.Fixture.Id));
+        var corners = items.ToDictionary(i => i.Fixture.Id, i => Assert.Single(LiveOddsParser.Parse(i)));
+        Assert.All(corners.Values, q => Assert.Equal(CornerWindow.SecondHalf, q.Window));
+        Assert.Equal(12.5m, corners[1563207].Line);
+        Assert.Equal(6.5m, corners[1563212].Line);
+        Assert.Equal(1.95m, corners[1563212].OverOdds);
+        Assert.Equal(15m, corners[1563208].Line);
+        Assert.Equal(80, corners[1563212].Minute);
+        Assert.All(items, i => Assert.NotEmpty(LiveOddsParser.ParseGoals(i)));
+    }
+
+    [Fact]
     public void Reads_aiscore_json_into_form()
     {
         // JSON kiểu Claude trả về khi đọc ảnh AiScore (số dạng chuỗi, mốc không hợp lệ bị bỏ).
