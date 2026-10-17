@@ -407,6 +407,7 @@ def main() -> None:
     matches: dict[int, list[dict]] = {}
     no_stats: set[int] = set()
     names: dict[int, str] = {}
+    league_names: dict[int, str] = {}
     failed: list[str] = []
     for n, league_id in enumerate(league_ids, 1):
         seasons = seasons_in_window(api.cached(f"league_{league_id}_{tag}.json", f"leagues?id={league_id}"), start, end)
@@ -424,6 +425,7 @@ def main() -> None:
             else:
                 no_stats.add(league_id)
             for f in done:
+                league_names.setdefault(league_id, f["league"].get("name") or str(league_id))
                 row = match_row(f, details.get(str(f["fixture"]["id"])))
                 if row:
                     rows.append(row)
@@ -432,6 +434,12 @@ def main() -> None:
         print(f"[{n}/{len(league_ids)}] giải {league_id}: {len(matches[league_id])} trận, mùa {[s for s, _ in seasons]} · đã gọi {api.requests} request", flush=True)
 
     window = f"{start:%d/%m/%Y}–{end:%d/%m/%Y}"
+    # Đội đá ở những giải nào (trong 46 giải) — để chỉ ra giải đúng khi file ghi sai giải.
+    played: dict[int, dict[int, int]] = defaultdict(lambda: defaultdict(int))
+    for league_id, rows in matches.items():
+        for m in rows:
+            played[m["home"]][league_id] += 1
+            played[m["away"]][league_id] += 1
 
     # ---- Đội
     api_rows, compare_rows = [], []
@@ -446,13 +454,18 @@ def main() -> None:
         if team_id is None:
             warnings.append("chưa có id đội trong team-ids.csv")
         elif st["matches"] == 0:
-            warnings.append("0 trận ở giải này trong 1 năm: sai đội hoặc đội không đá giải này")
+            elsewhere = sorted(played.get(team_id, {}).items(), key=lambda x: -x[1])
+            warnings.append("0 trận ở giải này trong 1 năm: " + (
+                "đội đá ở " + ", ".join(f"{league_names.get(l, l)} (id {l}, {c} trận)" for l, c in elsewhere)
+                if elsewhere else "không đá giải nào trong 46 giải (xuống hạng thấp hơn, giải thể hoặc sai đội)"))
         method = id_row.get("Match", "")
         api_name = names.get(team_id) or id_row.get("Api_Name", "")
-        if method and not method.startswith(("exact", "normalized")):
-            warnings.append(f"tên khớp gần đúng ({method}): file '{r['Doi_Bong']}' ↔ API '{api_name}'")
         file_matches = int(r["So_Tran_1_Nam"] or 0)
-        if st["matches"] and abs(file_matches - st["matches"]) > max(5, 0.3 * st["matches"]):
+        count_gap = st["matches"] and abs(file_matches - st["matches"]) > max(5, 0.3 * st["matches"])
+        # Khớp tên kiểu contains/alias phần lớn đúng (Leeds United ↔ Leeds): chỉ nhắc khi khớp mờ hoặc có dấu hiệu khác.
+        if method and (method.startswith(("fuzzy", "other")) or not method.startswith(("exact", "normalized")) and (st["matches"] == 0 or count_gap)):
+            warnings.append(f"tên khớp gần đúng ({method}): file '{r['Doi_Bong']}' ↔ API '{api_name}'")
+        if count_gap:
             warnings.append(f"số trận lệch: file {file_matches}, API {st['matches']}")
         if league_id in no_stats or (st["matches"] and st["corners_for"][1] == 0):
             warnings.append("API không có số liệu góc/thẻ giải này: giữ nhãn góc/thẻ theo file")

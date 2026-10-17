@@ -247,7 +247,7 @@ Trang **DNA & nhân sự** cho sửa nhãn DNA của giải/đội (đã nhập 
   | File | Nội dung |
   |---|---|
   | `dna_doi_bong_30_giai_1nam_API.csv` | Cùng cột với file đội, số liệu và nhãn tính từ API. Thay thẳng file cũ được. |
-  | `dna_doi_bong_doi_chieu.csv` | Mỗi dòng một đội: tên file ↔ tên API, cách khớp tên, số trận file/API. Từng nhãn ghi "đúng / 1→0 SAI / 1→0 bỏ, lưng chừng / 0→1 thiếu nhãn / giữ" kèm số liệu. Thêm cảnh báo: 0 trận ở giải (sai đội), tên khớp gần đúng, số trận lệch, số liệu file lệch API. Đội sai nhiều nhất nằm trên cùng. |
+  | `dna_doi_bong_doi_chieu.csv` | Mỗi dòng một đội: tên file ↔ tên API, cách khớp tên, số trận file/API. Từng nhãn ghi "đúng / 1→0 SAI / 1→0 bỏ, lưng chừng / 0→1 thiếu nhãn / giữ" kèm số liệu. Thêm cảnh báo: 0 trận ở giải (ghi luôn đội thực ra đá giải nào, vd Shimizu đá J1 chứ không phải J2), tên khớp mờ, số trận lệch, số liệu file lệch API. Đội sai nhiều nhất nằm trên cùng. |
   | `dna_giai_dau_46_giai_1nam_API.csv` | Cùng cột với file giải, tính từ API. |
   | `dna_giai_dau_doi_chieu.csv` | Đối chiếu từng giải. |
 
