@@ -103,6 +103,10 @@ STAT_TOLERANCE = {"over25": 10, "btts": 10, "home_win": 12, "away_loss": 12, "dr
                   "corners_total": 1.0, "second_half_goals": 0.35, "cards_for": 0.6, "cards_total": 0.8}
 
 
+class ApiError(RuntimeError):
+    """API trả lỗi trong trường "errors" (kể cả lỗi phía API-Football như mã 5xEr)."""
+
+
 class Api:
     def __init__(self, key: str, cache: Path, delay: float):
         self.key, self.cache, self.delay = key, cache, delay
@@ -132,7 +136,7 @@ class Api:
                 if "rateLimit" in json.dumps(errors) and attempt < 3:
                     time.sleep(30)
                     continue
-                raise RuntimeError(f"API-Football lỗi {errors} ({path})")
+                raise ApiError(f"API-Football lỗi {errors} ({path})")
             return body
         raise RuntimeError(f"Không gọi được {path}")
 
@@ -153,6 +157,20 @@ class Api:
         items = self.all_pages(path)
         file.write_text(json.dumps(items))
         return items
+
+
+def fetch_details(api: Api, ids: list[str], failed: list[str]) -> list:
+    """fixtures?ids cho một nhóm trận; API lỗi thì lấy lại từng trận, trận vẫn lỗi thì bỏ qua (chạy lại sẽ thử lại)."""
+    try:
+        return api.get("fixtures?ids=" + "-".join(ids)).get("response") or []
+    except ApiError:
+        if len(ids) == 1:
+            failed.append(ids[0])
+            return []
+    items = []
+    for fixture_id in ids:
+        items += fetch_details(api, [fixture_id], failed)
+    return items
 
 
 def parse_date(text: str) -> dt.date | None:
@@ -389,6 +407,7 @@ def main() -> None:
     matches: dict[int, list[dict]] = {}
     no_stats: set[int] = set()
     names: dict[int, str] = {}
+    failed: list[str] = []
     for n, league_id in enumerate(league_ids, 1):
         seasons = seasons_in_window(api.cached(f"league_{league_id}_{tag}.json", f"leagues?id={league_id}"), start, end)
         rows = []
@@ -399,7 +418,7 @@ def main() -> None:
             if coverage.get("statistics_fixtures") or coverage.get("events"):
                 missing = [str(f["fixture"]["id"]) for f in done if str(f["fixture"]["id"]) not in details]
                 for i in range(0, len(missing), 20):
-                    for item in api.get("fixtures?ids=" + "-".join(missing[i:i + 20])).get("response") or []:
+                    for item in fetch_details(api, missing[i:i + 20], failed):
                         details[str(item["fixture"]["id"])] = compact(item)
                     details_file.write_text(json.dumps(details))
             else:
@@ -514,6 +533,8 @@ def main() -> None:
     teams_wrong = sum(1 for c in compare_rows if c["So_Nhan_Sai_Ro"])
     zero = sum(1 for c in compare_rows if c["So_Tran_API"] == 0)
     print(f"Khung {window} · {api.requests} request (còn {api.remaining} hôm nay)")
+    if failed:
+        print(f"{len(failed)} trận API báo lỗi khi lấy thống kê (bỏ góc/thẻ/phút ghi bàn của các trận này, tỉ số vẫn tính): {', '.join(failed)}")
     print(f"Đội: {len(compare_rows)} dòng · {teams_changed} dòng đổi nhãn · {teams_wrong} dòng có nhãn sai rõ · {zero} dòng 0 trận")
     print(f"Giải: {len(league_cmp)} giải · {sum(1 for c in league_cmp if c['So_Nhan_Doi'])} giải đổi nhãn")
     print(f"Đã ghi 4 file vào {args.out}")
