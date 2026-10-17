@@ -251,10 +251,20 @@ Trang **DNA & nhân sự** cho sửa nhãn DNA của giải/đội (đã nhập 
   | `dna_giai_dau_46_giai_1nam_API.csv` | Cùng cột với file giải, tính từ API. |
   | `dna_giai_dau_doi_chieu.csv` | Đối chiếu từng giải. |
 
-- **Nạp lại vào website**, thay nhãn cũ bằng nhãn tính từ API:
-  - `python3 scripts/dna/gen_team_dna_sql.py --source scripts/dna/tu_api/dna_doi_bong_30_giai_1nam_API.csv --output team_dna_api.sql --replace`
-  - `python3 scripts/dna/gen_league_dna_sql.py --source scripts/dna/tu_api/dna_giai_dau_46_giai_1nam_API.csv --output league_dna_api.sql --replace`
-  - Chạy 2 file `.sql` như mục trên. Không có `--replace` thì nhãn được cộng thêm (OR) như trước.
+- **Đội ghi sai giải** (0 trận ở giải trong file) được tự xử lý; cột `Xu_Ly` ở file đối chiếu ghi đã làm gì:
+  - Đội đã có dòng đúng ở giải khác: bỏ dòng sai.
+  - Đội đá giải khác trong 46 giải: chuyển dòng sang giải đó và tính lại.
+  - Không đá giải nào trong 46 giải: ghi vào `dna_doi_bong_xoa.csv` để xoá DNA.
+- **Cập nhật database** (1 file, chạy một lần): `python3 scripts/dna/gen_dna_update_sql.py` sinh 2 file trong `scripts/dna/tu_api/`:
+
+  | File | Làm gì |
+  |---|---|
+  | `cap_nhat_dna_tu_api.sql` | (1) Sao lưu 3 bảng sang `TeamDnas_SaoLuu_<ngày>`, `TeamDnaLeagues_SaoLuu_<ngày>`, `LeagueDnas_SaoLuu_<ngày>` (chỉ lần đầu). (2) Đội: nhãn + số liệu = đúng như file API, bỏ liên kết giải sai, xoá đội trong `dna_doi_bong_xoa.csv`. (3) Giải: nhãn + số liệu = đúng như file API. Ghi chú (Notes) được giữ; đội bạn tự thêm ngoài file không bị đụng. |
+  | `khoi_phuc_dna_<ngày>.sql` | Đưa 3 bảng về đúng bản sao lưu. |
+
+  - Chạy bằng SSMS (Execute cả file), hoặc `sqlcmd -S <máy> -d <CSDL> -U <user> -P <mật khẩu> -f 65001 -i cap_nhat_dna_tu_api.sql`.
+  - Cần SQL Server 2017 trở lên (file khôi phục dùng `STRING_AGG`).
+  - Riêng lẻ: `gen_team_dna_sql.py` / `gen_league_dna_sql.py` có `--source`, `--ids`, `--output`, `--replace` (ghi đè nhãn và giải thay vì cộng thêm) và `--delete <csv>`.
 
 **DNA giải đấu 46 giải (số liệu 1 năm)** — `scripts/dna/`:
 - **11 đặc điểm giải** (tab Giải đấu ở trang DNA): Tài bàn, Xỉu bàn, Thánh địa sân nhà, Tài góc, Xỉu góc, Bàn muộn, Cửa dưới hay ăn (đồng đều), Phân hóa lớn / tín kèo trên, Vua hòa / thắng sát nút, Nổ sớm H1, Mưa thẻ.

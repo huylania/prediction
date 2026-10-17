@@ -1,14 +1,15 @@
 """Sinh script SQL nạp DNA đội bóng (file 30 giải, 1 năm) vào bảng dbo.TeamDnas.
 
-    python3 scripts/dna/gen_team_dna_sql.py [--source file.csv] [--output file.sql] [--replace]
+    python3 scripts/dna/gen_team_dna_sql.py [--source file.csv] [--ids team-ids.csv] [--output file.sql] [--replace] [--delete xoa.csv]
 
 Đọc dna_doi_bong_30_giai_1nam.csv + team-ids.csv (id API-Football, tạo bằng resolve_team_ids.py)
 và ghi team_dna_30_giai.sql. Mỗi đội 1 hồ sơ: đội có nhiều dòng (vd giải quốc nội + cúp châu lục)
 lấy dòng nhiều trận nhất, bằng nhau thì ưu tiên giải quốc nội. Mọi giải của đội trong file vẫn được ghi
 vào dbo.TeamDnaLeagues để trang DNA lọc được theo từng giải (kể cả cúp châu lục).
 
---replace: nhãn của đội = đúng nhãn trong file (bỏ nhãn cũ không còn trong file), dùng khi nạp file tính lại từ API
-(dna_from_api.py). Mặc định cộng thêm nhãn (phép OR), giữ nhãn cũ.
+--replace: nhãn của đội = đúng nhãn trong file (bỏ nhãn cũ không còn trong file) và giải của đội = đúng các giải trong file
+(bỏ liên kết đội–giải cũ không còn trong file), dùng khi nạp file tính lại từ API (dna_from_api.py). Mặc định cộng thêm nhãn (phép OR).
+--delete: xoá DNA các đội trong file CSV này (cột TeamId), vd dna_doi_bong_xoa.csv của dna_from_api.py.
 """
 import argparse
 import csv
@@ -78,12 +79,14 @@ def main() -> None:
     parser.add_argument("--source", type=Path, default=SOURCE)
     parser.add_argument("--ids", type=Path, default=IDS)
     parser.add_argument("--output", type=Path, default=OUTPUT)
-    parser.add_argument("--replace", action="store_true", help="ghi đè nhãn thay vì cộng thêm (OR)")
+    parser.add_argument("--replace", action="store_true", help="ghi đè nhãn và giải của đội thay vì cộng thêm")
+    parser.add_argument("--delete", type=Path, help="CSV các đội cần xoá DNA (cột TeamId)")
     args = parser.parse_args()
+    delete_ids = sorted({int(r["TeamId"]) for r in csv.DictReader(args.delete.open(encoding="utf-8-sig")) if r.get("TeamId")}) if args.delete else []
     source, output = args.source, args.output
 
     rows = list(csv.DictReader(source.open(encoding="utf-8-sig")))
-    ids = {(r["League_Id"], r["Doi_Bong"]): r for r in csv.DictReader(args.ids.open(encoding="utf-8"))}
+    ids = {(r["League_Id"], r["Doi_Bong"]): r for r in csv.DictReader(args.ids.open(encoding="utf-8-sig"))}
 
     best: dict[int, dict] = {}
     names: dict[int, str] = {}
@@ -117,9 +120,10 @@ def main() -> None:
         f"-- Sinh tự động bởi scripts/dna/gen_team_dna_sql.py ngày {today}: {len(values)} đội từ {len(rows)} dòng CSV.",
         "-- CHẠY SAU KHI website bản mới đã khởi động ít nhất 1 lần (migration DnaLeagues thêm bảng giải của đội, bật theo dõi 11 giải mới).",
         f"-- Nguồn: {source.name}.",
-        ("-- Đội đã có DNA: nhãn = ĐÚNG nhãn trong file (bỏ nhãn cũ không còn trong file), giữ Tên và Ghi chú; ghi đè số liệu 1 năm."
+        ("-- Đội đã có DNA: nhãn và giải = ĐÚNG như file (bỏ nhãn / liên kết giải cũ không còn trong file), giữ Tên và Ghi chú; ghi đè số liệu 1 năm."
          if args.replace else "-- Đội đã có DNA: giữ các tích cũ + cộng thêm tích từ file (phép OR), giữ Tên và Ghi chú; ghi đè số liệu 1 năm."),
-        "-- Đội chưa có: thêm mới. Chạy lại nhiều lần vẫn cho cùng kết quả.",
+        "-- Đội chưa có: thêm mới. Chạy lại nhiều lần vẫn cho cùng kết quả."
+        + (f"\n-- Xoá DNA {len(delete_ids)} đội không còn dữ liệu (TeamId {', '.join(map(str, delete_ids))})." if delete_ids else ""),
         f"-- Cách chạy: mở bằng SSMS / Azure Data Studio rồi Execute, hoặc: sqlcmd -S <máy> -d <CSDL> -U <user> -P <mật khẩu> -f 65001 -i {output.name}",
         "SET NOCOUNT ON;",
         "SET XACT_ABORT ON;",
@@ -186,10 +190,30 @@ def main() -> None:
         "WHEN MATCHED THEN UPDATE SET t.LeagueName = s.LeagueName, t.Matches = s.Matches",
         "WHEN NOT MATCHED BY TARGET THEN INSERT (TeamId, LeagueId, LeagueName, Matches) VALUES (s.TeamId, s.LeagueId, s.LeagueName, s.Matches);",
         "",
+        "DECLARE @removedLinks int = 0, @deletedTeams int = 0;",
+    ]
+    if args.replace:
+        merge += [
+            "-- Bỏ liên kết đội–giải không còn trong file (vd file cũ ghi đội ở sai giải).",
+            "DELETE l FROM dbo.TeamDnaLeagues AS l",
+            "WHERE EXISTS (SELECT 1 FROM #src AS s WHERE s.TeamId = l.TeamId)",
+            "  AND NOT EXISTS (SELECT 1 FROM #lg AS g WHERE g.TeamId = l.TeamId AND g.LeagueId = l.LeagueId);",
+            "SET @removedLinks = @@ROWCOUNT;",
+        ]
+    if delete_ids:
+        merge += [
+            "-- Xoá DNA các đội không còn dữ liệu (liên kết giải tự xoá theo khóa ngoại).",
+            f"DELETE FROM dbo.TeamDnas WHERE TeamId IN ({', '.join(map(str, delete_ids))}) AND TeamId NOT IN (SELECT TeamId FROM #src);",
+            "SET @deletedTeams = @@ROWCOUNT;",
+        ]
+    merge += [
+        "",
         "SELECT",
         "    SUM(CASE WHEN Action = 'INSERT' THEN 1 ELSE 0 END) AS DoiThemMoi,",
         "    SUM(CASE WHEN Action = 'UPDATE' THEN 1 ELSE 0 END) AS DoiCapNhat,",
-        "    (SELECT COUNT(*) FROM #lg) AS SoDongDoiGiai",
+        "    (SELECT COUNT(*) FROM #lg) AS SoDongDoiGiai,",
+        "    @removedLinks AS LienKetGiaiDaBo,",
+        "    @deletedTeams AS DoiDaXoa",
         "FROM @result;",
     ]
     lines += [

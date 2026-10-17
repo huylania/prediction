@@ -442,22 +442,48 @@ def main() -> None:
             played[m["away"]][league_id] += 1
 
     # ---- Đội
-    api_rows, compare_rows = [], []
+    def team_of(r: dict) -> int | None:
+        id_row = ids.get((r["League_Id"], r["Doi_Bong"])) or {}
+        return int(id_row["TeamId"]) if id_row.get("TeamId") else None
+
+    # Dòng file có trận thật ở đúng giải (để quyết định dòng sai giải: bỏ, chuyển giải hay xoá đội).
+    valid_rows: dict[int, int] = defaultdict(int)
     for r in team_rows:
+        if (tid := team_of(r)) is not None and played.get(tid, {}).get(int(r["League_Id"]), 0) > 0:
+            valid_rows[tid] += 1
+    file_league_names = {int(r["League_Id"]): r["Giai_Dau"] for r in league_rows} | {int(r["League_Id"]): r["Giai_Dau"] for r in team_rows}
+
+    api_rows, compare_rows, api_ids, deleted = [], [], [], []
+    relocated: set[int] = set()
+    for src in team_rows:
+        r = src
         league_id = int(r["League_Id"])
         id_row = ids.get((r["League_Id"], r["Doi_Bong"])) or {}
-        team_id = int(id_row["TeamId"]) if id_row.get("TeamId") else None
-        records = [side(m, m["home"] == team_id) for m in matches.get(league_id, []) if team_id in (m["home"], m["away"])]
-        st = stats(records)
-        decided = decide(TEAM_RULES, st, r)
+        team_id = team_of(r)
+        action = ""
         warnings = []
-        if team_id is None:
-            warnings.append("chưa có id đội trong team-ids.csv")
-        elif st["matches"] == 0:
-            elsewhere = sorted(played.get(team_id, {}).items(), key=lambda x: -x[1])
+        elsewhere = sorted(played.get(team_id, {}).items(), key=lambda x: -x[1]) if team_id is not None else []
+        if team_id is not None and played.get(team_id, {}).get(league_id, 0) == 0:
             warnings.append("0 trận ở giải này trong 1 năm: " + (
                 "đội đá ở " + ", ".join(f"{league_names.get(l, l)} (id {l}, {c} trận)" for l, c in elsewhere)
                 if elsewhere else "không đá giải nào trong 46 giải (xuống hạng thấp hơn, giải thể hoặc sai đội)"))
+            if valid_rows[team_id] > 0 or team_id in relocated:
+                action = "bỏ dòng (đội đã có dòng đúng ở giải khác)"
+            elif elsewhere:
+                target = elsewhere[0][0]
+                action = f"chuyển sang {file_league_names.get(target) or league_names.get(target, target)} (id {target})"
+                relocated.add(team_id)
+                r = dict(r, League_Id=str(target), Giai_Dau=file_league_names.get(target) or league_names.get(target, str(target)))
+                league_id = target
+            else:
+                action = "xoá đội (không đá giải nào trong 46 giải)"
+                deleted.append({"League_Id": r["League_Id"], "Giai_Dau": r["Giai_Dau"], "Doi_Bong": r["Doi_Bong"], "TeamId": team_id,
+                                "Ten_API": id_row.get("Api_Name", ""), "Ly_Do": warnings[-1]})
+        records = [side(m, m["home"] == team_id) for m in matches.get(league_id, []) if team_id in (m["home"], m["away"])]
+        st = stats(records)
+        decided = decide(TEAM_RULES, st, r)
+        if team_id is None:
+            warnings.append("chưa có id đội trong team-ids.csv")
         method = id_row.get("Match", "")
         api_name = names.get(team_id) or id_row.get("Api_Name", "")
         file_matches = int(r["So_Tran_1_Nam"] or 0)
@@ -480,17 +506,22 @@ def main() -> None:
         out["Ghi_Chu"] = f"Tính từ API-Football {window}: {st['matches']} trận ({st['home_matches']} sân nhà, {st['away_matches']} sân khách)." \
             + (" Cảnh báo: " + "; ".join(warnings) if warnings else "")
         out["Phan_Tich_Ly_Do_Chon_1_Nam"] = reasons(TEAM_RULES, decided)
-        api_rows.append(out)
+        if action.startswith("chuyển"):
+            out["Ghi_Chu"] += f" Chuyển từ {src['Giai_Dau']} (file ghi sai giải)."
+        if not action.startswith(("bỏ", "xoá")):
+            api_rows.append(out)
+            api_ids.append({"League_Id": out["League_Id"], "Doi_Bong": out["Doi_Bong"], "TeamId": team_id or "",
+                            "Api_Name": names.get(team_id) or id_row.get("Api_Name", ""), "Match": id_row.get("Match", "")})
 
         changed = [c for c, (v, s, _) in decided.items() if v != flag_of(r[c])]
         wrong = [c for c, (v, s, _) in decided.items() if flag_of(r[c]) == 1 and s == "nguoc"]
         cmp = {
-            "League_Id": r["League_Id"], "Giai_Dau": r["Giai_Dau"], "Doi_Bong_File": r["Doi_Bong"],
+            "League_Id": src["League_Id"], "Giai_Dau": src["Giai_Dau"], "Doi_Bong_File": r["Doi_Bong"],
             "TeamId": team_id or "", "Ten_API": api_name, "Cach_Khop_Ten": method,
             "So_Tran_File": file_matches, "So_Tran_API": st["matches"],
             "So_Nhan_Doi": len(changed), "So_Nhan_Sai_Ro": len(wrong),
             "Nhan_Doi": "; ".join(f"{TEAM_RULES[c][0]} {flag_of(r[c])}→{decided[c][0]}" for c in changed),
-            "Canh_Bao": "; ".join(warnings), "So_Lieu_Lech": "; ".join(gaps),
+            "Canh_Bao": "; ".join(warnings), "So_Lieu_Lech": "; ".join(gaps), "Xu_Ly": action,
         }
         for col, (value, status, text) in decided.items():
             cmp[col] = tag_cell(flag_of(r[col]), value, status, text)
@@ -498,10 +529,13 @@ def main() -> None:
 
     tag_cols = list(TEAM_RULES)
     compare_header = ["League_Id", "Giai_Dau", "Doi_Bong_File", "TeamId", "Ten_API", "Cach_Khop_Ten", "So_Tran_File", "So_Tran_API",
-                      "So_Nhan_Doi", "So_Nhan_Sai_Ro", "Nhan_Doi", "Canh_Bao", "So_Lieu_Lech"] + tag_cols
+                      "Xu_Ly", "So_Nhan_Doi", "So_Nhan_Sai_Ro", "Nhan_Doi", "Canh_Bao", "So_Lieu_Lech"] + tag_cols
     compare_rows.sort(key=lambda c: (-(c["So_Tran_API"] == 0), -c["So_Nhan_Sai_Ro"], -c["So_Nhan_Doi"], -bool(c["Canh_Bao"]), c["Giai_Dau"], c["Doi_Bong_File"]))
     write_csv(args.out / "dna_doi_bong_30_giai_1nam_API.csv", team_header, api_rows)
     write_csv(args.out / "dna_doi_bong_doi_chieu.csv", compare_header, compare_rows)
+    # Id đội theo đúng dòng của file API (dòng chuyển giải có League_Id mới) — dùng với gen_team_dna_sql.py --ids.
+    write_csv(args.out / "team-ids_API.csv", ["League_Id", "Doi_Bong", "TeamId", "Api_Name", "Match"], api_ids)
+    write_csv(args.out / "dna_doi_bong_xoa.csv", ["League_Id", "Giai_Dau", "Doi_Bong", "TeamId", "Ten_API", "Ly_Do"], deleted)
 
     # ---- Giải (mỗi trận một lần, nhìn từ đội nhà)
     league_api, league_cmp = [], []
@@ -548,7 +582,8 @@ def main() -> None:
     print(f"Khung {window} · {api.requests} request (còn {api.remaining} hôm nay)")
     if failed:
         print(f"{len(failed)} trận API báo lỗi khi lấy thống kê (bỏ góc/thẻ/phút ghi bàn của các trận này, tỉ số vẫn tính): {', '.join(failed)}")
-    print(f"Đội: {len(compare_rows)} dòng · {teams_changed} dòng đổi nhãn · {teams_wrong} dòng có nhãn sai rõ · {zero} dòng 0 trận")
+    print(f"Đội: {len(compare_rows)} dòng · {teams_changed} dòng đổi nhãn · {teams_wrong} dòng có nhãn sai rõ · {zero} dòng 0 trận "
+          f"(bỏ {sum(1 for c in compare_rows if c['Xu_Ly'].startswith('bỏ'))}, chuyển giải {len(relocated)}, xoá đội {len(deleted)})")
     print(f"Giải: {len(league_cmp)} giải · {sum(1 for c in league_cmp if c['So_Nhan_Doi'])} giải đổi nhãn")
     print(f"Đã ghi 4 file vào {args.out}")
 
