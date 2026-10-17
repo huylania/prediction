@@ -17,8 +17,9 @@
 <h1 class="h3 mb-1">Góc Live</h1>
 <p class="text-muted small mb-2">
     Tài xỉu phạt góc trực tiếp theo file kỹ năng <strong>phan-tich-goc</strong> (mục riêng, không liên quan phần Phân tích chuyên sâu):
-    hai cửa sổ vàng <strong>H1 phút 25–30</strong> (kèo góc hiệp 1, hệ số α_sút × α_nhịp) và <strong>H2 phút 75–80</strong>
-    (kèo góc cả trận, β = K_tỉ số × K_động lực × K_cường độ × K_thẻ đỏ). Khuyến nghị Tài/Xỉu trong cửa sổ được chốt và chấm tự động.
+    hai cửa sổ vàng <strong>H1 phút 25–30</strong> (kèo góc hiệp 1, tốc độ có hồi quy, α = α_sút × α_nhịp × α_tỉ số kẹp 0.72–1.25) và <strong>H2 phút 75–80</strong>
+    (kèo góc cả trận, tách nhịp riêng hiệp 2, β = K_tỉ số × K_động lực × K_cường độ × K_thẻ đỏ kẹp 0.58–1.40). Kỹ năng v2.0: Poisson, bộ lọc sắt theo
+    khoảng cách kèo D_line, chỉ phát lệnh khi tỉ lệ thắng (không tính hòa) ≥ 62%. Khuyến nghị Tài/Xỉu trong cửa sổ được chốt và chấm tự động.
 </p>
 
 <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
@@ -173,6 +174,10 @@ else
 
             <div class="col-6 col-md-2"><label>Góc đội nhà</label><input type="number" class="form-control form-control-sm" @bind="_form.HomeCorners" /></div>
             <div class="col-6 col-md-2"><label>Góc đội khách</label><input type="number" class="form-control form-control-sm" @bind="_form.AwayCorners" /></div>
+            @if (_form.Window == CornerWindow.SecondHalf)
+            {
+                <div class="col-6 col-md-2"><label title="Tách nhịp góc riêng hiệp 2 (kỹ năng v2.0)">Tổng góc hết H1</label><input type="number" class="form-control form-control-sm" @bind="_form.FirstHalfCorners" placeholder="nếu biết" /></div>
+            }
             <div class="col-4 col-md-2"><label>Tổng sút</label><input type="number" class="form-control form-control-sm" @bind="_form.Shots" /></div>
             <div class="col-4 col-md-2"><label>Trúng đích</label><input type="number" class="form-control form-control-sm" @bind="_form.ShotsOnTarget" /></div>
             <div class="col-4 col-md-2"><label>Bị chặn</label><input type="number" class="form-control form-control-sm" @bind="_form.BlockedShots" /></div>
@@ -190,13 +195,13 @@ else
                     <input type="number" step="0.01" class="form-control form-control-sm" @bind="_form.UnderOdds" />
                 </div>
             </div>
-            <div class="col-4 col-md-2"><label>Bù giờ dự kiến</label><input type="number" step="0.5" class="form-control form-control-sm" @bind="_form.StoppageMinutes" placeholder="@(_form.Window == CornerWindow.FirstHalf ? "2.5" : "5.5")" /></div>
+            <div class="col-4 col-md-2"><label>Bù giờ dự kiến</label><input type="number" step="0.5" class="form-control form-control-sm" @bind="_form.StoppageMinutes" placeholder="@(_form.Window == CornerWindow.FirstHalf ? "2" : "5")" /></div>
 
             <div class="col-6 col-md-3">
                 <label>Động lực (K_động lực)</label>
                 <select class="form-select form-select-sm" @bind="_form.Motivation">
                     <option value="@Motivation.Normal">Bình thường (1.00)</option>
-                    <option value="@Motivation.High">Cao: trụ hạng / vô địch / knock-out (1.20)</option>
+                    <option value="@Motivation.High">Cao: trụ hạng / vô địch / knock-out (1.12)</option>
                     <option value="@Motivation.Low">Thấp: trận thủ tục (0.85)</option>
                 </select>
             </div>
@@ -208,6 +213,7 @@ else
                     <option value="away">Đội khách</option>
                 </select>
             </div>
+            <div class="col-6 col-md-2"><label title="Hòa mà cửa trên chấp ≥ 0.75 thì buộc phải thắng (K_tỉ số 1.18–1.25)">Kèo chấp trước trận</label><input type="number" step="0.25" class="form-control form-control-sm" @bind="_form.PreMatchHandicap" placeholder="vd 0.75" /></div>
             <div class="col-12 col-md-3 d-flex align-items-end">
                 <label class="d-flex align-items-center gap-1"><input type="checkbox" @bind="_form.DrawSuitsBoth" /> Hòa mà hai bên đều hài lòng</label>
             </div>

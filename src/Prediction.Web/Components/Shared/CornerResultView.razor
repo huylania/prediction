@@ -1,12 +1,13 @@
 @using System.Globalization
 @using Prediction.Core.Engine.LiveCorners
 
-@* Kết quả công thức góc live theo mục 5 của file kỹ năng phan-tich-goc: số liệu, hệ số, kết luận. *@
+@* Kết quả công thức góc live theo mục 5 của file kỹ năng phan-tich-goc v2.0: số liệu, bộ lọc sắt, hệ số, kết luận. *@
 <div class="gl-call @CallCss(R.Call)">@R.Headline</div>
 
 <div class="gl-nums">
     <div><div class="v">@I.Corners</div><div class="l">góc (@I.HomeCorners-@I.AwayCorners)</div></div>
     <div><div class="v">@(R.Line is { } l ? LineText.Number(l) : "—")</div><div class="l">mốc live @(I.Window == CornerWindow.FirstHalf ? "H1" : "FT")</div></div>
+    <div><div class="v">@(R.DLine is { } d ? d.ToString("0.##", Inv) : "—")</div><div class="l">D_line (cần thêm)</div></div>
     <div><div class="v">@R.ExpectedTotal.ToString("0.0", Inv)</div><div class="l">Exp góc</div></div>
     <div><div class="v @EdgeCss">@(R.Edge is { } e ? e.ToString("+0.00;-0.00;0.00", Inv) : "—")</div><div class="l">Δedge</div></div>
 </div>
@@ -28,8 +29,19 @@
 </div>
 
 <div class="small mt-1">
-    R = @I.Corners/@R.Minute = <strong>@R.Rate.ToString("0.000", Inv)</strong> góc/phút ·
-    @(I.Window == CornerWindow.FirstHalf ? "α" : "β") = <strong>@R.Multiplier.ToString("0.00", Inv)</strong> ·
+    @if (I.Window == CornerWindow.FirstHalf)
+    {
+        <span>R_adj = 0.55·@I.Corners/@R.Minute + 0.45·0.105 = <strong>@R.Rate.ToString("0.000", Inv)</strong> góc/phút ·</span>
+    }
+    else if (R.SecondHalfRate is { } h2)
+    {
+        <span>R_H2 = @(I.Corners - (I.FirstHalfCorners ?? 0))/@(R.Minute - 45) = @h2.ToString("0.000", Inv) → R_base = <strong>@R.Rate.ToString("0.000", Inv)</strong> góc/phút ·</span>
+    }
+    else
+    {
+        <span>R_base = 0.5·@I.Corners/@R.Minute + 0.5·0.105 = <strong>@R.Rate.ToString("0.000", Inv)</strong> góc/phút (chưa biết góc H1) ·</span>
+    }
+    @(I.Window == CornerWindow.FirstHalf ? "α" : "β") = <strong>@R.Multiplier.ToString("0.00", Inv)</strong>@(Math.Abs(R.RawMultiplier - R.Multiplier) > 1e-9 ? $" (tích {R.RawMultiplier.ToString("0.00", Inv)} đã kẹp)" : "") ·
     ΔT = @R.RemainingMinutes.ToString("0.#", Inv)' → còn ≈ @R.ExpectedRemaining.ToString("0.0", Inv) góc
     @if (I.Window == CornerWindow.SecondHalf)
     {
@@ -43,6 +55,17 @@
     }
 </ul>
 
+@if (R.Filters.Count > 0)
+{
+    <div class="small mt-1"><strong>Bộ lọc sắt</strong></div>
+    <ul class="gl-filters">
+        @foreach (var f in R.Filters)
+        {
+            <li class="@(f.Passed ? "ok" : "veto")"><span class="mark">@(f.Passed ? "✓" : "✗")</span> <strong>@f.Name</strong> — @f.Text</li>
+        }
+    </ul>
+}
+
 @if (R.Probability is { } p)
 {
     <div class="small mt-1">
@@ -53,6 +76,10 @@
             <span>· @Pct(p.Push) hoàn</span>
         }
         · @Pct(p.LossAny) thua
+        @if (R.WinRate is { } wr)
+        {
+            <span>· không tính hòa <strong>@((wr * 100).ToString("0.0", Inv))%</strong></span>
+        }
         @if (R.ExpectedValue is { } ev)
         {
             <span>· EV <span class="@(ev >= 0 ? "text-success" : "text-danger")">@ev.ToString("+0.00;-0.00;0.00", Inv)</span></span>
@@ -75,7 +102,7 @@
     [Parameter, EditorRequired] public LiveCornerInput I { get; set; } = default!;
     [Parameter, EditorRequired] public LiveCornerResult R { get; set; } = default!;
 
-    private string EdgeCss => R.Edge switch { >= 0.55 => "text-success", <= -0.55 => "text-primary", _ => "" };
+    private string EdgeCss => R.Edge switch { >= 0.60 => "text-success", <= -0.60 => "text-primary", _ => "" };
 
     public static string CallCss(CornerCall call) => call switch
     {

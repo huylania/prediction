@@ -269,7 +269,8 @@ h1:focus {
 .gl-card .teams { font-weight: 800; color: #0f172a; margin: .3rem 0; }
 .gl-call { font-size: 1.05rem; font-weight: 800; margin: .35rem 0; }
 .gl-call.over { color: #15803d; } .gl-call.under { color: #1d4ed8; } .gl-call.watch { color: #b45309; } .gl-call.nobet { color: #475569; }
-.gl-nums { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .4rem; margin: .4rem 0; }
+.gl-nums { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: .4rem; margin: .4rem 0; }
+@media (max-width: 575.98px) { .gl-nums { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 .gl-nums div { background: #f8fafc; border-radius: 8px; padding: .3rem .4rem; text-align: center; }
 .gl-nums .v { font-weight: 800; font-size: 1rem; color: #0f172a; font-variant-numeric: tabular-nums; }
 .gl-nums .l { font-size: .68rem; color: #64748b; }
@@ -328,3 +329,11 @@ td.dna-bad { background: #fee2e2; box-shadow: inset 0 0 0 2px #fca5a5; }
 .lp-ind td.pt.neg { color: #b91c1c; }
 .lp-ind tr.total td { border-top: 2px solid #e2e8f0; }
 @media (max-width: 575.98px) { .lp-grid { grid-template-columns: 1fr; } }
+
+/* Góc Live v2.0: bộ lọc sắt */
+.gl-filters { list-style: none; padding-left: 0; margin: .15rem 0 .25rem; font-size: .78rem; }
+.gl-filters li { padding: .05rem 0; color: #475569; }
+.gl-filters li .mark { display: inline-block; width: 1rem; font-weight: 800; }
+.gl-filters li.ok .mark { color: #15803d; }
+.gl-filters li.veto .mark { color: #b91c1c; }
+.gl-filters li.veto { color: #7f1d1d; }

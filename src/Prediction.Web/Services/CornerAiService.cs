@@ -24,6 +24,10 @@ public sealed class LiveCornerForm
     public int Minute { get; set; } = 27;
     public int HomeCorners { get; set; }
     public int AwayCorners { get; set; }
+
+    /// <summary>Tổng góc hết hiệp 1 (C_H1) — cửa sổ H2 dùng để tách nhịp góc riêng hiệp 2.</summary>
+    public int? FirstHalfCorners { get; set; }
+
     public int? Shots { get; set; }
     public int? ShotsOnTarget { get; set; }
     public int? BlockedShots { get; set; }
@@ -42,6 +46,9 @@ public sealed class LiveCornerForm
     public bool DrawSuitsBoth { get; set; }
     public PickSide? Favourite { get; set; }
 
+    /// <summary>Độ sâu kèo chấp trước trận của cửa trên (vd 0.75).</summary>
+    public decimal? PreMatchHandicap { get; set; }
+
     /// <summary>Ghi chú Claude đọc được từ ảnh (xu hướng tấn công, thẻ vàng hậu vệ...).</summary>
     public string? Notes { get; set; }
 
@@ -51,10 +58,12 @@ public sealed class LiveCornerForm
         Minute = Math.Clamp(Minute, 1, 130),
         HomeCorners = Math.Max(0, HomeCorners),
         AwayCorners = Math.Max(0, AwayCorners),
+        FirstHalfCorners = Window == CornerWindow.SecondHalf && FirstHalfCorners is { } h1 ? Math.Clamp(h1, 0, Math.Max(0, HomeCorners) + Math.Max(0, AwayCorners)) : null,
         Shots = Shots,
         ShotsOnTarget = ShotsOnTarget,
         BlockedShots = BlockedShots,
         DangerousAttacks = DangerousAttacks,
+        HomePossession = HomePossession,
         HomeGoals = Math.Max(0, HomeGoals),
         AwayGoals = Math.Max(0, AwayGoals),
         HomeRed = Math.Max(0, HomeRed),
@@ -67,6 +76,7 @@ public sealed class LiveCornerForm
         Motivation = Motivation,
         DrawSuitsBoth = DrawSuitsBoth,
         Favourite = Favourite,
+        PreMatchHandicap = PreMatchHandicap is { } h ? Math.Abs(h) : null,
     };
 
     /// <summary>Điền form từ một trận website đang theo dõi (để sửa tay hoặc bổ sung tấn công nguy hiểm).</summary>
@@ -79,10 +89,12 @@ public sealed class LiveCornerForm
         Minute = m.Input.Minute,
         HomeCorners = m.Input.HomeCorners,
         AwayCorners = m.Input.AwayCorners,
+        FirstHalfCorners = m.Input.FirstHalfCorners,
         Shots = m.Input.Shots,
         ShotsOnTarget = m.Input.ShotsOnTarget,
         BlockedShots = m.Input.BlockedShots,
         DangerousAttacks = m.Input.DangerousAttacks,
+        HomePossession = m.Input.HomePossession,
         HomeGoals = m.Input.HomeGoals,
         AwayGoals = m.Input.AwayGoals,
         HomeRed = m.Input.HomeRed,
@@ -94,6 +106,7 @@ public sealed class LiveCornerForm
         Motivation = m.Input.Motivation,
         DrawSuitsBoth = m.Input.DrawSuitsBoth,
         Favourite = m.Input.Favourite,
+        PreMatchHandicap = m.Input.PreMatchHandicap,
     };
 }
 
@@ -117,8 +130,9 @@ public sealed class CornerAiService(
 {
     private const string VisionInstructions = """
         Bạn đọc ảnh chụp màn hình trận đang đá trên AiScore (hoặc ứng dụng tỉ số tương tự) cho mục "Góc Live" của website soi kèo cá nhân.
-        Trích đúng 6 nhóm chỉ số ở mục 2 của kỹ năng: phút, số góc mỗi đội, mốc kèo góc (mở trận và live, kèm odds Tài/Xỉu nếu thấy),
-        cú sút (tổng, trúng đích, bị chặn), tấn công nguy hiểm, thẻ đỏ, tỉ số, kiểm soát bóng. Chỉ ghi số NHÌN THẤY trên ảnh, không đoán;
+        Trích đúng các nhóm chỉ số ở mục 2 của kỹ năng: phút, số góc mỗi đội (và số góc hiệp 1 nếu ảnh có, khi đang ở hiệp 2),
+        mốc kèo góc (mở trận và live, kèm odds Tài/Xỉu nếu thấy), cú sút (tổng, trúng đích, bị chặn), tấn công nguy hiểm, thẻ đỏ,
+        tỉ số, kiểm soát bóng. Chỉ ghi số NHÌN THẤY trên ảnh, không đoán;
         không thấy thì để null. Nếu có nhiều ảnh thì gộp lại (ảnh sau mới hơn).
 
         Kèo góc: nếu ảnh là kèo góc hiệp 1 thì "window" = "H1", kèo góc cả trận thì "H2"; nếu không rõ thì suy từ phút
@@ -129,6 +143,7 @@ public sealed class CornerAiService(
           "home": "tên đội nhà" | null, "away": "tên đội khách" | null,
           "window": "H1" | "H2", "minute": số phút,
           "home_corners": số, "away_corners": số,
+          "home_corners_h1": số | null, "away_corners_h1": số | null,
           "home_shots": số | null, "away_shots": số | null,
           "home_on_target": số | null, "away_on_target": số | null,
           "home_blocked": số | null, "away_blocked": số | null,
@@ -144,7 +159,8 @@ public sealed class CornerAiService(
     private const string CommentaryInstructions = """
         Bạn đang chạy trong mục "Góc Live" của website soi kèo cá nhân (Blazor + API-Football). Tin nhắn gồm số liệu live của MỘT trận
         tại phút T (tự động từ API-Football hoặc đọc từ ảnh AiScore và người dùng đã kiểm lại) và kết quả công thức của website
-        theo đúng mô hình mục 3/4 của kỹ năng (hệ số α hoặc K, Exp, Δedge, xác suất nhị thức âm, EV theo odds live).
+        theo đúng mô hình v2.0 mục 3/4 của kỹ năng (R có hồi quy / tách nhịp H2, hệ số α hoặc β đã kẹp biên độ, Exp, D_line, Δedge,
+        xác suất Poisson và tỉ lệ thắng không tính hòa, trạng thái từng bộ lọc sắt, điểm tin cậy theo bậc, EV theo odds live).
         API-Football không có "tấn công nguy hiểm": khi thiếu, website dùng (sút + góc)/phút và nhịp 10–15 phút gần nhất làm chỉ số thay thế.
 
         Trả lời bằng tiếng Việt, Markdown, đúng CẤU TRÚC PHẢN HỒI CHUẨN MỰC ở mục 5, ngắn gọn. Giữ nguyên các con số của website;
@@ -348,6 +364,7 @@ public sealed class CornerAiService(
             Minute = minute,
             HomeCorners = Int(e, "home_corners") ?? 0,
             AwayCorners = Int(e, "away_corners") ?? 0,
+            FirstHalfCorners = Sum("home_corners_h1", "away_corners_h1"),
             Shots = Sum("home_shots", "away_shots"),
             ShotsOnTarget = Sum("home_on_target", "away_on_target"),
             BlockedShots = Sum("home_blocked", "away_blocked"),
@@ -493,7 +510,7 @@ public sealed class CornerAiService(
             {
                 phut = i.Minute,
                 ti_so = $"{i.HomeGoals}-{i.AwayGoals}",
-                goc = new { doi_nha = i.HomeCorners, doi_khach = i.AwayCorners, tong = i.Corners },
+                goc = new { doi_nha = i.HomeCorners, doi_khach = i.AwayCorners, tong = i.Corners, het_hiep_1 = i.FirstHalfCorners },
                 sut = i.Shots,
                 trung_dich = i.ShotsOnTarget,
                 bi_chan = i.BlockedShots,
@@ -504,17 +521,23 @@ public sealed class CornerAiService(
                 dong_luc = i.Motivation switch { Motivation.High => "cao (cần điểm sống còn / knock-out)", Motivation.Low => "thấp (trận thủ tục)", _ => "bình thường" },
                 hoa_hai_ben_hai_long = i.DrawSuitsBoth ? true : (bool?)null,
                 cua_tren_truoc_tran = i.Favourite switch { PickSide.Home => "đội nhà", PickSide.Away => "đội khách", _ => null },
+                keo_chap_truoc_tran = i.PreMatchHandicap,
+                kiem_soat_bong_doi_nha = i.HomePossession,
                 ghi_chu = notes,
             },
             ket_qua_website = new
             {
-                R_goc_moi_phut = Math.Round(r.Rate, 4),
+                R_tho_C_tren_T = Math.Round(r.RawRate, 4),
+                R_rieng_hiep_2 = r.SecondHalfRate is { } h2 ? Math.Round(h2, 4) : (double?)null,
+                R_da_hieu_chinh = Math.Round(r.Rate, 4),
                 he_so = r.Factors.Select(f => new { ten = f.Name, gia_tri = f.Value, ly_do = f.Reason }),
+                tich_he_so_truoc_khi_kep = Math.Round(r.RawMultiplier, 3),
                 tich_he_so = Math.Round(r.Multiplier, 3),
                 delta_T = r.RemainingMinutes,
                 goc_con_lai_du_kien = Math.Round(r.ExpectedRemaining, 2),
                 exp_tong_goc = Math.Round(r.ExpectedTotal, 2),
                 moc_live = r.Line,
+                D_line = r.DLine is { } dl ? Math.Round(dl, 2) : (double?)null,
                 delta_edge = r.Edge is { } edge ? Math.Round(edge, 2) : (double?)null,
                 da_an_bai = r.Window == CornerWindow.SecondHalf ? r.Settled : (bool?)null,
                 khuyen_nghi = r.Headline,
@@ -525,6 +548,8 @@ public sealed class CornerAiService(
                     hoan = Math.Round(p.Push, 3),
                     thua = Math.Round(p.LossAny, 3),
                 } : null,
+                ty_le_thang_khong_tinh_hoa = r.WinRate is { } wr ? Math.Round(wr, 3) : (double?)null,
+                bo_loc_sat = r.Filters.Select(f => new { ten = f.Name, dat = f.Passed, chi_tiet = f.Text }),
                 ev = r.ExpectedValue is { } ev ? Math.Round(ev, 3) : (double?)null,
                 diem_tin_cay = r.Confidence,
                 thoi_diem = r.Timing,

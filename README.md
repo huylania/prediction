@@ -324,12 +324,36 @@ Tab **Lịch sử & bên lề** ở trang chi tiết trận (và thẻ cảnh b�
 
 Menu **Góc Live** (`/goc-live`) là mục **riêng**, chạy theo file kỹ năng thứ hai `Ai/phan-tich-goc-skill.md`. Mục này không dùng chung dữ liệu hay công thức với phần Phân tích chuyên sâu và cảnh báo In-play.
 
-- **Hai cửa sổ vàng**:
-  - **H1 phút 25–30**, kèo góc hiệp 1: `Exp = C + (C/T) × α_sút × α_nhịp × (47.5 − T)`.
-  - **H2 phút 75–80**, kèo góc cả trận: `Exp = C + (C/T) × K_tỉ số × K_động lực × K_cường độ × K_thẻ đỏ × (95.5 − T)`.
-  - Ngưỡng ra Tài/Xỉu: H1 cần Δedge ±0.60. H2 cần Δedge ±0.55, kèm β ≥ 1.20 khi tỉ số chưa an bài (Tài) hoặc β ≤ 0.80 khi đã an bài (Xỉu).
-  - Xác suất thắng/hoàn/thua tính theo phân phối nhị thức âm của số góc còn lại. Nếu EV theo odds live âm thì đứng ngoài. Kết quả có thêm điểm tin cậy /10 và mốc vào lệnh tối ưu.
-- **Dữ liệu tự động**: tác vụ trực tiếp (2 phút/lần) lưu thêm ảnh chụp số liệu theo phút (góc, sút, sút bị chặn, thẻ đỏ, tỉ số) và số góc hiệp 1. Kèo góc live lấy chung request `odds/live` với tác vụ **Kèo live** (`Sync:LiveOddsIntervalMinutes`, mặc định 2 phút), chỉ lưu cho trận ở phút 20–32 hoặc 70–82. Tác vụ **Góc Live** (`Sync:LiveCornersIntervalMinutes`) chỉ chốt/chấm khuyến nghị, không tốn request. Kèo đọc được: *Asian Corners* / *Total Corners* (cả trận) và *Corners 1st Half* (hiệp 1).
+- **Hai cửa sổ vàng** (kỹ năng **v2.0**, đã hiệu chỉnh thực chiến):
+  - **H1 phút 25–30**, kèo góc hiệp 1:
+    - Tốc độ góc có hồi quy về trung bình: `R_adj = 0.55·C/T + 0.45·0.105`. Chống bẫy bùng nổ góc sớm.
+    - `α = kẹp(α_sút × α_nhịp × α_tỉ số, 0.72, 1.25)`; `λ = R_adj × α × (47 − T)`.
+  - **H2 phút 75–80**, kèo góc cả trận:
+    - Tách nhịp riêng hiệp 2 khi biết số góc hiệp 1: `R_base = max(0.068, 0.55·R_H2 + 0.25·C/T + 0.20·0.105)`. Chưa biết góc hiệp 1 thì `max(0.068, 0.5·C/T + 0.5·0.105)`.
+    - `β = kẹp(K_tỉ số × K_động lực × K_cường độ × K_thẻ đỏ, 0.58, 1.40)`; `λ = R_base × β × (95 − T)`, hoặc 96 − T khi có từ 4 bàn.
+    - **K_tỉ số** chia 4 cấp:
+
+      | Tỉ số | K_tỉ số | Ghi chú |
+      |---|---|---|
+      | Cách ≥ 3 bàn | 0.60 | Cấm Tài |
+      | Cách 2 bàn, chưa an bài (chủ nhà / cửa trên bị dẫn, hoặc ≥ 4 bàn) | 1.15–1.25 | Cấm Xỉu |
+      | Cách 2 bàn, đã an bài | 0.72 | |
+      | Cách 1 bàn | 1.20–1.35 | |
+      | Hòa, cửa trên chấp ≥ 0.75 hoặc đang dồn ép | 1.18–1.25 | |
+      | Hòa, hai bên hài lòng hoặc nhịp chậm | 0.85 | Cấm Tài |
+
+    - Đội bị dẫn dính thẻ đỏ: 0.72 và cấm Tài.
+  - **Bộ lọc sắt** theo khoảng cách kèo `D_line = mốc live − số góc hiện tại`:
+
+    | Cửa sổ | Tài | Xỉu |
+    |---|---|---|
+    | H1 | Mốc ≤ 6.5, D ≤ 2, odds ≥ 1.78. Đã ≥ 5 góc mà mốc ≥ 7 thì tuyệt đối không Tài | D ≥ 2, odds ≥ 1.75 |
+    | H2 | Chỉ khi D là 1.5–2, odds ≥ 1.75. Phút 75–77 mà D = 1 và odds ≥ 1.95 là bẫy kèo rẻ | D ≥ 2, odds ≥ 1.75 |
+
+  - Số góc còn lại tính theo **Poisson**. Chỉ phát lệnh khi **tỉ lệ thắng không tính hòa ≥ 62%** và biên ≥ 0.60 (H1) / 0.65 (H2).
+  - **Điểm tin cậy theo bậc**, không lạm phát 10/10: 9.0–9.5 (≥ 72%, |Δ| ≥ 1.10) · 8.0–8.9 (65–71%) · 7.0–7.9 (62–64%).
+  - Thẻ trận hiện từng bộ lọc ✓/✗. Form tính tay có thêm ô **Tổng góc hết H1** và **Kèo chấp trước trận**.
+- **Dữ liệu tự động**: tác vụ trực tiếp (2 phút/lần) lưu thêm ảnh chụp số liệu theo phút (góc, sút, sút bị chặn, thẻ đỏ, tỉ số) và số góc hiệp 1 (dùng để tách nhịp hiệp 2). Kèo góc live lấy chung request `odds/live` với tác vụ **Kèo live** (`Sync:LiveOddsIntervalMinutes`, mặc định 2 phút), chỉ lưu cho trận ở phút 20–32 hoặc 70–82. Tác vụ **Góc Live** (`Sync:LiveCornersIntervalMinutes`) chỉ chốt/chấm khuyến nghị, không tốn request. Kèo đọc được: *Asian Corners* / *Total Corners* (cả trận) và *Corners 1st Half* (hiệp 1).
 - **Không có "tấn công nguy hiểm"**: API-Football không có số này. Website thay bằng (sút + góc)/phút và nhịp 10–15 phút gần nhất. Muốn có số chính xác thì dùng ảnh AiScore.
 - **Trang Góc Live**:
   - Thẻ từng trận đang trong cửa sổ, kèm bóc tách hệ số. Trang tự làm mới mỗi phút.
