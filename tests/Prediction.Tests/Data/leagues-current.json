@@ -1,0 +1,162 @@
+{
+ "get": "leagues",
+ "parameters": {
+  "current": "true"
+ },
+ "errors": [],
+ "results": 4,
+ "paging": {
+  "current": 1,
+  "total": 1
+ },
+ "response": [
+  {
+   "league": {
+    "id": 39,
+    "name": "Premier League",
+    "type": "League",
+    "logo": "https://media.api-sports.io/football/leagues/39.png"
+   },
+   "country": {
+    "name": "England",
+    "code": "GB-ENG",
+    "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+   },
+   "seasons": [
+    {
+     "year": 2026,
+     "start": "2026-08-21",
+     "end": "2027-05-30",
+     "current": true,
+     "coverage": {
+      "fixtures": {
+       "events": true,
+       "lineups": true,
+       "statistics_fixtures": true,
+       "statistics_players": true
+      },
+      "standings": true,
+      "players": true,
+      "top_scorers": true,
+      "top_assists": true,
+      "top_cards": true,
+      "injuries": true,
+      "predictions": true,
+      "odds": true
+     }
+    }
+   ]
+  },
+  {
+   "league": {
+    "id": 103,
+    "name": "Eliteserien",
+    "type": "League",
+    "logo": "https://media.api-sports.io/football/leagues/103.png"
+   },
+   "country": {
+    "name": "Norway",
+    "code": "NO",
+    "flag": "https://media.api-sports.io/flags/no.svg"
+   },
+   "seasons": [
+    {
+     "year": 2026,
+     "start": "2026-03-14",
+     "end": "2026-12-13",
+     "current": true,
+     "coverage": {
+      "fixtures": {
+       "events": true,
+       "lineups": true,
+       "statistics_fixtures": true,
+       "statistics_players": true
+      },
+      "standings": true,
+      "players": true,
+      "top_scorers": true,
+      "top_assists": true,
+      "top_cards": true,
+      "injuries": true,
+      "predictions": true,
+      "odds": true
+     }
+    }
+   ]
+  },
+  {
+   "league": {
+    "id": 473,
+    "name": "2. Division - Group 1",
+    "type": "League",
+    "logo": "https://media.api-sports.io/football/leagues/473.png"
+   },
+   "country": {
+    "name": "Norway",
+    "code": "NO",
+    "flag": "https://media.api-sports.io/flags/no.svg"
+   },
+   "seasons": [
+    {
+     "year": 2026,
+     "start": "2026-04-06",
+     "end": "2026-10-31",
+     "current": true,
+     "coverage": {
+      "fixtures": {
+       "events": true,
+       "lineups": true,
+       "statistics_fixtures": false,
+       "statistics_players": false
+      },
+      "standings": true,
+      "players": false,
+      "top_scorers": false,
+      "top_assists": false,
+      "top_cards": false,
+      "injuries": false,
+      "predictions": true,
+      "odds": true
+     }
+    }
+   ]
+  },
+  {
+   "league": {
+    "id": 549,
+    "name": "Damallsvenskan",
+    "type": "League",
+    "logo": "https://media.api-sports.io/football/leagues/549.png"
+   },
+   "country": {
+    "name": "Sweden",
+    "code": "SE",
+    "flag": "https://media.api-sports.io/flags/se.svg"
+   },
+   "seasons": [
+    {
+     "year": 2026,
+     "start": "2026-03-28",
+     "end": "2026-11-15",
+     "current": true,
+     "coverage": {
+      "fixtures": {
+       "events": true,
+       "lineups": true,
+       "statistics_fixtures": true,
+       "statistics_players": true
+      },
+      "standings": true,
+      "players": true,
+      "top_scorers": true,
+      "top_assists": true,
+      "top_cards": true,
+      "injuries": false,
+      "predictions": true,
+      "odds": true
+     }
+    }
+   ]
+  }
+ ]
+}

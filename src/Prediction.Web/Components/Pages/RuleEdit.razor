@@ -329,7 +329,7 @@ else
     protected override async Task OnParametersSetAsync()
     {
         await using var db = await DbFactory.CreateDbContextAsync();
-        _leagues = await db.Leagues.AsNoTracking().OrderBy(l => l.Name).ToListAsync();
+        _leagues = await db.Leagues.AsNoTracking().Where(l => l.IsTracked || !l.LiveScan).OrderBy(l => l.Name).ToListAsync();
         _rule = Id is null
             ? new Rule { MinMatchesPlayed = 5, IsActive = true }
             : await db.Rules.AsNoTracking().FirstOrDefaultAsync(r => r.Id == Id);
@@ -352,6 +352,15 @@ else
             var ids = db.Fixtures.Where(f => f.LeagueId == leagueId).Select(f => f.HomeTeamId)
                 .Union(db.Fixtures.Where(f => f.LeagueId == leagueId).Select(f => f.AwayTeamId));
             query = query.Where(t => ids.Contains(t.Id) || t.Id == _rule.SubjectTeamId);
+        }
+        else
+        {
+            // Bỏ đội chỉ xuất hiện trong trận Góc Live toàn cầu (giải không theo dõi).
+            var scanOnly = db.Fixtures.Where(f => !f.League!.IsTracked && f.League.LiveScan);
+            var scanTeams = scanOnly.Select(f => f.HomeTeamId).Union(scanOnly.Select(f => f.AwayTeamId));
+            var other = db.Fixtures.Where(f => f.League!.IsTracked || !f.League.LiveScan);
+            var otherTeams = other.Select(f => f.HomeTeamId).Union(other.Select(f => f.AwayTeamId));
+            query = query.Where(t => !scanTeams.Contains(t.Id) || otherTeams.Contains(t.Id) || t.Id == _rule.SubjectTeamId);
         }
 
         _teams = await query.OrderBy(t => t.Name).ToListAsync();

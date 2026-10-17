@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Configuration;
 using Prediction.Core.Engine.LiveCorners;
 using Prediction.Web.Services;
 
@@ -44,6 +45,42 @@ public class SyncPlanTests
     }
 
     [Fact]
+    public void Mega_limit_turns_on_mega_profile()
+    {
+        var pro = new SyncOptions();
+        Assert.Equal(SyncTier.Mega, pro.Tier(150000));
+        Assert.Equal(SyncTier.Ultra, pro.Tier(99999));
+        var o = pro.For(150000);
+        Assert.Equal(15, o.LiveCornerFastSeconds);
+        Assert.Equal(400, o.StatsMaxRequests);
+        Assert.Equal(3, o.StatsPreviousSeasons);
+        Assert.Equal(10000, o.QuotaReserve);
+        Assert.Equal(5000, o.LiveCornerFastMinRemaining);
+        Assert.Equal(60, o.LiveOddsFallbackMaxLeagues);
+        Assert.True(o.LiveCornerGlobal);
+        Assert.Equal(20, o.OddsIntervalMinutes); // kèo trước trận API vài giờ mới đổi: không quét dày hơn Ultra
+        Assert.False(pro.For(75000).LiveCornerGlobal);
+        Assert.Equal(1, pro.For(75000).StatsPreviousSeasons);
+        Assert.Equal(SyncTier.Mega, new SyncOptions { Plan = "Mega" }.Tier(7500));
+    }
+
+    [Fact]
+    public void Config_overrides_one_value_and_keeps_tier_defaults()
+    {
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Sync:Mega:LiveCornerFastSeconds"] = "12",
+            ["Sync:Ultra:MinDailyLimit"] = "60000",
+        }).Build();
+        var o = config.GetSection(SyncOptions.Section).Get<SyncOptions>()!;
+        Assert.Equal(12, o.Mega.LiveCornerFastSeconds);
+        Assert.Equal(100000, o.Mega.MinDailyLimit);
+        Assert.Equal(400, o.Mega.StatsMaxRequests);
+        Assert.Equal(60000, o.Ultra.MinDailyLimit);
+        Assert.Equal(20, o.Ultra.LiveCornerFastSeconds);
+    }
+
+    [Fact]
     public void Plan_setting_forces_a_profile()
     {
         Assert.Equal(60, new SyncOptions { Plan = "Pro" }.For(75000).OddsIntervalMinutes);
@@ -54,7 +91,10 @@ public class SyncPlanTests
     [Fact]
     public void Ultra_values_and_threshold_come_from_config()
     {
-        var o = new SyncOptions { Ultra = new SyncUltraOptions { MinDailyLimit = 30000, OddsIntervalMinutes = 15 } };
+        var ultra = SyncTierOptions.UltraDefaults();
+        ultra.MinDailyLimit = 30000;
+        ultra.OddsIntervalMinutes = 15;
+        var o = new SyncOptions { Ultra = ultra };
         Assert.Equal(15, o.For(30000).OddsIntervalMinutes);
         Assert.Same(o, o.For(29999));
     }

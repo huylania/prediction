@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Prediction.Core.Engine;
 using Prediction.Core.Engine.LiveCorners;
 using Prediction.Core.Entities;
@@ -27,7 +28,7 @@ public sealed class LiveCornerMatch
 }
 
 /// <summary>Mục "Góc Live" (file kỹ năng phan-tich-goc): phân tích trận đang đá, chốt và chấm khuyến nghị.</summary>
-public sealed class LiveCornerService(IDbContextFactory<AppDbContext> dbFactory, TimeProvider clock)
+public sealed class LiveCornerService(IDbContextFactory<AppDbContext> dbFactory, IOptions<SyncOptions> options, TimeProvider clock)
 {
     public DateTime UtcNow => clock.GetUtcNow().UtcDateTime;
 
@@ -38,13 +39,16 @@ public sealed class LiveCornerService(IDbContextFactory<AppDbContext> dbFactory,
     public async Task<List<LiveCornerMatch>> LiveAsync(CancellationToken ct = default)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
-        return await LiveAsync(db, UtcNow, ct);
+        return await LiveAsync(db, UtcNow, Global, ct);
     }
 
-    private static async Task<List<LiveCornerMatch>> LiveAsync(AppDbContext db, DateTime now, CancellationToken ct)
+    /// <summary>Góc Live toàn cầu (gói Mega): xét cả trận của giải không theo dõi mà Góc Live toàn cầu đã thêm.</summary>
+    private bool Global => options.Value.Effective().LiveCornerGlobal;
+
+    private static async Task<List<LiveCornerMatch>> LiveAsync(AppDbContext db, DateTime now, bool global, CancellationToken ct)
     {
-        var fixtures = (await db.Fixtures.AsNoTracking().Include(f => f.League)
-                .Where(f => f.League!.IsTracked && f.KickoffUtc <= now && f.KickoffUtc >= now.AddHours(-3) && (f.Status == "1H" || f.Status == "2H"))
+        var fixtures = (await db.Fixtures.AsNoTracking().Include(f => f.League).Include(f => f.HomeTeam).Include(f => f.AwayTeam)
+                .Where(f => (f.League!.IsTracked || global && f.League.LiveScan) && f.KickoffUtc <= now && f.KickoffUtc >= now.AddHours(-3) && (f.Status == "1H" || f.Status == "2H"))
                 .ToListAsync(ct))
             .Where(f => f.Status == "1H" ? f.Elapsed >= 15 : f.Elapsed >= 60)
             .OrderByDescending(f => f.Elapsed)
@@ -55,7 +59,8 @@ public sealed class LiveCornerService(IDbContextFactory<AppDbContext> dbFactory,
         }
 
         var ids = fixtures.Select(f => f.Id).ToList();
-        var contexts = await ContextLoader.LoadAsync(db, fixtures, now, ct);
+        // Giải chỉ quét Góc Live toàn cầu chỉ có vài trận trong CSDL: không dựng BXH (động lực coi như bình thường).
+        var contexts = await ContextLoader.LoadAsync(db, fixtures.Where(f => f.League!.IsTracked || !f.League.LiveScan).ToList(), now, ct);
         var stats = await db.FixtureStats.AsNoTracking().Where(s => ids.Contains(s.FixtureId)).ToDictionaryAsync(s => s.FixtureId, ct);
         var snapshots = (await db.LiveStatSnapshots.AsNoTracking().Where(s => ids.Contains(s.FixtureId)).ToListAsync(ct)).ToLookup(s => s.FixtureId);
         var odds = (await db.LiveCornerOdds.AsNoTracking().Where(o => ids.Contains(o.FixtureId)).ToListAsync(ct)).ToLookup(o => (o.FixtureId, o.Window));
@@ -111,8 +116,8 @@ public sealed class LiveCornerService(IDbContextFactory<AppDbContext> dbFactory,
             {
                 Fixture = f,
                 League = f.League?.Name,
-                Home = contexts.TeamName(f.HomeTeamId),
-                Away = contexts.TeamName(f.AwayTeamId),
+                Home = f.HomeTeam?.Name ?? contexts.TeamName(f.HomeTeamId),
+                Away = f.AwayTeam?.Name ?? contexts.TeamName(f.AwayTeamId),
                 Input = input,
                 Result = LiveCornerAnalyzer.Analyze(input),
                 Odds = current,
@@ -159,7 +164,7 @@ public sealed class LiveCornerService(IDbContextFactory<AppDbContext> dbFactory,
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         var now = UtcNow;
         var created = 0;
-        foreach (var m in await LiveAsync(db, now, ct))
+        foreach (var m in await LiveAsync(db, now, Global, ct))
         {
             var r = m.Result;
             if (!r.InGoldenWindow || r.Side is not { } side || r.Line is not { } line || m.Pick is not null || m.Fixture.League?.IsDemo == true)
@@ -244,7 +249,7 @@ public sealed class LiveCornerService(IDbContextFactory<AppDbContext> dbFactory,
     public async Task<List<LiveCornerPick>> PicksAsync(int take, CancellationToken ct = default)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
-        return await db.LiveCornerPicks.AsNoTracking().Include(p => p.Fixture)
+        return await db.LiveCornerPicks.AsNoTracking().Include(p => p.Fixture).ThenInclude(f => f!.League)
             .OrderByDescending(p => p.CreatedAtUtc).Take(take).ToListAsync(ct);
     }
 

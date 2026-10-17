@@ -67,9 +67,10 @@
                 <div class="small mt-2">
                     Hồ sơ đồng bộ: <strong>@SyncOpts.Value.PlanName(ApiFootballClient.DailyLimit)</strong>
                     @(SyncOpts.Value.Plan.Trim().Equals("Auto", StringComparison.OrdinalIgnoreCase)
-                        ? $"(tự chọn: giới hạn {(ApiFootballClient.DailyLimit?.ToString() ?? "chưa biết")}/ngày, Ultra khi ≥ {SyncOpts.Value.Ultra.MinDailyLimit})"
+                        ? $"(tự chọn: giới hạn {(ApiFootballClient.DailyLimit?.ToString() ?? "chưa biết")}/ngày, Ultra khi ≥ {SyncOpts.Value.Ultra.MinDailyLimit}, Mega khi ≥ {SyncOpts.Value.Mega.MinDailyLimit})"
                         : $"(ép bằng Sync:Plan = {SyncOpts.Value.Plan})")
-                    · ước tính @(SyncOpts.Value.UsesUltra(ApiFootballClient.DailyLimit) ? "25–35 nghìn" : "5–6,5 nghìn") request vào ngày đông trận.
+                    · ước tính @(SyncOpts.Value.Tier(ApiFootballClient.DailyLimit) switch { SyncTier.Mega => "50–70 nghìn", SyncTier.Ultra => "25–35 nghìn", _ => "5–6,5 nghìn" }) request vào ngày đông trận
+                    · thống kê mùa này + @Eff.StatsPreviousSeasons mùa trước@(Eff.LiveCornerGlobal ? " · Góc Live toàn cầu: bật" : "").
                 </div>
                 <div class="small text-muted mt-1">
                     Chu kỳ: lịch/kết quả @Eff.FixturesIntervalMinutes phút · kèo theo giải @Eff.OddsIntervalMinutes phút ·
@@ -85,7 +86,7 @@
                     @Eff.LiveCornerHotH1From–@Eff.LiveCornerHotH1To / @Eff.LiveCornerHotH2From–@Eff.LiveCornerHotH2To
                     (≈ 2 request/lần, tiến trình riêng không chờ tác vụ nặng; tạm dừng khi quota dưới @Eff.LiveCornerFastMinRemaining)
                     @(FastCorners.Status is { Enabled: true } fs ? $"— đang có {fs.HotFixtures} trận ở vùng nóng{(fs.PausedReason is { } why ? $", tạm dừng: {why}" : "")}" : "").
-                    Khi quota còn dưới @Eff.QuotaReserve request, các tác vụ phụ tạm dừng. Sửa trong <code>appsettings.json</code> mục <code>Sync</code> (giá trị gói Ultra ở <code>Sync:Ultra</code>).
+                    Khi quota còn dưới @Eff.QuotaReserve request, các tác vụ phụ tạm dừng. Sửa trong <code>appsettings.json</code> mục <code>Sync</code> (giá trị gói Ultra / Mega ở <code>Sync:Ultra</code> / <code>Sync:Mega</code>).
                 </div>
             </div>
         </div>
@@ -123,7 +124,7 @@
                     <button class="btn btn-sm btn-outline-secondary" disabled="@(Sync.CurrentJob is not null)" @onclick="() => RunJobAsync(SyncJobs.LiveCorners)">Góc Live (chốt/chấm khuyến nghị)</button>
                 </div>
                 <div class="small text-muted mt-2">
-                    Thống kê góc/thẻ/sút đã tải: <strong>@_statsDone</strong> / @_statsTotal trận đã đá (mùa hiện tại + @SyncOpts.Value.StatsPreviousSeasons mùa trước, giải thật).
+                    Thống kê góc/thẻ/sút đã tải: <strong>@_statsDone</strong> / @_statsTotal trận đã đá (mùa hiện tại + @Eff.StatsPreviousSeasons mùa trước, giải thật).
                     Phần còn lại tự tải dần theo chu kỳ, mỗi request 20 trận.
                 </div>
             </div>
@@ -191,6 +192,13 @@
                 </table>
             </div>
             <div class="card-body border-top">
+                @if (_liveScanLeagues > 0)
+                {
+                    <div class="small mb-1">
+                        Góc Live toàn cầu đang quét thêm <strong>@_liveScanLeagues</strong> giải không theo dõi (chỉ trận đang đá, không tải lịch/kèo trước trận, không hiện ở các trang khác).
+                        Muốn theo dõi đầy đủ giải nào thì dùng ô "Tìm và thêm giải".
+                    </div>
+                }
                 <div class="small text-muted mb-1">
                     Cột xG: tỷ lệ trận đã đá (mùa hiện tại, chưa có thì mùa trước) mà API-Football trả về xG — lấy miễn phí cùng lệnh thống kê trận.
                     Đội có ≥ 5 trận có xG thì số bàn kỳ vọng tính 50% bàn thật + 50% xG; giải không có xG thì chỉ dùng bàn thật.<br />
@@ -256,6 +264,7 @@
     [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
 
     private List<League> _leagues = [];
+    private int _liveScanLeagues;
     private List<SyncLog> _logs = [];
     private readonly Dictionary<int, int> _backfillSeason = [];
     private StatusResponse? _status;
@@ -293,7 +302,9 @@
     private async Task LoadAsync()
     {
         await using var db = await DbFactory.CreateDbContextAsync();
-        _leagues = await db.Leagues.AsNoTracking().OrderByDescending(l => l.IsTracked).ThenBy(l => l.Name).ToListAsync();
+        // Giải chỉ quét Góc Live toàn cầu (không theo dõi) không hiện trong bảng, chỉ đếm.
+        _leagues = await db.Leagues.AsNoTracking().Where(l => l.IsTracked || !l.LiveScan).OrderByDescending(l => l.IsTracked).ThenBy(l => l.Name).ToListAsync();
+        _liveScanLeagues = await db.Leagues.CountAsync(l => !l.IsTracked && l.LiveScan);
         foreach (var l in _leagues)
         {
             _backfillSeason.TryAdd(l.Id, l.CurrentSeason - 1);
@@ -301,7 +312,7 @@
 
         _logs = await db.SyncLogs.AsNoTracking().OrderByDescending(l => l.StartedAtUtc).Take(40).ToListAsync();
 
-        var back = SyncOpts.Value.StatsPreviousSeasons;
+        var back = Eff.StatsPreviousSeasons;
         var finished = db.Fixtures.AsNoTracking().Where(f => f.League!.IsTracked && !f.League.IsDemo
             && f.Season >= f.League.CurrentSeason - back && f.Season <= f.League.CurrentSeason
             && (f.Status == "FT" || f.Status == "AET" || f.Status == "PEN"));
@@ -383,7 +394,8 @@
     private async Task SetTrackedAsync(League league, bool tracked)
     {
         await using var db = await DbFactory.CreateDbContextAsync();
-        await db.Leagues.Where(l => l.Id == league.Id).ExecuteUpdateAsync(s => s.SetProperty(l => l.IsTracked, tracked));
+        // Bạn tự chọn: bỏ dấu "chỉ quét Góc Live" để giải vẫn hiện trong bảng khi bỏ theo dõi.
+        await db.Leagues.Where(l => l.Id == league.Id).ExecuteUpdateAsync(s => s.SetProperty(l => l.IsTracked, tracked).SetProperty(l => l.LiveScan, false));
         league.IsTracked = tracked;
     }
 

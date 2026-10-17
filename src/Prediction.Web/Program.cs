@@ -50,6 +50,7 @@ builder.Services.AddSingleton<SideInfoService>();
 builder.Services.AddSingleton<LiveCornerService>();
 builder.Services.AddSingleton<CornerAiService>();
 builder.Services.AddSingleton<DnaCheckService>();
+builder.Services.AddSingleton<LeagueCoverageCache>();
 builder.Services.AddScoped<DataSyncService>();
 builder.Services.AddHostedService<SyncBackgroundService>();
 builder.Services.AddSingleton<LiveCornerFastService>();

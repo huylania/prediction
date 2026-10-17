@@ -168,7 +168,8 @@ public sealed class AnalysisService(IDbContextFactory<AppDbContext> dbFactory, T
                 .Where(f => (chunk.Contains(f.HomeTeamId) || chunk.Contains(f.AwayTeamId))
                     && f.KickoffUtc >= fromUtc && f.KickoffUtc < untilUtc
                     && f.HomeGoals != null && f.AwayGoals != null
-                    && (f.Status == "FT" || f.Status == "AET" || f.Status == "PEN"))
+                    && (f.Status == "FT" || f.Status == "AET" || f.Status == "PEN")
+                    && (f.League!.IsTracked || !f.League.LiveScan))
                 .Select(f => new HistoryRow(f.Id, f.KickoffUtc, f.HomeTeamId, f.AwayTeamId, f.HomeGoals!.Value, f.AwayGoals!.Value))
                 .ToListAsync(ct));
         }
@@ -538,7 +539,8 @@ public sealed class AnalysisService(IDbContextFactory<AppDbContext> dbFactory, T
             var changed = changes.Select(g => g.Key).ToList();
             var rows = await db.Fixtures.AsNoTracking()
                 .Where(f => (changed.Contains(f.HomeTeamId) || changed.Contains(f.AwayTeamId)) && f.KickoffUtc >= since
-                    && f.HomeGoals != null && (f.Status == "FT" || f.Status == "AET" || f.Status == "PEN"))
+                    && f.HomeGoals != null && (f.Status == "FT" || f.Status == "AET" || f.Status == "PEN")
+                    && (f.League!.IsTracked || !f.League.LiveScan))
                 .Select(f => new { f.Id, f.KickoffUtc, f.HomeTeamId, f.AwayTeamId })
                 .ToListAsync(ct);
             foreach (var teamId in changed)

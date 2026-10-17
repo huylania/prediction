@@ -33,6 +33,12 @@ public static class SyncJobs
     /// <summary>Góc Live nhanh: số liệu + kèo góc live + chốt khuyến nghị cho các trận ở vùng nóng (chạy riêng, không chờ tác vụ nặng).</summary>
     public const string LiveFast = "live-fast";
 
+    /// <summary>Góc Live toàn cầu: fixtures?live=all mỗi phút, thêm trận đang đá của giải không theo dõi nhưng có thống kê (gói Mega).</summary>
+    public const string LiveGlobal = "live-global";
+
+    /// <summary>Chạy trong tiến trình Góc Live nhanh: chỉ giữ khóa live, không xếp hàng sau tác vụ nặng.</summary>
+    public static bool IsFastLane(string job) => job is LiveFast or LiveGlobal;
+
     /// <summary>Tác vụ ghi dữ liệu trận đang đá: dùng chung khóa live với Góc Live nhanh để không ghi chồng lên nhau.</summary>
     public static bool TouchesLive(string job) => job is Live or LiveOdds or LiveCorners;
 
@@ -63,6 +69,7 @@ public static class SyncJobs
         LiveCorners => "Góc Live",
         LiveOdds => "Kèo live",
         LiveFast => "Góc Live nhanh",
+        LiveGlobal => "Góc Live toàn cầu",
         _ => job,
     };
 }
@@ -101,7 +108,7 @@ public sealed class SyncCoordinator(
     /// </summary>
     public async Task<SyncLog?> RunAsync(string job, Func<DataSyncService, CancellationToken, Task<string?>> work, CancellationToken ct)
     {
-        var fast = job == SyncJobs.LiveFast;
+        var fast = SyncJobs.IsFastLane(job);
         var live = fast || SyncJobs.TouchesLive(job);
         if (!fast)
         {
@@ -146,7 +153,7 @@ public sealed class SyncCoordinator(
             try
             {
                 message = await work(sync, ct);
-                if (job is not (SyncJobs.Suggestions or SyncJobs.Analysis or SyncJobs.SideInfo or SyncJobs.LiveCorners or SyncJobs.LiveOdds or SyncJobs.LiveFast))
+                if (job is not (SyncJobs.Suggestions or SyncJobs.Analysis or SyncJobs.SideInfo or SyncJobs.LiveCorners or SyncJobs.LiveOdds or SyncJobs.LiveFast or SyncJobs.LiveGlobal))
                 {
                     var suggestionMessage = await suggestions.RefreshAsync(ct);
                     message = message is null || suggestionMessage is null ? message : $"{message} {suggestionMessage}";
@@ -215,6 +222,8 @@ public sealed class SyncCoordinator(
             await s.SyncLiveOddsAsync(hotFixtureIds, c);
             return await liveCorners.ProcessAsync(c);
         }, ct);
+
+    public Task<SyncLog?> RunGlobalLiveAsync(CancellationToken ct) => RunAsync(SyncJobs.LiveGlobal, (s, c) => s.SyncGlobalLiveAsync(c), ct);
 
     public Task<SyncLog?> RunNamedAsync(string job, CancellationToken ct) => job switch
     {

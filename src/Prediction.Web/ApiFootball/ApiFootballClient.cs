@@ -52,6 +52,12 @@ public sealed class ApiFootballClient(HttpClient http, IOptions<ApiFootballOptio
     public async Task<LeagueItem?> GetLeagueAsync(int leagueId, CancellationToken ct) =>
         (await GetListAsync<LeagueItem>($"leagues?id={leagueId}", ct)).FirstOrDefault();
 
+    /// <summary>Mọi giải đang diễn ra mùa hiện tại kèm độ phủ dữ liệu (1 request, ~1.200 giải).</summary>
+    public Task<List<LeagueItem>> GetCurrentLeaguesAsync(CancellationToken ct) => GetListAsync<LeagueItem>("leagues?current=true", ct);
+
+    /// <summary>Mọi trận đang đá trên thế giới (1 request; có tỉ số, phút, diễn biến nhưng không có thống kê).</summary>
+    public Task<List<FixtureItem>> GetLiveFixturesAsync(CancellationToken ct) => GetListAsync<FixtureItem>("fixtures?live=all", ct);
+
     public Task<List<LeagueItem>> SearchLeaguesAsync(string query, CancellationToken ct) =>
         GetListAsync<LeagueItem>($"leagues?search={Uri.EscapeDataString(query)}", ct);
 

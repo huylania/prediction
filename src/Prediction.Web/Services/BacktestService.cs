@@ -22,7 +22,7 @@ public sealed class BacktestService(IDbContextFactory<AppDbContext> dbFactory, T
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         var finished = new[] { "FT", "AET", "PEN" };
         var rows = await db.Fixtures.AsNoTracking()
-            .Where(f => (leagueId == null || f.LeagueId == leagueId) && finished.Contains(f.Status))
+            .Where(f => (leagueId == null || f.LeagueId == leagueId) && finished.Contains(f.Status) && (f.League!.IsTracked || !f.League.LiveScan))
             .GroupBy(f => new { f.LeagueId, f.Season })
             .Select(g => new { g.Key.LeagueId, g.Key.Season, Count = g.Count() })
             .ToListAsync(ct);

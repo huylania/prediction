@@ -46,7 +46,8 @@ public sealed class InsightService(IDbContextFactory<AppDbContext> dbFactory, Ti
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         var fixtures = await db.Fixtures.AsNoTracking()
-            .Where(f => f.KickoffUtc >= fromUtc && f.KickoffUtc < toUtc && (leagueId == null || f.LeagueId == leagueId))
+            .Where(f => f.KickoffUtc >= fromUtc && f.KickoffUtc < toUtc && (leagueId == null || f.LeagueId == leagueId)
+                && (f.League!.IsTracked || !f.League.LiveScan)) // trận chỉ quét Góc Live toàn cầu không hiện ở trang trận
             .OrderBy(f => f.KickoffUtc).ThenBy(f => f.Id)
             .ToListAsync(ct);
         return await BuildAsync(db, fixtures, ct);

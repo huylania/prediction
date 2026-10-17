@@ -61,7 +61,8 @@ public sealed class DnaCheckService(IDbContextFactory<AppDbContext> dbFactory, T
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         var rows = await db.Fixtures.AsNoTracking()
             .Where(f => f.KickoffUtc >= from && f.KickoffUtc <= now && f.HomeGoals != null && f.AwayGoals != null
-                && (f.Status == "FT" || f.Status == "AET" || f.Status == "PEN") && !f.League!.IsDemo)
+                && (f.Status == "FT" || f.Status == "AET" || f.Status == "PEN") && !f.League!.IsDemo
+                && (f.League.IsTracked || !f.League.LiveScan)) // trận Góc Live toàn cầu chỉ có số liệu dở dang
             .GroupJoin(db.FixtureStats.AsNoTracking(), f => f.Id, s => s.FixtureId, (f, s) => new { f, s })
             .SelectMany(x => x.s.DefaultIfEmpty(), (x, s) => new
             {

@@ -449,7 +449,7 @@ else
         _fileLeagues = fileLeagues.GroupBy(l => l.TeamId).ToDictionary(g => g.Key, g => g.OrderByDescending(l => l.Matches).ToList());
         var dnaIds = _teams.Select(t => t.TeamId).ToHashSet();
         var since = Clock.GetUtcNow().UtcDateTime.AddDays(-365);
-        var recent = db.Fixtures.AsNoTracking().Where(f => f.KickoffUtc >= since && !f.League!.IsDemo);
+        var recent = db.Fixtures.AsNoTracking().Where(f => f.KickoffUtc >= since && !f.League!.IsDemo && (f.League.IsTracked || !f.League.LiveScan));
         var played = await recent.Select(f => new { f.LeagueId, TeamId = f.HomeTeamId })
             .Union(recent.Select(f => new { f.LeagueId, TeamId = f.AwayTeamId }))
             .ToListAsync();

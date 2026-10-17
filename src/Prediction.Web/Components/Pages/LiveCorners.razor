@@ -58,7 +58,7 @@
         }
         else
         {
-            <span>⚡ Góc Live nhanh: quét @fs.Seconds giây/lần khi có trận ở phút @fs.Zone.H1From–@fs.Zone.H1To / @fs.Zone.H2From–@fs.Zone.H2To · đang có <strong>@fs.HotFixtures</strong> trận@(fs.LastRunUtc is { } lr ? $" · lần quét cuối {Time.ToLocal(lr):HH:mm:ss}" : "")</span>
+            <span>⚡ Góc Live nhanh: quét @fs.Seconds giây/lần khi có trận ở phút @fs.Zone.H1From–@fs.Zone.H1To / @fs.Zone.H2From–@fs.Zone.H2To · đang có <strong>@fs.HotFixtures</strong> trận@(fs.Global ? $" (toàn cầu: {fs.GlobalHot} trận giải không theo dõi)" : "")@(fs.LastRunUtc is { } lr ? $" · lần quét cuối {Time.ToLocal(lr):HH:mm:ss}" : "")</span>
         }
     </div>
 }
@@ -94,6 +94,10 @@ else
                         <span class="min">@m.Input.Minute'</span>
                         <span class="win">@(m.Input.Window == CornerWindow.FirstHalf ? "H1 · kèo góc hiệp 1" : "H2 · kèo góc cả trận")</span>
                         <span class="text-truncate">@m.League</span>
+                        @if (m.Fixture.League is { IsTracked: false })
+                        {
+                            <span class="badge bg-info text-dark" title="Giải không theo dõi — Góc Live toàn cầu (gói Mega) thêm vì API có thống kê trận">toàn cầu</span>
+                        }
                         @if (m.StatsAtUtc is { } at)
                         {
                             <span class="ms-auto text-nowrap">số liệu @Time.ToLocal(at).ToString("HH:mm")</span>
@@ -317,7 +321,7 @@ else
                 @foreach (var s in _stats)
                 {
                     <tr class="@(s.Window is null ? "fw-semibold table-light" : "")">
-                        <td>@(s.Window switch { CornerWindow.FirstHalf => "H1 (góc hiệp 1)", CornerWindow.SecondHalf => "H2 (góc cả trận)", _ => "Tất cả" })</td>
+                        <td>@(s.Label ?? s.Window switch { CornerWindow.FirstHalf => "H1 (góc hiệp 1)", CornerWindow.SecondHalf => "H2 (góc cả trận)", _ => "Tất cả" })</td>
                         <td class="text-end">@s.Count</td>
                         <td class="text-end">@s.Win / @s.HalfWin / @s.Push / @s.HalfLoss / @s.Loss</td>
                         <td class="text-end">@Fmt.Pct(s.WinRate)</td>
@@ -495,6 +499,13 @@ else
         var all = await Corners.PicksAsync(5000);
         var list = new List<WindowStat> { WindowStat.Of(null, all) };
         list.AddRange(new[] { CornerWindow.FirstHalf, CornerWindow.SecondHalf }.Select(w => WindowStat.Of(w, all.Where(p => p.Window == w))));
+        if (all.Any(p => p.Fixture?.League is { IsTracked: false }))
+        {
+            // Tách thành tích giải theo dõi và Góc Live toàn cầu để biết mở rộng có còn hiệu quả.
+            list.Add(WindowStat.Of(null, all.Where(p => p.Fixture?.League is not { IsTracked: false }), "Giải theo dõi"));
+            list.Add(WindowStat.Of(null, all.Where(p => p.Fixture?.League is { IsTracked: false }), "Toàn cầu (giải không theo dõi)"));
+        }
+
         return list;
     }
 
@@ -686,6 +697,7 @@ else
     private sealed class WindowStat
     {
         public CornerWindow? Window { get; init; }
+        public string? Label { get; init; }
         public int Count { get; init; }
         public int Win { get; init; }
         public int HalfWin { get; init; }
@@ -696,7 +708,7 @@ else
         public decimal Profit { get; init; }
         public decimal? WinRate { get; init; }
 
-        public static WindowStat Of(CornerWindow? window, IEnumerable<LiveCornerPick> picks)
+        public static WindowStat Of(CornerWindow? window, IEnumerable<LiveCornerPick> picks, string? label = null)
         {
             var list = picks.ToList();
             var done = list.Where(p => p.Outcome is not (BetOutcome.Pending or BetOutcome.Void)).ToList();
@@ -705,6 +717,7 @@ else
             return new WindowStat
             {
                 Window = window,
+                Label = label,
                 Count = done.Count,
                 Win = done.Count(p => p.Outcome == BetOutcome.Win),
                 HalfWin = done.Count(p => p.Outcome == BetOutcome.HalfWin),

@@ -35,6 +35,12 @@ public class League
 
     public bool IsDemo { get; set; }
 
+    /// <summary>
+    /// Góc Live toàn cầu (gói Mega) đã thêm trận đang đá của giải này dù không theo dõi. Chỉ dùng cho Góc Live; các trang và tác vụ khác vẫn
+    /// chỉ xét giải <see cref="IsTracked"/>.
+    /// </summary>
+    public bool LiveScan { get; set; }
+
     /// <summary>Nhãn mùa dễ đọc, vd "2026/27".</summary>
     public string SeasonLabel(int season) => SeasonIsCalendarYear ? season.ToString() : SeasonText.Label(season, SeasonYearIsEndYear);
 }

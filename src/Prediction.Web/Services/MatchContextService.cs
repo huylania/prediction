@@ -153,7 +153,8 @@ public sealed class MatchContextService(IDbContextFactory<AppDbContext> dbFactor
         var minKickoff = fixtures.Min(f => f.KickoffUtc).AddYears(-4);
         var local = await db.Fixtures.AsNoTracking()
             .Where(x => teamIds.Contains(x.HomeTeamId) && teamIds.Contains(x.AwayTeamId) && x.KickoffUtc >= minKickoff
-                && x.HomeGoals != null && (x.Status == "FT" || x.Status == "AET" || x.Status == "PEN"))
+                && x.HomeGoals != null && (x.Status == "FT" || x.Status == "AET" || x.Status == "PEN")
+                && (x.League!.IsTracked || !x.League.LiveScan))
             .Select(x => new { x.Id, x.KickoffUtc, League = x.League!.Name, x.HomeTeamId, x.AwayTeamId, x.HomeGoals, x.AwayGoals })
             .ToListAsync(ct);
         foreach (var x in local)
@@ -198,7 +199,8 @@ public sealed class MatchContextService(IDbContextFactory<AppDbContext> dbFactor
         {
             rows[(team, before)] = await db.Fixtures.AsNoTracking().Include(x => x.League)
                 .Where(x => (x.HomeTeamId == team || x.AwayTeamId == team) && x.KickoffUtc < before
-                    && x.HomeGoals != null && (x.Status == "FT" || x.Status == "AET" || x.Status == "PEN"))
+                    && x.HomeGoals != null && (x.Status == "FT" || x.Status == "AET" || x.Status == "PEN")
+                    && (x.League!.IsTracked || !x.League.LiveScan))
                 .OrderByDescending(x => x.KickoffUtc)
                 .Take(HistoryCount)
                 .ToListAsync(ct);

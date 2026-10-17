@@ -22,7 +22,7 @@ Hỗ trợ **kèo chấp châu Á** và **tài xỉu** (kể cả các mức 1/4
 
 - [.NET 10 SDK](https://dotnet.microsoft.com/download)
 - SQL Server: LocalDB (có sẵn khi cài Visual Studio), Express, Developer, hoặc chạy bằng Docker.
-- API key của [API-Football](https://www.api-football.com/) (api-sports.io v3). Với 19 giải mặc định, website dùng khoảng **5.000–6.500 request vào ngày cuối tuần** (kèo, tỉ số + thống kê trực tiếp, chấn thương, HLV, tải dần thống kê lịch sử), nên cần **gói Pro (7.500 request/ngày) trở lên**. Khi còn dưới 1.000 request trong ngày, các tác vụ phụ tự tạm dừng. Với **gói Ultra (75.000 request/ngày)** website tự chuyển sang hồ sơ đồng bộ dày hơn (xem bảng chu kỳ bên dưới), dùng khoảng **25–35 nghìn request/ngày**.
+- API key của [API-Football](https://www.api-football.com/) (api-sports.io v3). Với 19 giải mặc định, website dùng khoảng **5.000–6.500 request vào ngày cuối tuần** (kèo, tỉ số + thống kê trực tiếp, chấn thương, HLV, tải dần thống kê lịch sử), nên cần **gói Pro (7.500 request/ngày) trở lên**. Khi còn dưới 1.000 request trong ngày, các tác vụ phụ tự tạm dừng. Với **gói Ultra (75.000 request/ngày)** hoặc **Mega (150.000)** website tự chuyển sang hồ sơ đồng bộ dày hơn (xem "Hồ sơ đồng bộ" bên dưới), dùng khoảng **25–35 nghìn** (Ultra) / **50–70 nghìn** (Mega) request vào ngày đông trận.
 - (Tùy chọn) API key Claude từ [console.anthropic.com](https://console.anthropic.com/) nếu muốn dùng báo cáo AI.
 
 ## Cài đặt và chạy
@@ -97,26 +97,29 @@ Website tự đồng bộ ở chế độ nền theo chu kỳ:
 
 Chỉnh chu kỳ trong `appsettings.json`, mục `Sync`. Nhà cái mặc định là Bet365 (`ApiFootball:BookmakerId = 8`).
 
-**Hồ sơ đồng bộ Pro / Ultra** (`Sync:Plan`, mặc định `Auto`):
+**Hồ sơ đồng bộ Pro / Ultra / Mega** (`Sync:Plan`, mặc định `Auto`):
 
-- Website đọc giới hạn ngày của gói từ header `x-ratelimit-requests-limit` của mỗi request.
-  - Giới hạn **≥ 50.000** (gói Ultra 75.000) thì tự dùng các giá trị trong `Sync:Ultra`.
-  - Ngược lại dùng các giá trị gốc trong `Sync`, đặt cho gói Pro 7.500.
-  - Gói đổi (gia hạn, hết hạn, đổi key) thì hồ sơ đổi theo ngay ở phút sau.
-- Giá trị Ultra:
+- Website đọc giới hạn ngày của gói từ header `x-ratelimit-requests-limit` của mỗi request. Nâng gói trên cùng key là hồ sơ đổi theo ngay ở phút sau.
+  - Giới hạn **≥ 100.000** (gói Mega 150.000): dùng `Sync:Mega`.
+  - Giới hạn **≥ 50.000** (gói Ultra 75.000): dùng `Sync:Ultra`.
+  - Còn lại dùng các giá trị gốc trong `Sync`, đặt cho gói Pro 7.500.
+- Giá trị từng hồ sơ:
 
-  | Tác vụ | Ultra |
-  |---|---|
-  | Kèo theo giải | 20 phút |
-  | Tỉ số, thống kê, kèo live và Góc Live | 1 phút |
-  | Góc Live nhanh | 20 giây |
-  | Thống kê mùa cũ | 200 request/lần |
-  | Tác vụ phụ tạm dừng khi quota dưới | 5.000 |
-  | Góc Live nhanh tạm dừng khi quota dưới | 3.000 |
+  | Tác vụ | Pro | Ultra | Mega |
+  |---|---|---|---|
+  | Kèo theo giải | 60 phút | 20 phút | 20 phút |
+  | Tỉ số, thống kê, kèo live và Góc Live | 2 phút | 1 phút | 1 phút |
+  | Góc Live nhanh | 30 giây | 20 giây | **15 giây** |
+  | Kèo live gọi bù theo giải | 8 giải, chỉ trận gần cửa sổ góc | 30 giải, mọi trận | 60 giải, mọi trận |
+  | Góc Live toàn cầu (mọi giải có thống kê) | tắt | tắt | **bật** |
+  | Thống kê trận đã đá | 20 request/lần, 1 mùa trước | 200 request/lần, 1 mùa trước | 400 request/lần, **3 mùa trước** |
+  | Tác vụ phụ tạm dừng khi quota dưới | 1.000 | 5.000 | 10.000 |
+  | Góc Live nhanh tạm dừng khi quota dưới | 1.500 | 3.000 | 5.000 |
+  | Ước tính ngày đông trận | 5–6,5 nghìn | 25–35 nghìn | 50–70 nghìn |
 
-  Ước tính khoảng 25–35 nghìn request vào ngày đông trận. Phần dư dùng cho Góc Live nhanh cả ngày và thêm giải nếu cần.
-- Ép cố định một hồ sơ: `"Plan": "Pro"` hoặc `"Plan": "Ultra"`.
-  - Ép Ultra trên gói Pro sẽ cạn quota trước buổi trưa.
+- Vì sao Mega không quét kèo trước trận dày hơn: dữ liệu thật cho thấy kèo Bet365 trong API thường cách 3–24 giờ mới đổi. Trong khoảng 930 lần đổi kèo ngày 15–16/10, chỉ 14 lần cách nhau dưới 1 giờ. Quét 20 phút đã đủ, phần quota dư dồn cho trận đang đá.
+- Vì sao Mega dừng ở 15 giây: API cập nhật trận đang đá khoảng 15 giây/lần, quét dày hơn không có số liệu mới.
+- Ép cố định một hồ sơ: `"Plan": "Pro"`, `"Ultra"` hoặc `"Mega"`. Ép hồ sơ cao hơn gói thật sẽ cạn quota sớm.
 - Trang **Cài đặt** hiện hồ sơ đang dùng và các chu kỳ thực tế.
 
 **Kèo live (trong trận)**:
@@ -384,6 +387,18 @@ Menu **Góc Live** (`/goc-live`) là mục **riêng**, chạy theo file kỹ nă
   - **Chi phí:** khoảng 2 request/chu kỳ, tức khoảng 4 request mỗi phút có trận nóng (Ultra 20 giây: khoảng 6 request/phút). Ngày đông trận tốn thêm khoảng 1.000–2.000 request (Ultra khoảng 1.500–3.000).
   - Quota còn dưới `LiveCornerFastMinRemaining` (Pro 1.500, Ultra 3.000) thì tự tạm dừng và quay về nhịp thường (Pro 2 phút, Ultra 1 phút).
   - Cấu hình trong mục `Sync`: `LiveCornerFastSeconds` (30; 0 = tắt), `LiveCornerHotH1From/To`, `LiveCornerHotH2From/To`, `LiveCornerFastMinRemaining`. Gói Ultra dùng `Sync:Ultra:LiveCornerFastSeconds` (20) và `Sync:Ultra:LiveCornerFastMinRemaining` (3.000).
+- **Góc Live toàn cầu** (gói Mega, `Sync:LiveCornerGlobal`; hồ sơ Mega tự bật):
+  - Mỗi phút gọi `fixtures?live=all` (1 request) để biết mọi trận đang đá trên thế giới. Danh sách giải có thống kê trận lấy bằng `leagues?current=true`, mỗi ngày 1 lần.
+  - Trận của giải **không theo dõi** nhưng API có thống kê trận được thêm vào CSDL. Giải đó được đánh dấu "chỉ quét Góc Live" (`League.LiveScan`), rồi đi cùng quy trình với giải theo dõi: số liệu → kèo góc live → chốt khuyến nghị → chấm.
+  - Thứ Bảy 17/10 lúc 13:24 UTC có 280 trận đang đá, 56 trận thuộc giải có thống kê, 28 trận ở gần cửa sổ vàng.
+  - Không đụng giải bạn đã bỏ theo dõi. Không tải lịch, kèo trước trận, sân hay thời tiết cho các giải này. Không dựng bảng xếp hạng, nên động lực được coi là bình thường. Không biết đội cửa trên trước trận.
+  - Trận toàn cầu chỉ hiện ở trang Góc Live, có nhãn **toàn cầu**. Bảng thành tích tách riêng hai dòng "Giải theo dõi" và "Toàn cầu". Các trận này không hiện ở trang Trận đấu và Phân tích, không vào lịch sử phong độ, đối đầu, kiểm chứng DNA hay backtest.
+  - Trang Cài đặt chỉ đếm số giải đang quét. Muốn theo dõi đầy đủ giải nào thì dùng "Tìm và thêm giải".
+  - **Chi phí** (hồ sơ Mega):
+    - 1 request/phút cho `live=all`.
+    - Mỗi 20 trận đang đá cần thêm 1 request/phút cho số liệu.
+    - Kèo góc lấy chung `odds/live`; chỉ gọi bù theo giải khi gọi chung bị thiếu (khoảng 1 request mỗi giải nóng cho mỗi chu kỳ 15 giây).
+    - Ngày đông trận khoảng 10–25 nghìn request.
 - **Không có "tấn công nguy hiểm"**: API-Football không có số này. Website thay bằng (sút + góc)/phút và nhịp 10–15 phút gần nhất. Muốn có số chính xác thì dùng ảnh AiScore.
 - **Trang Góc Live**:
   - Thẻ từng trận đang trong cửa sổ, kèm bóc tách hệ số. Trang tự làm mới mỗi phút.

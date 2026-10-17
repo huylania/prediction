@@ -86,70 +86,139 @@ public sealed class SyncOptions
     public HotZone HotZone => new(LiveCornerHotH1From, LiveCornerHotH1To, LiveCornerHotH2From, LiveCornerHotH2To);
 
     /// <summary>
-    /// Hồ sơ đồng bộ: "Auto" (mặc định) dùng giá trị <see cref="Ultra"/> khi giới hạn ngày của gói API ≥ <see cref="SyncUltraOptions.MinDailyLimit"/>,
-    /// ngược lại dùng các giá trị gốc (cho gói Pro 7.500/ngày); "Pro" / "Ultra" ép cố định một hồ sơ.
+    /// Góc Live toàn cầu: quét cả trận đang đá của các giải không theo dõi nhưng có thống kê trận (fixtures?live=all mỗi phút),
+    /// trận nào vào vùng nóng thì lấy số liệu + kèo góc và chốt khuyến nghị như giải theo dõi.
+    /// </summary>
+    public bool LiveCornerGlobal { get; set; }
+
+    /// <summary>
+    /// Hồ sơ đồng bộ: "Auto" (mặc định) chọn theo giới hạn ngày của gói API (header x-ratelimit-requests-limit):
+    /// ≥ <see cref="Mega"/>.MinDailyLimit → Mega, ≥ <see cref="Ultra"/>.MinDailyLimit → Ultra, còn lại dùng các giá trị gốc (gói Pro 7.500/ngày).
+    /// "Pro" / "Ultra" / "Mega" ép cố định một hồ sơ.
     /// </summary>
     public string Plan { get; set; } = "Auto";
 
-    public SyncUltraOptions Ultra { get; set; } = new();
+    public SyncTierOptions Ultra { get; set; } = SyncTierOptions.UltraDefaults();
 
-    public bool UsesUltra(int? dailyLimit) => Plan.Trim().ToLowerInvariant() switch
+    public SyncTierOptions Mega { get; set; } = SyncTierOptions.MegaDefaults();
+
+    public SyncTier Tier(int? dailyLimit) => Plan.Trim().ToLowerInvariant() switch
     {
-        "ultra" => true,
-        "pro" => false,
-        _ => dailyLimit is { } l && l >= Ultra.MinDailyLimit,
+        "mega" => SyncTier.Mega,
+        "ultra" => SyncTier.Ultra,
+        "pro" => SyncTier.Pro,
+        _ when dailyLimit >= Mega.MinDailyLimit => SyncTier.Mega,
+        _ when dailyLimit >= Ultra.MinDailyLimit => SyncTier.Ultra,
+        _ => SyncTier.Pro,
     };
 
-    /// <summary>Cấu hình áp dụng với giới hạn ngày này: chính nó nếu là hồ sơ Pro, hoặc bản sao đã thay các giá trị Ultra.</summary>
+    /// <summary>Cấu hình áp dụng với giới hạn ngày này: chính nó nếu là hồ sơ Pro, hoặc bản sao đã thay các giá trị Ultra / Mega.</summary>
     public SyncOptions For(int? dailyLimit)
     {
-        if (!UsesUltra(dailyLimit))
+        var t = Tier(dailyLimit) switch
+        {
+            SyncTier.Mega => Mega,
+            SyncTier.Ultra => Ultra,
+            _ => null,
+        };
+        if (t is null)
         {
             return this;
         }
 
         var o = (SyncOptions)MemberwiseClone();
-        o.OddsIntervalMinutes = Ultra.OddsIntervalMinutes;
-        o.LiveIntervalMinutes = Ultra.LiveIntervalMinutes;
-        o.LiveOddsIntervalMinutes = Ultra.LiveOddsIntervalMinutes;
-        o.LiveCornersIntervalMinutes = Ultra.LiveCornersIntervalMinutes;
-        o.LiveCornerFastSeconds = Ultra.LiveCornerFastSeconds;
-        o.StatsMaxRequests = Ultra.StatsMaxRequests;
-        o.QuotaReserve = Ultra.QuotaReserve;
-        o.LiveCornerFastMinRemaining = Ultra.LiveCornerFastMinRemaining;
-        o.LiveOddsFallbackMaxLeagues = Ultra.LiveOddsFallbackMaxLeagues;
-        o.LiveOddsFallbackAllLive = Ultra.LiveOddsFallbackAllLive;
+        o.OddsIntervalMinutes = t.OddsIntervalMinutes;
+        o.LiveIntervalMinutes = t.LiveIntervalMinutes;
+        o.LiveOddsIntervalMinutes = t.LiveOddsIntervalMinutes;
+        o.LiveCornersIntervalMinutes = t.LiveCornersIntervalMinutes;
+        o.LiveCornerFastSeconds = t.LiveCornerFastSeconds;
+        o.StatsMaxRequests = t.StatsMaxRequests;
+        o.StatsPreviousSeasons = t.StatsPreviousSeasons;
+        o.QuotaReserve = t.QuotaReserve;
+        o.LiveCornerFastMinRemaining = t.LiveCornerFastMinRemaining;
+        o.LiveOddsFallbackMaxLeagues = t.LiveOddsFallbackMaxLeagues;
+        o.LiveOddsFallbackAllLive = t.LiveOddsFallbackAllLive;
+        o.LiveCornerGlobal = t.LiveCornerGlobal;
         return o;
     }
 
     /// <summary>Cấu hình đang áp dụng theo giới hạn ngày đọc từ header của request API gần nhất.</summary>
     public SyncOptions Effective() => For(ApiFootballClient.DailyLimit);
 
-    public string PlanName(int? dailyLimit) => UsesUltra(dailyLimit) ? "Ultra" : "Pro";
+    public string PlanName(int? dailyLimit) => Tier(dailyLimit).ToString();
 }
 
-/// <summary>Giá trị thay thế khi dùng gói lớn (API-Football Ultra 75.000 request/ngày, ~25–35 nghìn request/ngày với 19–30 giải).</summary>
-public sealed class SyncUltraOptions
+public enum SyncTier
 {
-    /// <summary>Hồ sơ "Auto" bật Ultra khi giới hạn ngày (header x-ratelimit-requests-limit) ≥ số này.</summary>
-    public int MinDailyLimit { get; set; } = 50000;
+    Pro,
+    Ultra,
+    Mega,
+}
 
-    public int OddsIntervalMinutes { get; set; } = 20;
-    public int LiveIntervalMinutes { get; set; } = 1;
-    public int LiveOddsIntervalMinutes { get; set; } = 1;
-    public int LiveCornersIntervalMinutes { get; set; } = 1;
-    public int LiveCornerFastSeconds { get; set; } = 20;
-    public int StatsMaxRequests { get; set; } = 200;
-    public int QuotaReserve { get; set; } = 5000;
-    public int LiveCornerFastMinRemaining { get; set; } = 3000;
-    public int LiveOddsFallbackMaxLeagues { get; set; } = 30;
-    public bool LiveOddsFallbackAllLive { get; set; } = true;
+/// <summary>Giá trị thay thế khi dùng gói lớn (API-Football Ultra 75.000 hoặc Mega 150.000 request/ngày).</summary>
+public sealed class SyncTierOptions
+{
+    /// <summary>Hồ sơ "Auto" bật bậc này khi giới hạn ngày (header x-ratelimit-requests-limit) ≥ số này.</summary>
+    public int MinDailyLimit { get; set; }
+
+    public int OddsIntervalMinutes { get; set; }
+    public int LiveIntervalMinutes { get; set; }
+    public int LiveOddsIntervalMinutes { get; set; }
+    public int LiveCornersIntervalMinutes { get; set; }
+    public int LiveCornerFastSeconds { get; set; }
+    public int StatsMaxRequests { get; set; }
+    public int StatsPreviousSeasons { get; set; }
+    public int QuotaReserve { get; set; }
+    public int LiveCornerFastMinRemaining { get; set; }
+    public int LiveOddsFallbackMaxLeagues { get; set; }
+    public bool LiveOddsFallbackAllLive { get; set; }
+    public bool LiveCornerGlobal { get; set; }
+
+    /// <summary>Ultra 75.000/ngày: ~25–35 nghìn request vào ngày đông trận.</summary>
+    public static SyncTierOptions UltraDefaults() => new()
+    {
+        MinDailyLimit = 50000,
+        OddsIntervalMinutes = 20,
+        LiveIntervalMinutes = 1,
+        LiveOddsIntervalMinutes = 1,
+        LiveCornersIntervalMinutes = 1,
+        LiveCornerFastSeconds = 20,
+        StatsMaxRequests = 200,
+        StatsPreviousSeasons = 1,
+        QuotaReserve = 5000,
+        LiveCornerFastMinRemaining = 3000,
+        LiveOddsFallbackMaxLeagues = 30,
+        LiveOddsFallbackAllLive = true,
+        LiveCornerGlobal = false,
+    };
+
+    /// <summary>
+    /// Mega 150.000/ngày: Góc Live nhanh 15 giây (bằng nhịp API cập nhật trận đang đá), Góc Live toàn cầu, thống kê 3 mùa trước.
+    /// Kèo trước trận vẫn 20 phút vì Bet365 trong API thường vài giờ mới đổi một lần. ~50–70 nghìn request vào ngày đông trận.
+    /// </summary>
+    public static SyncTierOptions MegaDefaults() => new()
+    {
+        MinDailyLimit = 100000,
+        OddsIntervalMinutes = 20,
+        LiveIntervalMinutes = 1,
+        LiveOddsIntervalMinutes = 1,
+        LiveCornersIntervalMinutes = 1,
+        LiveCornerFastSeconds = 15,
+        StatsMaxRequests = 400,
+        StatsPreviousSeasons = 3,
+        QuotaReserve = 10000,
+        LiveCornerFastMinRemaining = 5000,
+        LiveOddsFallbackMaxLeagues = 60,
+        LiveOddsFallbackAllLive = true,
+        LiveCornerGlobal = true,
+    };
 }
 
 /// <summary>Các tác vụ lấy dữ liệu từ API-Football và ghi vào CSDL.</summary>
 public sealed class DataSyncService(
     AppDbContext db,
     ApiFootballClient api,
+    LeagueCoverageCache coverage,
     OpenMeteoClient openMeteo,
     IOptions<SyncOptions> options,
     TimeProvider clock,
@@ -223,6 +292,7 @@ public sealed class DataSyncService(
 
         Apply(league, item);
         league.IsTracked = true;
+        league.LiveScan = false;
         await db.SaveChangesAsync(ct);
         return $"Đã thêm {league.Name} (mùa {league.CurrentSeason}).";
     }
@@ -250,6 +320,15 @@ public sealed class DataSyncService(
             return 0;
         }
 
+        await UpsertTeamsAsync(items, ct);
+        await UpsertFixturesAsync(items, _ => league?.Type, Now, ct);
+        await db.SaveChangesAsync(ct);
+        logger.LogInformation("Đồng bộ {Count} trận giải {League} mùa {Season}", items.Count, leagueId, season);
+        return items.Count;
+    }
+
+    private async Task UpsertTeamsAsync(IReadOnlyCollection<FixtureItem> items, CancellationToken ct)
+    {
         var teamIds = items.SelectMany(i => new[] { i.Teams.Home.Id, i.Teams.Away.Id }).Distinct().ToList();
         var teams = await db.Teams.Where(t => teamIds.Contains(t.Id)).ToDictionaryAsync(t => t.Id, ct);
         foreach (var teamRef in items.SelectMany(i => new[] { i.Teams.Home, i.Teams.Away }).DistinctBy(t => t.Id))
@@ -264,7 +343,10 @@ public sealed class DataSyncService(
             team.Name = teamRef.Name;
             team.LogoUrl = teamRef.Logo;
         }
+    }
 
+    private async Task<Dictionary<int, Fixture>> UpsertFixturesAsync(IReadOnlyCollection<FixtureItem> items, Func<int, string?> leagueType, DateTime now, CancellationToken ct)
+    {
         var ids = items.Select(i => i.Fixture.Id).Distinct().ToList();
         var fixtures = new Dictionary<int, Fixture>();
         foreach (var chunk in ids.Chunk(500))
@@ -275,26 +357,78 @@ public sealed class DataSyncService(
             }
         }
 
-        var now = Now;
         foreach (var item in items)
         {
             if (fixtures.TryGetValue(item.Fixture.Id, out var fixture))
             {
-                ApiMapper.Apply(fixture, item, league?.Type, now);
+                ApiMapper.Apply(fixture, item, leagueType(item.League.Id), now);
                 continue;
             }
 
             // Gán Id trước khi Add: Id là khóa (lấy từ API), không được đổi sau khi đã theo dõi.
             fixture = new Fixture();
-            ApiMapper.Apply(fixture, item, league?.Type, now);
+            ApiMapper.Apply(fixture, item, leagueType(item.League.Id), now);
             db.Fixtures.Add(fixture);
             fixtures[fixture.Id] = fixture;
         }
 
-        await db.SaveChangesAsync(ct);
-        logger.LogInformation("Đồng bộ {Count} trận giải {League} mùa {Season}", items.Count, leagueId, season);
-        return items.Count;
+        return fixtures;
     }
+
+    /// <summary>
+    /// Góc Live toàn cầu: 1 request <c>fixtures?live=all</c>. Trận đang đá của giải không theo dõi nhưng API có thống kê trận được thêm/cập nhật
+    /// vào CSDL (giải đánh dấu <see cref="League.LiveScan"/>) để đi qua cùng quy trình: số liệu → kèo góc live → chốt khuyến nghị → chấm.
+    /// Danh sách giải có thống kê (<c>leagues?current=true</c>) tải lại mỗi ngày.
+    /// </summary>
+    public async Task<string?> SyncGlobalLiveAsync(CancellationToken ct)
+    {
+        var now = Now;
+        if (coverage.IsStale(now) && await api.GetCurrentLeaguesAsync(ct) is { Count: > 0 } current)
+        {
+            coverage.Set(current, now); // API trả rỗng (lỗi tạm) thì thử lại phút sau, không giữ danh sách rỗng 24 giờ
+        }
+
+        var leagues = await db.Leagues.ToDictionaryAsync(l => l.Id, ct);
+        // Chỉ giải chưa có trong CSDL hoặc đã do Góc Live toàn cầu thêm: giải bạn theo dõi đi quy trình thường, giải bạn bỏ theo dõi thì để yên.
+        var excluded = leagues.Values.Where(l => l.IsTracked || l.IsDemo || !l.LiveScan).Select(l => l.Id).ToHashSet();
+        var items = GlobalLiveFixtures(await api.GetLiveFixturesAsync(ct), coverage.StatsLeagueIds, excluded);
+        if (items.Count == 0)
+        {
+            return null;
+        }
+
+        foreach (var leagueId in items.Select(i => i.League.Id).Distinct())
+        {
+            if (!leagues.TryGetValue(leagueId, out var league))
+            {
+                league = new League { Id = leagueId, IsTracked = false };
+                db.Leagues.Add(league);
+                leagues[leagueId] = league;
+            }
+
+            if (coverage.Get(leagueId) is { } item)
+            {
+                Apply(league, item);
+            }
+
+            league.LiveScan = true;
+        }
+
+        await UpsertTeamsAsync(items, ct);
+        foreach (var f in (await UpsertFixturesAsync(items, id => leagues.GetValueOrDefault(id)?.Type, now, ct)).Values)
+        {
+            f.VenueId = null; // không tải sân/thời tiết cho trận chỉ quét Góc Live
+        }
+
+        await db.SaveChangesAsync(ct);
+        return null;
+    }
+
+    /// <summary>Trận đang đá (1H/HT/2H) của giải có thống kê trận, trừ các giải <paramref name="excluded"/>.</summary>
+    public static List<FixtureItem> GlobalLiveFixtures(IEnumerable<FixtureItem> live, IReadOnlySet<int> statsLeagues, IReadOnlySet<int> excluded) =>
+        live.Where(i => i.Fixture.Status.Short is "1H" or "HT" or "2H" && statsLeagues.Contains(i.League.Id) && !excluded.Contains(i.League.Id))
+            .DistinctBy(i => i.Fixture.Id)
+            .ToList();
 
     /// <summary>
     /// Tỉ số, phút thi đấu và thống kê (góc, thẻ, sút, diễn biến bàn thắng) của các trận đang diễn ra.
@@ -307,7 +441,8 @@ public sealed class DataSyncService(
     public async Task<string?> SyncLiveAsync(IReadOnlyCollection<int>? onlyIds, CancellationToken ct)
     {
         var now = Now;
-        var leagues = await db.Leagues.AsNoTracking().Where(l => l.IsTracked && !l.IsDemo).ToDictionaryAsync(l => l.Id, ct);
+        var global = options.Value.Effective().LiveCornerGlobal;
+        var leagues = await db.Leagues.AsNoTracking().Where(l => (l.IsTracked || global && l.LiveScan) && !l.IsDemo).ToDictionaryAsync(l => l.Id, ct);
         var leagueIds = leagues.Keys.ToList();
         var windowStart = now.AddHours(-4);
         var candidates = (await db.Fixtures
@@ -375,7 +510,7 @@ public sealed class DataSyncService(
         var pending = new List<(int Id, DateTime Kickoff)>();
         foreach (var league in leagues)
         {
-            var oldest = league.CurrentSeason - o.StatsPreviousSeasons;
+            var oldest = league.CurrentSeason - o.Effective().StatsPreviousSeasons;
             pending.AddRange((await db.Fixtures.AsNoTracking()
                     .Where(f => f.LeagueId == league.Id && f.Season >= oldest && f.Season <= league.CurrentSeason
                         && f.KickoffUtc <= settledBefore
@@ -879,8 +1014,9 @@ public sealed class DataSyncService(
     {
         var now = Now;
         var sync = options.Value.Effective();
-        var live = await db.Fixtures.AsNoTracking()
-            .Where(f => f.League!.IsTracked && !f.League.IsDemo && f.KickoffUtc <= now && f.KickoffUtc >= now.AddHours(-3)
+        var global = sync.LiveCornerGlobal;
+        var live = await db.Fixtures.AsNoTracking().Include(f => f.League)
+            .Where(f => (f.League!.IsTracked || global && f.League.LiveScan) && !f.League.IsDemo && f.KickoffUtc <= now && f.KickoffUtc >= now.AddHours(-3)
                 && (f.Status == "1H" || f.Status == "HT" || f.Status == "2H")
                 && (onlyIds == null || onlyIds.Contains(f.Id)))
             .ToDictionaryAsync(f => f.Id, ct);
@@ -911,7 +1047,8 @@ public sealed class DataSyncService(
         var items = await api.GetLiveOddsAsync(null, ct);
         var returned = items.Select(i => i.Fixture.Id).ToHashSet();
         var fallback = LiveOddsFallbackLeagues(
-            live.Values.Select(f => (f.Id, f.LeagueId, Wanted: f.Status != "HT" && (sync.LiveOddsFallbackAllLive || NearCornerWindow(f)))),
+            // Trận chỉ quét Góc Live (giải không theo dõi) chỉ cần kèo góc quanh cửa sổ vàng.
+            live.Values.Select(f => (f.Id, f.LeagueId, Wanted: f.Status != "HT" && (sync.LiveOddsFallbackAllLive && f.League!.IsTracked || NearCornerWindow(f)))),
             returned, sync.LiveOddsFallbackMaxLeagues);
         foreach (var leagueId in fallback)
         {
@@ -931,7 +1068,8 @@ public sealed class DataSyncService(
                 continue;
             }
 
-            foreach (var q in LiveOddsParser.ParseGoals(item).Where(q => !q.FirstHalf || f.Status == "1H"))
+            // Kèo chấp/tài xỉu live chỉ lưu cho giải theo dõi (trận chỉ quét Góc Live không hiện ở trang trận).
+            foreach (var q in LiveOddsParser.ParseGoals(item).Where(q => f.League!.IsTracked && (!q.FirstHalf || f.Status == "1H")))
             {
                 var key = (q.FixtureId, q.Market, q.FirstHalf);
                 if (latestGoals.TryGetValue(key, out var last) && last.SameQuote(q.Line, q.PriceA, q.PriceB))
