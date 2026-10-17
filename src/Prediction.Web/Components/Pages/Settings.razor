@@ -51,6 +51,10 @@
                     {
                         <div class="small mt-1">
                             Còn lại hôm nay (theo request gần nhất): <strong>@remaining</strong>@(ApiFootballClient.DailyLimit is { } limit ? $" / {limit}" : "") request
+                            @if (ApiFootballClient.MinuteLimit is { } perMinute)
+                            {
+                                <span> · tốc độ gọi tối đa ~@((int)(60000 / Api.CurrentDelay.TotalMilliseconds)) request/phút (gói cho phép @perMinute/phút)</span>
+                            }
                             @if (DataSyncService.QuotaLow(SyncOpts.Value))
                             {
                                 <span class="badge bg-warning text-dark ms-1">dưới @Eff.QuotaReserve — tạm dừng thống kê, HLV, chấn thương, tư vấn</span>
@@ -70,7 +74,7 @@
                         ? $"(tự chọn: giới hạn {(ApiFootballClient.DailyLimit?.ToString() ?? "chưa biết")}/ngày, Ultra khi ≥ {SyncOpts.Value.Ultra.MinDailyLimit}, Mega khi ≥ {SyncOpts.Value.Mega.MinDailyLimit})"
                         : $"(ép bằng Sync:Plan = {SyncOpts.Value.Plan})")
                     · ước tính @(SyncOpts.Value.Tier(ApiFootballClient.DailyLimit) switch { SyncTier.Mega => "50–70 nghìn", SyncTier.Ultra => "25–35 nghìn", _ => "5–6,5 nghìn" }) request vào ngày đông trận
-                    · thống kê mùa này + @Eff.StatsPreviousSeasons mùa trước@(Eff.LiveCornerGlobal ? " · Góc Live toàn cầu: bật" : "").
+                    · thống kê mùa này + @Eff.StatsPreviousSeasons mùa trước@(Eff.LiveCornerGlobal ? " · Góc Live toàn cầu: bật" : "")@(Eff.SharpOddsIntervalMinutes > 0 ? $" · kèo Pinnacle {Eff.SharpOddsIntervalMinutes} phút/lần" : "").
                 </div>
                 <div class="small text-muted mt-1">
                     Chu kỳ: lịch/kết quả @Eff.FixturesIntervalMinutes phút · kèo theo giải @Eff.OddsIntervalMinutes phút ·
@@ -115,7 +119,7 @@
                     <div class="alert alert-info py-2 small">Đang chạy: @SyncJobs.Label(job)…</div>
                 }
                 <div class="d-flex flex-wrap gap-2">
-                    @foreach (var j in new[] { SyncJobs.Leagues, SyncJobs.Fixtures, SyncJobs.Live, SyncJobs.LiveOdds, SyncJobs.Odds, SyncJobs.ClosingOdds, SyncJobs.Advice, SyncJobs.Stats, SyncJobs.Injuries, SyncJobs.Coaches, SyncJobs.Lineups, SyncJobs.HeadToHead, SyncJobs.Venues, SyncJobs.Weather })
+                    @foreach (var j in new[] { SyncJobs.Leagues, SyncJobs.Fixtures, SyncJobs.Live, SyncJobs.LiveOdds, SyncJobs.Odds, SyncJobs.SharpOdds, SyncJobs.ClosingOdds, SyncJobs.Advice, SyncJobs.Stats, SyncJobs.Injuries, SyncJobs.Coaches, SyncJobs.Lineups, SyncJobs.HeadToHead, SyncJobs.Venues, SyncJobs.Weather })
                     {
                         <button class="btn btn-sm btn-outline-primary" disabled="@(Sync.CurrentJob is not null || !Api.IsConfigured)" @onclick="() => RunJobAsync(j)">@SyncJobs.Label(j)</button>
                     }

@@ -15,8 +15,17 @@ public sealed class ApiFootballOptions
     /// <summary>Nhà cái lấy kèo (8 = Bet365 trên API-Football).</summary>
     public int BookmakerId { get; set; } = 8;
 
-    /// <summary>Khoảng nghỉ tối thiểu giữa hai request để không vượt giới hạn/phút.</summary>
+    /// <summary>Khoảng nghỉ giữa hai request khi chưa biết giới hạn/phút của gói (trước request đầu tiên).</summary>
     public int RequestDelayMs { get; set; } = 300;
+
+    /// <summary>
+    /// Dùng tối đa phần này của giới hạn request/phút đọc từ header x-ratelimit-limit (Pro 300, Ultra 450, Mega 900):
+    /// 0.6 → Pro ~180, Ultra ~270, Mega ~400 request/phút (còn chặn bởi <see cref="MinRequestDelayMs"/>). Vượt nhiều có thể bị tường lửa API chặn.
+    /// </summary>
+    public double RateLimitShare { get; set; } = 0.6;
+
+    /// <summary>Khoảng nghỉ tối thiểu dù gói cho phép nhanh hơn (giữ dưới giới hạn/giây chưa công bố).</summary>
+    public int MinRequestDelayMs { get; set; } = 150;
 }
 
 public sealed class ApiFootballException(string message) : Exception(message);
@@ -47,6 +56,32 @@ public sealed class ApiFootballClient(HttpClient http, IOptions<ApiFootballOptio
 
     public static DateTime? QuotaUpdatedUtc { get; private set; }
 
+    /// <summary>Giới hạn request/phút của gói và số còn lại trong phút hiện tại (header x-ratelimit-limit / x-ratelimit-remaining).</summary>
+    public static int? MinuteLimit { get; private set; }
+
+    public static int? MinuteRemaining { get; private set; }
+
+    /// <summary>Khoảng nghỉ đang dùng giữa hai request.</summary>
+    public TimeSpan CurrentDelay => RequestDelay(options.Value, MinuteLimit, MinuteRemaining);
+
+    /// <summary>
+    /// Khoảng nghỉ giữa hai request: theo giới hạn/phút của gói × <see cref="ApiFootballOptions.RateLimitShare"/>, không dưới
+    /// <see cref="ApiFootballOptions.MinRequestDelayMs"/>; chưa biết giới hạn thì dùng <see cref="ApiFootballOptions.RequestDelayMs"/>.
+    /// Phút hiện tại còn dưới 10% thì chậm lại 1 giây/request cho tới phút sau.
+    /// </summary>
+    public static TimeSpan RequestDelay(ApiFootballOptions o, int? minuteLimit, int? minuteRemaining)
+    {
+        var ms = minuteLimit is { } limit and > 0
+            ? Math.Max(o.MinRequestDelayMs, 60000 / (limit * Math.Clamp(o.RateLimitShare, 0.1, 0.9)))
+            : o.RequestDelayMs;
+        if (minuteLimit is { } l && minuteRemaining is { } r && r < l * 0.1)
+        {
+            ms = Math.Max(ms, 1000);
+        }
+
+        return TimeSpan.FromMilliseconds(Math.Ceiling(ms));
+    }
+
     public Task<StatusResponse?> GetStatusAsync(CancellationToken ct) => GetObjectAsync<StatusResponse>("status", ct);
 
     public async Task<LeagueItem?> GetLeagueAsync(int leagueId, CancellationToken ct) =>
@@ -73,7 +108,11 @@ public sealed class ApiFootballClient(HttpClient http, IOptions<ApiFootballOptio
         GetListAsync<FixtureItem>($"fixtures?ids={string.Join('-', fixtureIds)}", ct);
 
     public Task<List<OddsItem>> GetLeagueOddsAsync(int leagueId, int season, CancellationToken ct) =>
-        GetListAsync<OddsItem>($"odds?league={leagueId}&season={season}&bookmaker={BookmakerId}", ct);
+        GetLeagueOddsAsync(leagueId, season, BookmakerId, ct);
+
+    /// <summary>Kèo trước trận của một giải theo nhà cái chỉ định (vd Pinnacle id 4).</summary>
+    public Task<List<OddsItem>> GetLeagueOddsAsync(int leagueId, int season, int bookmakerId, CancellationToken ct) =>
+        GetListAsync<OddsItem>($"odds?league={leagueId}&season={season}&bookmaker={bookmakerId}", ct);
 
     public Task<List<OddsItem>> GetFixtureOddsAsync(int fixtureId, CancellationToken ct) =>
         GetListAsync<OddsItem>($"odds?fixture={fixtureId}&bookmaker={BookmakerId}", ct);
@@ -184,6 +223,16 @@ public sealed class ApiFootballClient(HttpClient http, IOptions<ApiFootballOptio
         {
             DailyLimit = l;
         }
+
+        if (response.Headers.TryGetValues("x-ratelimit-limit", out var minuteLimit) && int.TryParse(minuteLimit.FirstOrDefault(), out var ml))
+        {
+            MinuteLimit = ml;
+        }
+
+        if (response.Headers.TryGetValues("x-ratelimit-remaining", out var minuteRemaining) && int.TryParse(minuteRemaining.FirstOrDefault(), out var mr))
+        {
+            MinuteRemaining = mr;
+        }
     }
 
     /// <summary>API trả lỗi trong trường "errors" (mảng rỗng khi không lỗi, hoặc object {"token": "..."}).</summary>
@@ -201,7 +250,7 @@ public sealed class ApiFootballClient(HttpClient http, IOptions<ApiFootballOptio
         await Gate.WaitAsync(ct);
         try
         {
-            var wait = _lastRequestUtc.AddMilliseconds(options.Value.RequestDelayMs) - DateTime.UtcNow;
+            var wait = _lastRequestUtc + CurrentDelay - DateTime.UtcNow;
             if (wait > TimeSpan.Zero)
             {
                 await Task.Delay(wait, ct);

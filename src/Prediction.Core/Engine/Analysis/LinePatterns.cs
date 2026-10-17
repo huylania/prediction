@@ -69,6 +69,9 @@ public sealed class LinePatternResult
     public Lean Lean { get; init; }
 
     public int Sample { get; init; }
+
+    /// <summary>So với giá Pinnacle cùng mức (nếu có kèo Pinnacle).</summary>
+    public SharpComparison? Sharp { get; init; }
 }
 
 /// <summary>
@@ -172,12 +175,14 @@ public static class LinePatternScorer
         decimal? minOdds = p.Share is { } s && s > 0.01 ? Math.Round((decimal)(1 / s), 2) : null;
         var lean = movement.LeanFor(side);
 
+        var sharp = SharpPricing.Compare(input.SharpFor(market), side, line, odds);
         var indicators = new List<PatternIndicator>
         {
             new("Xác suất", Math.Clamp(6 * p.Net, -2.5, 2.5), ProbabilityText(p, model, share)),
             new("EV", Math.Clamp(8 * ev, -1.5, 1.5), $"EV {Signed(ev)} @{LineText.Odds(odds)}" + (minOdds is { } mo ? $" · giá tối thiểu {LineText.Odds(mo)}" : "")),
             Movement(movement, side, lean, openLine, openOdds, line, odds),
             WebsitePick(analysis, market, side),
+            SharpPrice(sharp, side, line, odds),
         };
 
         if (pattern == LinePattern.Over3)
@@ -240,8 +245,54 @@ public static class LinePatternScorer
             OddsUpdatedUtc = movement.Current.AtUtc,
             Lean = lean,
             Sample = sample,
+            Sharp = sharp,
         };
     }
+
+    /// <summary>
+    /// Giá Pinnacle: Bet365 trả cao hơn giá hợp lý của Pinnacle cùng mức ≥ 3% → +1, ≥ 1.5% → +0.5 (thấp hơn thì trừ tương tự);
+    /// mức chính Pinnacle dịch về cửa này từ lúc mở → +0.5, dịch ngược → −0.5. Pinnacle không mở mức này thì so mức chính.
+    /// </summary>
+    public static PatternIndicator SharpPrice(SharpComparison? c, PickSide side, decimal line, decimal odds)
+    {
+        if (c is null)
+        {
+            return new PatternIndicator("Giá Pinnacle", 0, "Chưa có kèo Pinnacle (gói Ultra/Mega tự lấy; giải nhỏ Pinnacle có thể không mở)");
+        }
+
+        var handicap = side is PickSide.Home or PickSide.Away;
+        string Show(decimal l) => handicap ? LineText.Signed(l) : LineText.Number(l);
+        double points;
+        string text;
+        if (c is { Edge: { } e, FairOdds: { } fair, SharpOdds: { } so })
+        {
+            points = e >= 0.03 ? 1.0 : e >= 0.015 ? 0.5 : e <= -0.03 ? -1.0 : e <= -0.015 ? -0.5 : 0;
+            text = $"Pinnacle {Show(line)} @{LineText.Odds(so)} → giá hợp lý {LineText.Odds(fair)}; Bet365 @{LineText.Odds(odds)} "
+                + (e >= 0 ? $"cao hơn {Percent(e)}" : $"thấp hơn {Percent(-e)}");
+        }
+        else if (c.MainLine is { } main)
+        {
+            // Pinnacle không có đúng mức: mức chính của Pinnacle đòi cửa này nhiều hơn → thị trường chuẩn đánh giá cửa này mạnh hơn Bet365.
+            var stronger = side switch { PickSide.Over => main > line, PickSide.Under => main < line, _ => main < line };
+            var weaker = main != line && !stronger;
+            points = stronger ? 0.5 : weaker ? -0.5 : 0;
+            text = $"Pinnacle không mở mức {Show(line)}; mức chính {Show(main)}" + (stronger ? ": đánh giá cửa này mạnh hơn" : weaker ? ": đánh giá cửa này yếu hơn" : "");
+        }
+        else
+        {
+            return new PatternIndicator("Giá Pinnacle", 0, "Pinnacle chưa có giá cho mức này");
+        }
+
+        if (c.MovedToward(side) is { } toward)
+        {
+            points += toward ? 0.5 : -0.5;
+            text += $" · Pinnacle dịch {Show(c.OpenMainLine!.Value)} → {Show(c.MainLine!.Value)} ({(toward ? "về" : "ngược")} cửa này)";
+        }
+
+        return new PatternIndicator("Giá Pinnacle", Math.Clamp(points, -1.5, 1.5), text);
+    }
+
+    private static string Percent(double v) => (v * 100).ToString("0.0", Inv) + "%";
 
     /// <summary>Gợi ý giờ vào kèo.</summary>
     public static EntryAdvice Entry(LinePattern pattern, double score, Lean lean, bool lineupsKnown, DateTime kickoffUtc, DateTime nowUtc, decimal line, decimal? minOdds)

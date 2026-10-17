@@ -22,6 +22,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<TeamDnaLeague> TeamDnaLeagues => Set<TeamDnaLeague>();
     public DbSet<AnalysisPick> AnalysisPicks => Set<AnalysisPick>();
     public DbSet<LinePatternPick> LinePatternPicks => Set<LinePatternPick>();
+    public DbSet<SharpOddsQuote> SharpOdds => Set<SharpOddsQuote>();
     public DbSet<AiReport> AiReports => Set<AiReport>();
     public DbSet<CornerAiNote> CornerAiNotes => Set<CornerAiNote>();
     public DbSet<MatchSideInfoVersion> MatchSideInfoVersions => Set<MatchSideInfoVersion>();
@@ -79,6 +80,16 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(x => x.PriceB).HasPrecision(8, 3);
             e.HasOne(x => x.Fixture).WithMany().HasForeignKey(x => x.FixtureId).OnDelete(DeleteBehavior.Cascade);
             e.HasIndex(x => new { x.FixtureId, x.Market, x.FetchedAtUtc });
+        });
+
+        b.Entity<SharpOddsQuote>(e =>
+        {
+            e.ToTable("SharpOdds");
+            e.Property(x => x.Line).HasPrecision(6, 2);
+            e.Property(x => x.PriceA).HasPrecision(8, 3);
+            e.Property(x => x.PriceB).HasPrecision(8, 3);
+            e.HasOne(x => x.Fixture).WithMany().HasForeignKey(x => x.FixtureId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => new { x.FixtureId, x.Market });
         });
 
         b.Entity<ApiAdvice>(e =>

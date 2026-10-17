@@ -141,6 +141,20 @@ public class SyncPlanTests
     }
 
     [Fact]
+    public void Request_pacing_follows_the_plan_rate_limit()
+    {
+        var o = new Prediction.Web.ApiFootball.ApiFootballOptions();
+        double Ms(int? limit, int? remaining = null) => Prediction.Web.ApiFootball.ApiFootballClient.RequestDelay(o, limit, remaining).TotalMilliseconds;
+
+        Assert.Equal(300, Ms(null));  // chưa biết gói
+        Assert.Equal(334, Ms(300));   // Pro 300/phút → ~180/phút
+        Assert.Equal(223, Ms(450));   // Ultra 450/phút → ~270/phút
+        Assert.Equal(150, Ms(900));   // Mega 900/phút → chặn ở 150 ms (~400/phút)
+        Assert.Equal(1000, Ms(900, 50)); // phút này gần hết → chậm lại
+        Assert.Equal(150, Ms(900, 500));
+    }
+
+    [Fact]
     public void Applying_twice_gives_the_same_values()
     {
         var once = new SyncOptions().For(75000);

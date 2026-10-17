@@ -116,6 +116,11 @@ public sealed class AnalysisInput
 
     /// <summary>Các cửa (kèo chấp / tài xỉu bàn) mà quy tắc của bạn đang gợi ý cho trận này.</summary>
     public IReadOnlyList<PickSide> RuleSides { get; init; } = [];
+
+    /// <summary>Kèo Pinnacle (nhà cái chuẩn) theo thị trường, nếu có (gói Ultra/Mega tự lấy).</summary>
+    public IReadOnlyList<SharpMarket> Sharp { get; init; } = [];
+
+    public SharpMarket? SharpFor(Market market) => Sharp.FirstOrDefault(m => m.Market == market);
 }
 
 public enum AnalysisGroup

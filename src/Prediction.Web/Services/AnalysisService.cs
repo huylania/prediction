@@ -58,6 +58,24 @@ public sealed class AnalysisService(IDbContextFactory<AppDbContext> dbFactory, T
         return fixtures.Select(f => results[f.Id]).ToList();
     }
 
+    /// <summary>Kèo Pinnacle đã lưu → thị trường theo trận (bảng mức mới nhất, mức chính, mức chính lúc mở).</summary>
+    public static ILookup<int, SharpMarket> SharpMarkets(IEnumerable<SharpOddsQuote> rows) =>
+        rows.GroupBy(q => (q.FixtureId, q.Market))
+            .Select(g =>
+            {
+                static SharpQuote Quote(SharpOddsQuote q) => new(q.Market, q.Line, q.PriceA, q.PriceB);
+                var current = g.Where(q => !q.IsOpening).ToList();
+                return (g.Key.FixtureId, Market: new SharpMarket
+                {
+                    Market = g.Key.Market,
+                    Ladder = current.OrderBy(q => q.Line).Select(Quote).ToList(),
+                    Main = current.FirstOrDefault(q => q.IsMain) is { } m ? Quote(m) : null,
+                    Open = g.FirstOrDefault(q => q.IsOpening) is { } o ? Quote(o) : null,
+                    UpdatedUtc = current.Select(q => (DateTime?)(q.BookmakerUpdatedAtUtc ?? q.FetchedAtUtc)).Max(),
+                });
+            })
+            .ToLookup(x => x.FixtureId, x => x.Market);
+
     public async Task<Dictionary<int, MatchAnalysisResult>> AnalyzeAsync(AppDbContext db, IReadOnlyCollection<Fixture> fixtures, CancellationToken ct)
     {
         var result = new Dictionary<int, MatchAnalysisResult>();
@@ -91,6 +109,7 @@ public sealed class AnalysisService(IDbContextFactory<AppDbContext> dbFactory, T
         var aiAltitude = await db.MatchSideInfos.AsNoTracking().Where(s => ids.Contains(s.FixtureId) && s.AltitudeM != null)
             .ToDictionaryAsync(s => s.FixtureId, s => s.AltitudeM, ct);
 
+        var sharp = SharpMarkets(await db.SharpOdds.AsNoTracking().Where(q => ids.Contains(q.FixtureId)).ToListAsync(ct));
         var oddsAlerts = await MatchContextService.AlertsAsync(db, fixtures, contexts, now, ct);
         var history = await LoadHistoryAsync(db, teamIds, fixtures.Min(f => f.KickoffUtc).AddDays(-400), fixtures.Max(f => f.KickoffUtc), ct);
         var baselines = new Dictionary<(int, int), LeagueBaseline>();
@@ -139,6 +158,7 @@ public sealed class AnalysisService(IDbContextFactory<AppDbContext> dbFactory, T
                 Advice = ctx.Advice,
                 RuleSides = ruleSides[fixture.Id].Distinct().ToList(),
                 VenueElevationM = (fixture.VenueId is { } vid ? elevations.GetValueOrDefault(vid) : null) ?? aiAltitude.GetValueOrDefault(fixture.Id),
+                Sharp = sharp[fixture.Id].ToList(),
             };
 
             result[fixture.Id] = new MatchAnalysisResult

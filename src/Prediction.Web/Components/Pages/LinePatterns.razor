@@ -68,6 +68,24 @@ else
                             <span> · cập nhật @Time.Short(up)</span>
                         }
                     </div>
+                    @if (p.Sharp is { } sh)
+                    {
+                        <div class="meta">
+                            Pinnacle:
+                            @if (sh is { Edge: { } edge, FairOdds: { } fair })
+                            {
+                                <span>giá hợp lý @LineText.Odds(fair) → Bet365 <b class="@(edge >= 0 ? "text-success" : "text-danger")">@(edge >= 0 ? "+" : "−")@Math.Abs(edge * 100).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)%</b></span>
+                            }
+                            else
+                            {
+                                <span>không mở mức này</span>
+                            }
+                            @if (sh.MainLine is { } ml)
+                            {
+                                <span> · mức chính @(p.Pattern == LinePattern.Over3 ? LineText.Number(ml) : LineText.Signed(ml))@(sh.OpenMainLine is { } om && om != ml ? $" (mở {(p.Pattern == LinePattern.Over3 ? LineText.Number(om) : LineText.Signed(om))})" : "")</span>
+                            }
+                        </div>
+                    }
                     <div class="lp-entry lp-entry-@p.Entry.Timing.ToString().ToLowerInvariant()">
                         <b>@EntryLabel(p.Entry.Timing)</b>
                         @if (p.Entry.FromUtc is { } from && p.Entry.ToUtc is { } to)

@@ -108,6 +108,7 @@ Chỉnh chu kỳ trong `appsettings.json`, mục `Sync`. Nhà cái mặc định
   | Tác vụ | Pro | Ultra | Mega |
   |---|---|---|---|
   | Kèo theo giải | 60 phút | 20 phút | 20 phút |
+  | Kèo Pinnacle (so giá) | tắt | 60 phút | 20 phút |
   | Tỉ số, thống kê, kèo live và Góc Live | 2 phút | 1 phút | 1 phút |
   | Góc Live nhanh | 30 giây | 20 giây | **15 giây** |
   | Kèo live gọi bù theo giải | 8 giải, chỉ trận gần cửa sổ góc | 30 giải, mọi trận | 60 giải, mọi trận |
@@ -119,6 +120,10 @@ Chỉnh chu kỳ trong `appsettings.json`, mục `Sync`. Nhà cái mặc định
 
 - Vì sao Mega không quét kèo trước trận dày hơn: dữ liệu thật cho thấy kèo Bet365 trong API thường cách 3–24 giờ mới đổi. Trong khoảng 930 lần đổi kèo ngày 15–16/10, chỉ 14 lần cách nhau dưới 1 giờ. Quét 20 phút đã đủ, phần quota dư dồn cho trận đang đá.
 - Vì sao Mega dừng ở 15 giây: API cập nhật trận đang đá khoảng 15 giây/lần, quét dày hơn không có số liệu mới.
+- **Tốc độ gọi API theo gói:** website đọc giới hạn request/phút trong header `x-ratelimit-limit` (Pro 300, Ultra 450, Mega 900).
+  - Dùng tối đa 60% giới hạn (`ApiFootball:RateLimitShare`) và không nhanh hơn 150 ms/request (`ApiFootball:MinRequestDelayMs`).
+  - Kết quả: Pro khoảng 180 request/phút, Ultra khoảng 270, Mega khoảng 400 (trước đây cố định 300 ms, khoảng 200 request/phút).
+  - Phút nào còn dưới 10% giới hạn thì chậm lại 1 giây/request. API cảnh báo sẽ chặn nếu vượt giới hạn nhiều.
 - Ép cố định một hồ sơ: `"Plan": "Pro"`, `"Ultra"` hoặc `"Mega"`. Ép hồ sơ cao hơn gói thật sẽ cạn quota sớm.
 - Trang **Cài đặt** hiện hồ sơ đang dùng và các chu kỳ thực tế.
 
@@ -308,6 +313,12 @@ Trang **Tài 3 & chấp 0.75–1** (`/tai3-chap1`) lọc các trận sắp đá 
 - **Xác suất và EV:** tính từ số bàn kỳ vọng của mô hình, đã trộn với giá nhà cái như phần Phân tích chuyên sâu.
 - **Biến động kèo:** kèo dịch về cửa này +0.5, dịch ngược −0.75.
 - **Website chấm cùng hay ngược cửa:** cùng cửa nhóm A/B +0.75 / +0.25; ngược cửa −1 / −0.5.
+- **Giá Pinnacle** (gói Ultra/Mega):
+  - Pinnacle là nhà cái có giá sát xác suất thật nhất. Website bỏ phần lời ở giá Pinnacle cùng mức để ra **giá hợp lý**, rồi so với Bet365.
+  - Bet365 trả cao hơn giá hợp lý ≥ 3% thì +1, ≥ 1.5% thì +0.5. Thấp hơn thì trừ tương tự.
+  - Mức chính Pinnacle dịch về cửa này từ lúc mở thì +0.5, dịch ngược thì −0.5.
+  - Pinnacle không mở đúng mức thì so mức chính: Pinnacle đánh giá cửa này mạnh hơn Bet365 thì +0.5, yếu hơn thì −0.5.
+  - Thẻ trận có dòng "Pinnacle: giá hợp lý … → Bet365 ±x%". Ví dụ thật 17/10: Wrexham −0.75, Bet365 1.70, Pinnacle 1.74, giá hợp lý 1.79, Bet365 thấp hơn 4.9% nên −1.
 - **Cờ đỏ:** dính cờ đỏ trên cửa này thì −2, tối đa 5.9.
 - **Mẫu dữ liệu:** dưới 5 trận thì −1, tối đa 7.9.
 - **Riêng Tài 3.0:**

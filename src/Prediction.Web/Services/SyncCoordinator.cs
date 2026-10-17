@@ -39,11 +39,14 @@ public static class SyncJobs
     /// <summary>Chạy trong tiến trình Góc Live nhanh: chỉ giữ khóa live, không xếp hàng sau tác vụ nặng.</summary>
     public static bool IsFastLane(string job) => job is LiveFast or LiveGlobal;
 
+    /// <summary>Kèo Pinnacle (nhà cái chuẩn) cho trận sắp đá — gói Ultra/Mega.</summary>
+    public const string SharpOdds = "sharp-odds";
+
     /// <summary>Tác vụ ghi dữ liệu trận đang đá: dùng chung khóa live với Góc Live nhanh để không ghi chồng lên nhau.</summary>
     public static bool TouchesLive(string job) => job is Live or LiveOdds or LiveCorners;
 
     /// <summary>Tác vụ phụ: tạm dừng khi quota trong ngày sắp hết.</summary>
-    public static bool IsLowPriority(string job) => job is Stats or Coaches or Injuries or Advice or HeadToHead or Venues;
+    public static bool IsLowPriority(string job) => job is Stats or Coaches or Injuries or Advice or HeadToHead or Venues or SharpOdds;
 
     public static string Label(string job) => job switch
     {
@@ -70,6 +73,7 @@ public static class SyncJobs
         LiveOdds => "Kèo live",
         LiveFast => "Góc Live nhanh",
         LiveGlobal => "Góc Live toàn cầu",
+        SharpOdds => "Kèo Pinnacle",
         _ => job,
     };
 }
@@ -236,6 +240,7 @@ public sealed class SyncCoordinator(
         SyncJobs.Suggestions => RunAsync(job, async (_, c) => await suggestions.RefreshAsync(c), ct),
         SyncJobs.Live => RunAsync(job, (s, c) => s.SyncLiveAsync(c), ct),
         SyncJobs.Stats => RunAsync(job, (s, c) => s.SyncStatsAsync(null, c), ct),
+        SyncJobs.SharpOdds => RunAsync(job, (s, c) => s.SyncSharpOddsAsync(c), ct),
         SyncJobs.Coaches => RunAsync(job, (s, c) => s.SyncCoachesAsync(c), ct),
         SyncJobs.Injuries => RunAsync(job, (s, c) => s.SyncInjuriesAsync(c), ct),
         SyncJobs.Analysis => RunAsync(job, (_, c) => analysis.RefreshPicksAsync(c), ct),
@@ -346,6 +351,10 @@ public sealed class SyncBackgroundService(
             yield return (SyncJobs.Stats, o.StatsIntervalMinutes);
             yield return (SyncJobs.HeadToHead, o.H2HIntervalMinutes);
             yield return (SyncJobs.Venues, o.VenuesIntervalMinutes);
+            if (o.SharpOddsIntervalMinutes > 0)
+            {
+                yield return (SyncJobs.SharpOdds, o.SharpOddsIntervalMinutes);
+            }
         }
 
         yield return (SyncJobs.Weather, o.WeatherIntervalMinutes);

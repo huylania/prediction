@@ -92,6 +92,14 @@ public sealed class SyncOptions
     public bool LiveCornerGlobal { get; set; }
 
     /// <summary>
+    /// Kèo Pinnacle (nhà cái chuẩn) cho trận sắp đá của giải theo dõi, mỗi chừng này phút (0 = tắt; Ultra 60, Mega 20).
+    /// Lưu bảng riêng để so giá Bet365 với giá hợp lý của Pinnacle.
+    /// </summary>
+    public int SharpOddsIntervalMinutes { get; set; }
+
+    public int SharpBookmakerId { get; set; } = 4;
+
+    /// <summary>
     /// Hồ sơ đồng bộ: "Auto" (mặc định) chọn theo giới hạn ngày của gói API (header x-ratelimit-requests-limit):
     /// ≥ <see cref="Mega"/>.MinDailyLimit → Mega, ≥ <see cref="Ultra"/>.MinDailyLimit → Ultra, còn lại dùng các giá trị gốc (gói Pro 7.500/ngày).
     /// "Pro" / "Ultra" / "Mega" ép cố định một hồ sơ.
@@ -139,6 +147,7 @@ public sealed class SyncOptions
         o.LiveOddsFallbackMaxLeagues = t.LiveOddsFallbackMaxLeagues;
         o.LiveOddsFallbackAllLive = t.LiveOddsFallbackAllLive;
         o.LiveCornerGlobal = t.LiveCornerGlobal;
+        o.SharpOddsIntervalMinutes = t.SharpOddsIntervalMinutes;
         return o;
     }
 
@@ -173,6 +182,7 @@ public sealed class SyncTierOptions
     public int LiveOddsFallbackMaxLeagues { get; set; }
     public bool LiveOddsFallbackAllLive { get; set; }
     public bool LiveCornerGlobal { get; set; }
+    public int SharpOddsIntervalMinutes { get; set; }
 
     /// <summary>Ultra 75.000/ngày: ~25–35 nghìn request vào ngày đông trận.</summary>
     public static SyncTierOptions UltraDefaults() => new()
@@ -190,6 +200,7 @@ public sealed class SyncTierOptions
         LiveOddsFallbackMaxLeagues = 30,
         LiveOddsFallbackAllLive = true,
         LiveCornerGlobal = false,
+        SharpOddsIntervalMinutes = 60,
     };
 
     /// <summary>
@@ -211,6 +222,7 @@ public sealed class SyncTierOptions
         LiveOddsFallbackMaxLeagues = 60,
         LiveOddsFallbackAllLive = true,
         LiveCornerGlobal = true,
+        SharpOddsIntervalMinutes = 20,
     };
 }
 
@@ -423,6 +435,100 @@ public sealed class DataSyncService(
         await db.SaveChangesAsync(ct);
         return null;
     }
+
+    /// <summary>
+    /// Kèo Pinnacle của các trận sắp đá (trong <see cref="SyncOptions.AdviceLookaheadDays"/> ngày) thuộc giải theo dõi:
+    /// 1 request (vài trang) mỗi giải có trận. Lưu mọi mức chấp / tài xỉu bàn / tài xỉu góc vào bảng SharpOdds.
+    /// </summary>
+    public async Task<string?> SyncSharpOddsAsync(CancellationToken ct)
+    {
+        var o = options.Value.Effective();
+        var now = Now;
+        var upcoming = await db.Fixtures.AsNoTracking()
+            .Where(f => f.League!.IsTracked && !f.League.IsDemo && f.KickoffUtc > now && f.KickoffUtc <= now.AddDays(o.AdviceLookaheadDays)
+                && f.Status == FixtureStatus.NotStarted)
+            .Select(f => new { f.Id, f.LeagueId })
+            .ToListAsync(ct);
+        if (upcoming.Count == 0)
+        {
+            return null;
+        }
+
+        var ids = upcoming.Select(f => f.Id).ToHashSet();
+        var leagueIds = upcoming.Select(f => f.LeagueId).ToHashSet();
+        var leagues = await db.Leagues.AsNoTracking().Where(l => leagueIds.Contains(l.Id)).ToListAsync(ct);
+        var changed = 0;
+        foreach (var league in leagues)
+        {
+            if (QuotaLow(o))
+            {
+                break;
+            }
+
+            var items = (await api.GetLeagueOddsAsync(league.Id, league.CurrentSeason, o.SharpBookmakerId, ct)).Where(i => ids.Contains(i.Fixture.Id)).ToList();
+            changed += await StoreSharpAsync(items, o.SharpBookmakerId, now, ct);
+        }
+
+        return changed == 0 ? null : $"Kèo Pinnacle: cập nhật {changed} trận.";
+    }
+
+    /// <summary>Thay bảng mức Pinnacle mới nhất của từng trận; giữ dòng mức chính lần đầu thấy (IsOpening).</summary>
+    public async Task<int> StoreSharpAsync(IReadOnlyCollection<OddsItem> items, int bookmakerId, DateTime now, CancellationToken ct)
+    {
+        if (items.Count == 0)
+        {
+            return 0;
+        }
+
+        var fixtureIds = items.Select(i => i.Fixture.Id).Distinct().ToList();
+        var existing = (await db.SharpOdds.Where(q => fixtureIds.Contains(q.FixtureId)).ToListAsync(ct)).ToLookup(q => q.FixtureId);
+        var changed = 0;
+        foreach (var item in items.DistinctBy(i => i.Fixture.Id))
+        {
+            var ladder = OddsParser.Ladder(item, bookmakerId);
+            if (ladder.Count == 0)
+            {
+                continue;
+            }
+
+            var updated = item.Update?.UtcDateTime;
+            var rows = existing[item.Fixture.Id].ToList();
+            var current = rows.Where(q => !q.IsOpening).ToList();
+            if (current.Count > 0 && updated is not null && current.All(q => q.BookmakerUpdatedAtUtc == updated))
+            {
+                continue; // Pinnacle chưa đổi gì
+            }
+
+            db.SharpOdds.RemoveRange(current);
+            foreach (var (q, main) in ladder)
+            {
+                db.SharpOdds.Add(Sharp(item.Fixture.Id, bookmakerId, q, main, false, updated, now));
+                if (main && !rows.Any(r => r.IsOpening && r.Market == q.Market))
+                {
+                    db.SharpOdds.Add(Sharp(item.Fixture.Id, bookmakerId, q, false, true, updated, now));
+                }
+            }
+
+            changed++;
+        }
+
+        await db.SaveChangesAsync(ct);
+        return changed;
+    }
+
+    private static SharpOddsQuote Sharp(int fixtureId, int bookmakerId, ParsedQuote q, bool main, bool opening, DateTime? updated, DateTime now) => new()
+    {
+        FixtureId = fixtureId,
+        BookmakerId = bookmakerId,
+        Market = q.Market,
+        Line = q.Line,
+        PriceA = q.PriceA,
+        PriceB = q.PriceB,
+        IsMain = main,
+        IsOpening = opening,
+        BookmakerUpdatedAtUtc = updated,
+        FetchedAtUtc = now,
+    };
 
     /// <summary>Trận đang đá (1H/HT/2H) của giải có thống kê trận, trừ các giải <paramref name="excluded"/>.</summary>
     public static List<FixtureItem> GlobalLiveFixtures(IEnumerable<FixtureItem> live, IReadOnlySet<int> statsLeagues, IReadOnlySet<int> excluded) =>

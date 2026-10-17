@@ -74,7 +74,10 @@ public static partial class OddsParser
     /// của đội nhà (đã xác nhận với dữ liệu Bet365 thật). Vẫn thử thêm kiểu đối xứng ("Home -0.75" / "Away +0.75")
     /// phòng khi nhà cái khác ghi khác, và giữ kiểu cho nhiều cặp hợp lệ hơn (tổng xác suất ngầm định giống kèo thật).
     /// </summary>
-    public static ParsedQuote? MainHandicap(IEnumerable<BetValue> values, Market market = Market.AsianHandicap)
+    public static ParsedQuote? MainHandicap(IEnumerable<BetValue> values, Market market = Market.AsianHandicap) =>
+        MainLine(HandicapPairs(values), market);
+
+    private static List<(decimal Line, decimal A, decimal B)> HandicapPairs(IEnumerable<BetValue> values)
     {
         var home = new Dictionary<decimal, decimal>();
         var away = new Dictionary<decimal, decimal>();
@@ -93,12 +96,13 @@ public static partial class OddsParser
         var mirrored = Pairs(home, h => away.TryGetValue(-h, out var a) ? a : null);
         var sameNumber = Pairs(home, h => away.TryGetValue(h, out var a) ? a : null);
         // API-Football thật (đã kiểm tra với Bet365) dùng kiểu "cùng số"; chỉ chọn kiểu đối xứng khi nó cho nhiều cặp hợp lệ hơn hẳn.
-        var chosen = mirrored.Count > sameNumber.Count ? mirrored : sameNumber;
-
-        return MainLine(chosen, market);
+        return mirrored.Count > sameNumber.Count ? mirrored : sameNumber;
     }
 
-    public static ParsedQuote? MainTotals(IEnumerable<BetValue> values, Market market = Market.OverUnder)
+    public static ParsedQuote? MainTotals(IEnumerable<BetValue> values, Market market = Market.OverUnder) =>
+        MainLine(TotalsPairs(values), market);
+
+    private static List<(decimal Line, decimal A, decimal B)> TotalsPairs(IEnumerable<BetValue> values)
     {
         var over = new Dictionary<decimal, decimal>();
         var under = new Dictionary<decimal, decimal>();
@@ -114,7 +118,36 @@ public static partial class OddsParser
             target.TryAdd(line, odds);
         }
 
-        return MainLine(Pairs(over, l => under.TryGetValue(l, out var u) ? u : null), market);
+        return Pairs(over, l => under.TryGetValue(l, out var u) ? u : null);
+    }
+
+    /// <summary>
+    /// Mọi mức hợp lệ (chấp, tài xỉu bàn, tài xỉu góc) của đúng nhà cái <paramref name="bookmakerId"/> — không lấy nhà cái khác thay thế.
+    /// Dùng cho kèo Pinnacle: so giá Bet365 với Pinnacle ở cùng mức.
+    /// </summary>
+    public static IReadOnlyList<(ParsedQuote Quote, bool IsMain)> Ladder(OddsItem item, int bookmakerId)
+    {
+        var bookmaker = item.Bookmakers.FirstOrDefault(b => b.Id == bookmakerId);
+        if (bookmaker is null)
+        {
+            return [];
+        }
+
+        List<BetValue> Values(string betName) =>
+            bookmaker.Bets.Where(b => string.Equals(b.Name?.Trim(), betName, StringComparison.OrdinalIgnoreCase)).SelectMany(b => b.Values).ToList();
+
+        var result = new List<(ParsedQuote, bool)>();
+        void Add(Market market, List<(decimal Line, decimal A, decimal B)> pairs)
+        {
+            var main = MainLine(pairs, market);
+            result.AddRange(pairs.DistinctBy(p => p.Line).OrderBy(p => p.Line)
+                .Select(p => (new ParsedQuote(market, p.Line, p.A, p.B), main is { } m && m.Line == p.Line)));
+        }
+
+        Add(Market.AsianHandicap, HandicapPairs(Values(HandicapBetName)));
+        Add(Market.OverUnder, TotalsPairs(Values(AsianTotalsBetName).Concat(Values(TotalsBetName))));
+        Add(Market.CornersOverUnder, TotalsPairs(Values(CornersTotalsBetName)));
+        return result;
     }
 
     private static List<(decimal Line, decimal A, decimal B)> Pairs(Dictionary<decimal, decimal> sideA, Func<decimal, decimal?> findB)

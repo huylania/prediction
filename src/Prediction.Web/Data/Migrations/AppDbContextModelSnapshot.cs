@@ -2057,6 +2057,54 @@ namespace Prediction.Web.Data.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Prediction.Core.Entities.SharpOddsQuote", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<int>("BookmakerId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("BookmakerUpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("FetchedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("FixtureId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsMain")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsOpening")
+                        .HasColumnType("bit");
+
+                    b.Property<decimal>("Line")
+                        .HasPrecision(6, 2)
+                        .HasColumnType("decimal(6,2)");
+
+                    b.Property<int>("Market")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("PriceA")
+                        .HasPrecision(8, 3)
+                        .HasColumnType("decimal(8,3)");
+
+                    b.Property<decimal>("PriceB")
+                        .HasPrecision(8, 3)
+                        .HasColumnType("decimal(8,3)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FixtureId", "Market");
+
+                    b.ToTable("SharpOdds", (string)null);
+                });
+
             modelBuilder.Entity("Prediction.Core.Entities.Suggestion", b =>
                 {
                     b.Property<long>("Id")
@@ -3075,6 +3123,17 @@ namespace Prediction.Web.Data.Migrations
                     b.Navigation("League");
 
                     b.Navigation("SubjectTeam");
+                });
+
+            modelBuilder.Entity("Prediction.Core.Entities.SharpOddsQuote", b =>
+                {
+                    b.HasOne("Prediction.Core.Entities.Fixture", "Fixture")
+                        .WithMany()
+                        .HasForeignKey("FixtureId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Fixture");
                 });
 
             modelBuilder.Entity("Prediction.Core.Entities.Suggestion", b =>
